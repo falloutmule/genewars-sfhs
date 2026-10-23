@@ -3,6 +3,27 @@ import type { TerrainState } from "../mechanics/terrain";
 import type { SpatialState } from "./spatial";
 import { unlinkSpatial } from "./spatial";
 import { cleanupCampaignReferences, type CleanupWorld } from "./cleanup";
+import { put16 } from "./bytes";
+
+/** Dynamic plant factories/feeding finish before later source callbacks read
+ * level3552/player5FA. Counts are mirrors of the current authoritative pool. */
+export function synchronizeCampaignPlantCounts(w: {
+  ecology: EcologyState;
+  missionPrefix: number[];
+  players: { raw: number[] }[];
+}): void {
+  if (w.ecology.plantCount !== w.ecology.plants.filter((p) => p.active).length)
+    throw new Error("Current ecology plant count differs from active pool");
+  put16(w.missionPrefix, 0x3552, w.ecology.plantCount);
+  for (let owner = 0; owner < 4; owner++) {
+    const count = w.ecology.plants.filter(
+      (p) => p.active && p.owner === owner,
+    ).length;
+    if (w.ecology.ownerPlantCounts[owner] !== count)
+      throw new Error("Current owned plant count differs from active pool");
+    put16(w.players[owner].raw, 0x5fa, count);
+  }
+}
 
 /** Plant damage can retire a slot inside a creature callback, before the
  * scheduled plant pass. Unlink and clear references before any later callback

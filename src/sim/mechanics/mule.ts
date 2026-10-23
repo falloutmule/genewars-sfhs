@@ -38,11 +38,20 @@ import {
   acquireMuleHostile,
   completeMuleAttack,
   queryMuleCombat,
+  queryMuleCellFallback,
   resolveMuleHostileQuery,
+  damageMuleFromSource,
+  resolveMuleCombatTarget,
+  consumeMuleCombatQuery,
+  beginMuleAttack,
+  muleCombatTargetDistance,
   type MuleCombatTraits,
   type MuleCombatEffectRequest,
   type MuleCombatContext,
   type MuleCombatPorts,
+  type MuleDamageAttacker,
+  type MuleCombatTarget,
+  type MuleCombatQuery,
 } from "./mule-combat";
 
 type Native = (number | null)[];
@@ -81,6 +90,16 @@ export interface MuleContext {
   /** Native69 selector for an actual shared family4 identity. Read lazily
    * when a query visits an effect, before the source code11 exception. */
   effectCode?(id: string): number;
+  /** Source8ACC0/8AC60 before cell-entry virtual88. The normal host publishes
+   * actual intrusive links/native headers into this same staged transaction. */
+  relocate?(
+    state: EcologyState,
+    terrain: TerrainState,
+    rng: GeneRng,
+    mule: EcologyMule,
+    oldCell: number,
+    newCell: number,
+  ): void;
   /** Exact74270 result at current physical height, not a broad rectangle. */
   airborneObstacle?(
     position: [number, number],
@@ -91,12 +110,67 @@ export interface MuleContext {
    * read by a successful natural birth; never synthesized from a slot count. */
   creaturePriors?: readonly Native[];
   combat?: MuleCombatTraits;
+  combatEntity?(
+    state: EcologyState,
+    terrain: TerrainState,
+    rng: GeneRng,
+    id: string,
+  ): MuleCombatTarget | null;
+  combatDamage?(
+    state: EcologyState,
+    terrain: TerrainState,
+    rng: GeneRng,
+    self: EcologyMule,
+    target: MuleCombatTarget,
+    amount: number,
+  ): boolean;
+  combatBuildingAt?(
+    state: EcologyState,
+    terrain: TerrainState,
+    rng: GeneRng,
+    self: EcologyMule,
+  ): string | null;
+  /** Complete74D90 predicate with the actual nominated4D building only. */
+  combatBuildingPointAccepted?(
+    state: EcologyState,
+    terrain: TerrainState,
+    mule: EcologyMule,
+    point: [number, number],
+    buildingIndex: number,
+  ): boolean;
   combatEffect?(
     state: EcologyState,
     terrain: TerrainState,
     rng: GeneRng,
     request: MuleCombatEffectRequest,
   ): void;
+  /** Synchronous6C900/6C780 before nutrition and neighborhood traversal.
+   * Retirement must publish actual unlink/count/reference cleanup into the
+   * supplied staged host while preserving held Mule/native identities. */
+  plantDamage?(
+    state: EcologyState,
+    terrain: TerrainState,
+    rng: GeneRng,
+    index: number,
+    amount: number,
+  ): void;
+  /**6D500 cold shatter14, called before source retirement/unlink receipt.
+   * The factory must use the supplied staged host and RNG. */
+  coldBurst?(
+    state: EcologyState,
+    terrain: TerrainState,
+    rng: GeneRng,
+    mule: EcologyMule,
+    request: {
+      code: 14;
+      count: number;
+      parameter1: 80;
+      parameter2: 70;
+      height: -1;
+    },
+  ): void;
+  /** Signed original component temperature-loss bytes, admitted by importer. */
+  coldResponse?: { primaryLoss: number; secondaryLoss: number };
   owned?: {
     selectedPlayer: number;
     globalFlags: number;
@@ -134,16 +208,18 @@ export interface MuleEvent {
     | "mule-born"
     | "mule-effect"
     | "mule-combat-damage"
-    | "mule-combat-kill";
+    | "mule-combat-kill"
+    | "mule-portrait-refresh";
   id: string;
   position?: [number, number];
   target?: number;
-  targetKind?: 1 | 2;
+  targetKind?: 1 | 2 | 3 | 4;
   channel?: number;
   code?: number;
   height?: number;
   damage?: number;
   attackerOwner?: number;
+  attackerKind?: number;
   victimOwner?: number;
   index?: number;
   angles?: [number, number, number];
@@ -176,6 +252,7 @@ export function queryMuleAirborneBuilding(
   height: number,
   firstLinkedBuilding: (cell: number) => Native | null,
   heightRaw: (native: Native) => number,
+  mask: 0 | 1 = 1,
 ): { native: Native; position: [number, number]; ground: number } | null {
   if (!(terrain.bytes[worldCell(...at) * 14 + 11] & 1)) return null;
   const classes = [3, 1, 2, 3, 2, 2, 1, 2, 1, 2, 3, 3, 2, 1];
@@ -201,6 +278,7 @@ export function queryMuleAirborneBuilding(
       );
     const shape = classes[n[45]!];
     if (shape === 2 && i >= 4) continue;
+    if ((w(n, 49) & mask) !== mask) return null;
     const extent = shape === 1 ? 85 : shape === 2 ? 128 : 256;
     if (
       Math.abs(signed(w(n, 7) - at[0])) > extent ||
@@ -269,6 +347,24 @@ function accepted(
   at: [number, number],
   c: MuleContext,
 ): boolean {
+  if (mule.native[79] === 4) {
+    if (!c.combatBuildingPointAccepted)
+      throw Error(
+        "Mule nominated building movement requires the actual74D90 predicate",
+      );
+    const admitted = c.combatBuildingPointAccepted(
+      state,
+      c.terrain,
+      mule,
+      at,
+      w(mule.native, 77),
+    );
+    if (typeof admitted !== "boolean")
+      throw Error(
+        "Mule building movement predicate requires an actual boolean",
+      );
+    return admitted;
+  }
   if (c.obstacleAt(at, mule)) return false;
   if (ecologyTerrainClass(c.terrain, at) === 0) return false;
   const n = mule.native,
@@ -453,7 +549,8 @@ function cellEntryPredicate(
       (other) =>
         other.native[6] === 1 &&
         other.native[0x5e]! < 24 &&
-        worldCell(...point(other.native)) === cell,
+        (worldCell(...point(other.native)) === cell ||
+          (entering && other.id === mule.id)),
     );
   let ordered = occupants;
   if (occupants.length > 1) {
@@ -526,10 +623,35 @@ function routePrefix(
           (m) =>
             m.index === w(n, 0x50) && m.id !== mule.id && m.native[6] === 1,
         )
-      : undefined;
-  if (n[0x4f] !== 0 || (n[0x52] !== 0 && !associated) || n[0x4a]! & 4)
+      : n[0x52] === 3
+        ? (resolveMuleCombatTarget(
+            state,
+            combatServices(state, random, c, []).context,
+            3,
+            w(n, 0x50),
+          ) ?? undefined)
+        : undefined;
+  if (
+    (n[0x4f] !== 0 && n[0x4f] !== 4) ||
+    (n[0x52] !== 0 && !associated) ||
+    n[0x4a]! & 4
+  )
     throw new Error("Mule association movement prefix is required");
-  if (associated && (n[0x49]! & 3) === 3) target = point(associated.native);
+  if (
+    n[79] === 4 &&
+    !resolveMuleCombatTarget(
+      state,
+      combatServices(state, random, c, []).context,
+      4,
+      w(n, 77),
+    )
+  )
+    throw Error("Mule nominated building source binding is missing");
+  if (associated && (n[0x49]! & 3) === 3) {
+    target = point(associated.native);
+    put(n, 11, target[0]);
+    put(n, 13, target[1]);
+  }
   n[0x49] = n[0x49]! & 0x9f;
   if ((n[0x49]! & 3) === 3) {
     let flags = w(n, 0x49);
@@ -592,6 +714,33 @@ function routePrefix(
       }
       n[0x49] = n[0x49]! & 0xf3;
       working = target;
+      if (n[79] === 4 && !(w(n, 73) & 128)) {
+        const building = resolveMuleCombatTarget(
+          state,
+          combatServices(state, random, c, []).context,
+          4,
+          w(n, 77),
+        );
+        const radius = building?.buildingHalfWidth;
+        if (!building || !Number.isInteger(radius))
+          throw Error("Admitted nominated building104E12 radius required");
+        target = point(building.native);
+        put(n, 11, target[0]);
+        put(n, 13, target[1]);
+        const yaw = originalAngle(
+          signed((target[0] - current[0]) * 2),
+          signed((target[1] - current[1]) * 2),
+          c.tables.atan,
+        );
+        put(n, 75, yaw);
+        const trig = (yaw + 1024 + 1536) & 2047;
+        working = [
+          signed(target[0] + (Math.imul(radius!, c.tables.cosine[trig]) >> 16)),
+          signed(target[1] + (Math.imul(radius!, c.tables.sine[trig]) >> 16)),
+        ];
+        put(n, 11, working[0]);
+        put(n, 13, working[1]);
+      }
     } else {
       if (n[0x49]! & 3) {
         if (n[0x49]! & 8) {
@@ -733,6 +882,7 @@ function contact(
   normal: [number, number, number],
   previous: number,
   c: MuleContext,
+  random: GeneRng,
 ): number {
   const at = point(n),
     cell = worldCell(...at),
@@ -764,23 +914,87 @@ function contact(
     normal,
     previous,
     desired,
-    n[0x52] === 1 &&
-      ([1, 3, 4, 5].includes(n[0x5e]!) || (n[24] === 4 && n[0x5e] === 8))
+    n[0x52] === 3
       ? (() => {
-          const peer = state.mules.find((m) => m.index === w(n, 0x50));
-          if (!peer) throw new Error("Mule physical target is missing");
-          const to = point(peer.native),
-            dx = torusDelta(to[0], at[0]),
-            dy = torusDelta(to[1], at[1]),
-            z = ((d(peer.native, 0x27) - d(n, 0x27)) | 0) >> 3;
-          return (Math.imul(dx, dx) + Math.imul(dy, dy) + Math.imul(z, z)) | 0;
+          const target = resolveMuleCombatTarget(
+            state,
+            combatServices(state, random, c, []).context,
+            3,
+            w(n, 80),
+          );
+          if (!target)
+            throw Error("Mule physical specialist target is missing");
+          return muleCombatTargetDistance(n, target) | 0;
         })()
-      : distance(
-          c.terrain,
-          at,
-          n[0x49]! & 3 ? [w(n, 0x45), w(n, 0x47)] : [w(n, 11), w(n, 13)],
-        ),
+      : n[0x52] === 1 &&
+          ([1, 3, 4, 5].includes(n[0x5e]!) || (n[24] === 4 && n[0x5e] === 8))
+        ? (() => {
+            const peer = state.mules.find((m) => m.index === w(n, 0x50));
+            if (!peer) throw new Error("Mule physical target is missing");
+            const to = point(peer.native),
+              dx = torusDelta(to[0], at[0]),
+              dy = torusDelta(to[1], at[1]),
+              z = ((d(peer.native, 0x27) - d(n, 0x27)) | 0) >> 3;
+            return (
+              (Math.imul(dx, dx) + Math.imul(dy, dy) + Math.imul(z, z)) | 0
+            );
+          })()
+        : distance(
+            c.terrain,
+            at,
+            n[0x49]! & 3 ? [w(n, 0x45), w(n, 0x47)] : [w(n, 11), w(n, 13)],
+          ),
   );
+}
+/**5B260 after actual source insertion.6E9E0 invokes this before assigning
+ * its final snapped position, so newCell is an explicit source cell argument. */
+function sourceCellEntry(
+  state: EcologyState,
+  mule: EcologyMule,
+  oldCell: number,
+  newCell: number,
+  random: GeneRng,
+  c: MuleContext,
+) {
+  const n = mule.native;
+  c.relocate?.(state, c.terrain, random, mule, oldCell, newCell);
+  if (cellEntryPredicate(state, mule, newCell, c, true)) {
+    //5B260 has no creature-state test. Its waypoint path also runs while
+    //an attack/hit animation coasts across a cell; only virtual10 and8C
+    //gate it.74D90 permits its nominated building using the actual host
+    //predicate; the ordinary non-building branch currently admits mask1.
+    if ((n[0x4f] !== 0 && n[0x4f] !== 4) || (n[0x53] !== 1 && n[0x4f] !== 4))
+      throw new Error(
+        "Mule cell-entry action requires its associated entity callback",
+      );
+    const step = nextRandom(random) & 1 ? 256 : -256;
+    let heading = w(n, 0x4b),
+      at: [number, number] = point(n);
+    for (let attempt = 0; attempt < 8; attempt++) {
+      heading = (heading + 2048 + step) & 2047;
+      const index = (heading + 1536) & 2047;
+      at = [
+        (signed(
+          signed(w(n, 7) * 2) + signed((c.tables.cosine[index] * 512) >> 16),
+        ) >>
+          1) &
+          32767,
+        (signed(
+          signed(w(n, 9) * 2) + signed((c.tables.sine[index] * 512) >> 16),
+        ) >>
+          1) &
+          32767,
+      ];
+      if (accepted(state, mule, at, c)) break;
+    }
+    put(n, 0x45, at[0]);
+    put(n, 0x47, at[1]);
+    n[0x49] = n[0x49]! | 1;
+    if (worldCell(w(n, 11), w(n, 13)) === newCell) {
+      n[0x54] = 80;
+      n[0x4a] = n[0x4a]! & 0xef;
+    } else n[0x4a] = n[0x4a]! | 0x10;
+  }
 }
 function physics(
   state: EcologyState,
@@ -856,7 +1070,7 @@ function physics(
       put(n, 0x31, signed(signed(ground) - signed(oldGround)) * 8);
       angles(n, c);
       if (!corpse) {
-        const speed = contact(state, n, normal, signed(oldGround), c);
+        const speed = contact(state, n, normal, signed(oldGround), c, random);
         put(n, 0x41, speed);
         put(n, 0x3d, speed);
       }
@@ -902,39 +1116,7 @@ function physics(
   }
   const newCell = worldCell(...point(n));
   if (newCell !== oldCell) {
-    if (cellEntryPredicate(state, mule, newCell, c, true)) {
-      if (![1, 3, 8].includes(n[0x5e]!) || n[0x53] !== 1 || n[0x4f] !== 0)
-        throw new Error(
-          "Mule cell-entry action requires its associated entity callback",
-        );
-      const step = nextRandom(random) & 1 ? 256 : -256;
-      let heading = w(n, 0x4b),
-        at: [number, number] = point(n);
-      for (let attempt = 0; attempt < 8; attempt++) {
-        heading = (heading + 2048 + step) & 2047;
-        const index = (heading + 1536) & 2047;
-        at = [
-          (signed(
-            signed(w(n, 7) * 2) + signed((c.tables.cosine[index] * 512) >> 16),
-          ) >>
-            1) &
-            32767,
-          (signed(
-            signed(w(n, 9) * 2) + signed((c.tables.sine[index] * 512) >> 16),
-          ) >>
-            1) &
-            32767,
-        ];
-        if (accepted(state, mule, at, c)) break;
-      }
-      put(n, 0x45, at[0]);
-      put(n, 0x47, at[1]);
-      n[0x49] = n[0x49]! | 1;
-      if (worldCell(w(n, 11), w(n, 13)) === newCell) {
-        n[0x54] = 80;
-        n[0x4a] = n[0x4a]! & 0xef;
-      } else n[0x4a] = n[0x4a]! | 0x10;
-    }
+    sourceCellEntry(state, mule, oldCell, newCell, random, c);
     events.push({ kind: "mule-moved", id: mule.id, position: point(n) });
   }
   const phase = (c.frame + w(n, 15)) >>> 0;
@@ -1193,9 +1375,9 @@ function mortality(
 /**5C730 for species4: audited original1D/1E/1F food coefficients are100.
  * Nutrition uses signed-word wrapping, strict greater-than-full and the
  * original growth/lifetime tradeoff. No source table defaults are inferred. */
-function nutrition(mule: EcologyMule, amount: number): boolean {
+function nutrition(mule: EcologyMule, amount: number, mode3 = false): boolean {
   const n = mule.native,
-    gain = Math.trunc((amount * 200) / 100),
+    gain = mode3 ? amount : Math.trunc((amount * 200) / 100),
     reserve = signed(w(n, 0x68) + gain);
   put(n, 0x68, reserve);
   if (n[0x77] !== 255) put(n, 0x66, w(n, 0x66) - gain * 2);
@@ -1301,8 +1483,7 @@ function corpseFeeding(
       channel: full ? 0x1b : action === 4 ? 0x12 : 0x11,
     },
   );
-  nextRandom(rng);
-  nextRandom(rng);
+  consumeMuleCombatQuery(rng, query);
   if (action === 5) {
     const speed = 4096 + 64 * (nextRandom(rng) % 128),
       pitch = 2 * (nextRandom(rng) % 150),
@@ -1350,6 +1531,13 @@ function corpseFeeding(
   }
 }
 function selectAnimation(n: Native, c: MuleContext) {
+  //5E640 default arm for cold/stunned states: directional action, no playback;
+  //the existing frame/hold/counter survive the selector call.
+  if (n[94] === 15 || n[94] === 18) {
+    n[25] = ((((w(n, 57) >> 7) + 1) >> 1) + 1) & 7;
+    n[28] = n[29] = 0;
+    return;
+  }
   const combatAction = n[0x5e] === 16 ? 23 : n[0x5e] === 20 ? 16 : null;
   if (combatAction !== null) {
     if (n[0x19] !== combatAction) {
@@ -1377,7 +1565,7 @@ function selectAnimation(n: Native, c: MuleContext) {
       n[0x1a] = n[0x1b] = n[0x1d] = n[0x1e] = 0;
       n[0x1c] = 1;
     }
-  } else if ([4, 5, 7].includes(n[0x5e]!)) {
+  } else if ([4, 5, 6, 7].includes(n[0x5e]!)) {
     if (n[0x19] !== 19) {
       n[0x19] = 19;
       n[0x1a] = n[0x1b] = n[0x1e] = 0;
@@ -1532,7 +1720,10 @@ function verifyNeighborhood(
   }
   for (const other of state.otherEntities) {
     if (!near(other.position) || other.kind === 8 || other.kind === 5) continue;
-    if (!friendly(other.owner))
+    if (
+      !friendly(other.owner) &&
+      (!c.combat || !c.combatEntity || ![3, 4].includes(other.kind))
+    )
       throw new Error("Mule query selected a hostile actor or building");
   }
   for (let x = -4; x <= 4; x++)
@@ -1643,6 +1834,8 @@ function releaseAction(state: EcologyState, mule: EcologyMule) {
     kind = n[0x57],
     target = w(n, 0x55),
     action = n[0x5e];
+  //5CC60's first instruction-level gate preserves stun references and timer.
+  if (action === 18) return;
   if (n[0x60]! & 2)
     throw new Error(
       "Mule attachment cleanup requires the actual carrier binding",
@@ -2166,7 +2359,18 @@ function combatServices(
       allianceMasks: c.owned?.allianceMasks,
       players: c.owned?.players,
       cellOrder: c.cellOrder,
+      effectCode: c.effectCode,
       effect: c.combatEffect,
+      entity: c.combatEntity
+        ? (id) => c.combatEntity!(state, c.terrain, random, id)
+        : undefined,
+      damage: c.combatDamage
+        ? (self, target, amount) =>
+            c.combatDamage!(state, c.terrain, random, self, target, amount)
+        : undefined,
+      buildingAt: c.combatBuildingAt
+        ? (self) => c.combatBuildingAt!(state, c.terrain, random, self)
+        : undefined,
     },
     ports: {
       release: (m) => releaseAction(state, m),
@@ -2214,8 +2418,138 @@ function combatServices(
           victimOwner: m.native[24]!,
         });
       },
+      coldRetire: (m, count) => {
+        if (!c.coldBurst)
+          throw new Error(
+            "Cold Mule damage requires the actual staged burst14 factory",
+          );
+        c.coldBurst(state, c.terrain, random, m, {
+          code: 14,
+          count,
+          parameter1: 80,
+          parameter2: 70,
+          height: -1,
+        });
+        for (const other of state.mules) {
+          const r = other.native;
+          if (r[6] !== 1) continue;
+          for (const at of [0x4d, 0x50, 0x55, 0x58, 0x5b]) {
+            if (r[at + 2] !== 1 || w(r, at) !== m.index) continue;
+            r[at + 2] = 0;
+            if (at === 0x5b) r[0x60] = r[0x60]! & 0xfd;
+          }
+        }
+        m.native[6] = 0;
+        events.push({
+          kind: "mule-retired",
+          id: m.id,
+          retirement: {
+            cleanupTarget: { index: m.index, kind: 1 },
+            countDelta: -1,
+            displayPhase: 11,
+            portraitRefresh: true,
+            moduleCleanup: true,
+          },
+        });
+      },
     },
   };
+}
+/** Selector4 virtual34 damage. The host owns an enclosing isolated transaction
+ * and must consume retirement/death receipts before its next spatial query.
+ * This function preserves all existing native array identities. */
+export function damageMuleEntity(
+  state: EcologyState,
+  targetIndex: number,
+  amount: number,
+  attacker: MuleDamageAttacker | null,
+  rng: GeneRng,
+  c: MuleContext,
+): MuleEvent[] {
+  const target = state.mules.find(
+    (m) => m.index === targetIndex && m.native[6] === 1,
+  );
+  if (!target)
+    throw new Error("Mule damage requires its actual live pool binding");
+  if (target.native[94] === 15 && !c.coldBurst)
+    throw new Error(
+      "Cold Mule damage requires the actual staged burst14 factory",
+    );
+  const events: MuleEvent[] = [],
+    services = combatServices(state, rng, c, events);
+  damageMuleFromSource(
+    state,
+    target,
+    attacker,
+    amount,
+    rng,
+    services.context,
+    services.ports,
+    events,
+  );
+  return events;
+}
+/**4F6A0 damage1 then5C7E0 stun, even when damage has just entered mortality.
+ * capturedByActor comes only from capture child20's retained native71/73. */
+export function applyMuleCaptureImpact(
+  state: EcologyState,
+  targetIndex: number,
+  effect: (number | null)[],
+  rng: GeneRng,
+  c: MuleContext,
+  request: { damage: 1; duration: number; capturedByActor: number | null },
+): MuleEvent[] {
+  if (
+    effect.length !== 81 ||
+    effect[6] !== 5 ||
+    effect[69] !== 20 ||
+    request.damage !== 1 ||
+    !Number.isInteger(request.duration) ||
+    request.duration < -32768 ||
+    request.duration > 32767 ||
+    (request.capturedByActor !== null &&
+      (!Number.isInteger(request.capturedByActor) ||
+        request.capturedByActor < 0 ||
+        request.capturedByActor >= 20))
+  )
+    throw new Error(
+      "Capture impact requires actual code20 and source stun parameters",
+    );
+  const target = state.mules.find(
+    (m) => m.index === targetIndex && m.native[6] === 1,
+  );
+  if (!target || target.native[94]! >= 24 || target.native[94] === 15)
+    throw new Error("Capture impact requires the actual eligible living Mule");
+  const events = damageMuleEntity(
+    state,
+    targetIndex,
+    1,
+    {
+      index: w(effect, 15),
+      kind: 5,
+      owner: effect[24]!,
+      native: effect,
+    },
+    rng,
+    c,
+  );
+  const n = target.native;
+  if (request.capturedByActor !== null) {
+    put(n, 88, request.capturedByActor);
+    n[90] = 3;
+  }
+  releaseAction(state, target);
+  n[97] = n[97]! & 127;
+  put(n, 63, 0);
+  put(n, 73, w(n, 73) & 0xefe8);
+  n[84] = 0;
+  n[22] = n[22]! & 63;
+  n[94] = 18;
+  put(n, 108, request.duration);
+  n[74] = n[74]! & 0x3b;
+  n[21] = n[21]! & 0xdf;
+  events.push({ kind: "mule-audio", id: target.id, channel: 57 });
+  return events;
 }
 function combatChoice(
   state: EcologyState,
@@ -2223,10 +2557,13 @@ function combatChoice(
   random: GeneRng,
   c: MuleContext,
   events: MuleEvent[],
+  capture?: { query: MuleCombatQuery | null },
 ): boolean {
   if (!c.combat) return false;
   const { context, ports } = combatServices(state, random, c, events);
-  return chooseMuleHostile(state, mule, random, context, ports, events);
+  const query = queryMuleCombat(state, mule, random, context);
+  if (capture) capture.query = query;
+  return chooseMuleHostile(state, mule, random, context, ports, events, query);
 }
 function action(
   state: EcologyState,
@@ -2236,6 +2573,43 @@ function action(
   events: MuleEvent[],
 ) {
   const n = mule.native;
+  if (n[94] === 6) {
+    if (w(n, 108) <= 0) {
+      nutrition(mule, 1000, true);
+      events.push({ kind: "mule-audio", id: mule.id, channel: 27 });
+      idleWait(state, mule, random, c);
+    } else if (((w(n, 15) + c.frame) & 3) === 3) {
+      events.push({ kind: "mule-audio", id: mule.id, channel: 17 });
+      const speed = 4096 + 64 * (nextRandom(random) % 128),
+        pitch = 2 * (nextRandom(random) % 150),
+        yaw = 8 * nextRandom(random);
+      if (!c.combatEffect)
+        throw Error(
+          "Mule specialist consumption requires the actual staged effect32 factory",
+        );
+      c.combatEffect(state, c.terrain, random, {
+        code: 32,
+        source: mule.id,
+        position: point(n),
+        height: d(n, 39),
+        angles: [yaw, pitch, speed],
+      });
+    }
+    return;
+  }
+  if (n[94] === 15) {
+    if (w(n, 108) <= 0) enterDeath(mule, events);
+    return;
+  }
+  if (n[94] === 18) {
+    if (w(n, 108) > 0) return;
+    const delay = 10 + (nextRandom(random) % 10);
+    n[94] = 8;
+    if (cellEntryPredicate(state, mule, worldCell(...point(n)), c))
+      installTarget(mule, randomPoint(point(n), 256, random, c), c);
+    else put(n, 108, delay);
+    return;
+  }
   if (n[0x5e] === 21) {
     if (w(n, 0x6c) > 0) return;
     const { context, ports } = combatServices(state, random, c, events);
@@ -2273,7 +2647,8 @@ function action(
       else put(n, 0x6c, 0);
       return;
     }
-    if (chooseMuleHostile(state, mule, random, context, ports, events)) {
+    const query = queryMuleCombat(state, mule, random, context);
+    if (chooseMuleHostile(state, mule, random, context, ports, events, query)) {
       if (n[0x5e] === 1) action(state, mule, random, c, events);
       return;
     }
@@ -2281,8 +2656,7 @@ function action(
     // falling back to the retained attacker reference (5F4C4..60291).
     const food = foodTarget(state, mule, random, c),
       peer = food === null ? mateTarget(state, mule, random, c) : null;
-    nextRandom(random);
-    nextRandom(random);
+    consumeMuleCombatQuery(random, query);
     if (food !== null) {
       acquireFood(state, mule, food, c, events);
       action(state, mule, random, c, events);
@@ -2293,12 +2667,9 @@ function action(
       pairAction(state, mule, random, c, events);
       return;
     }
-    const previous =
-      n[0x57] === 1
-        ? state.mules.find((m) => m.index === w(n, 0x55) && m.native[6] === 1)
-        : undefined;
+    const previous = resolveMuleCombatTarget(state, context, n[87]!, w(n, 85));
     if (previous) {
-      acquireMuleHostile(mule, previous, ports, events);
+      acquireMuleHostile(mule, previous, ports, events, context, random);
       action(state, mule, random, c, events);
     } else {
       n[0x5e] = 8;
@@ -2333,29 +2704,32 @@ function action(
       );
     const amount = c.rules.plants[plant.selector].nutrition,
       retired = plant.growth <= 3;
-    const full = nutrition(mule, amount);
-    const damaged = damagePlant(state, c.terrain, c.rules, target, 3);
-    if (!damaged.committed) throw new Error(damaged.reason!);
-    // damagePlant is a plant transaction and replaces state's cloned arrays.
-    const current = state.mules.find((candidate) => candidate.id === mule.id)!;
-    current.native = n;
-    if (combatChoice(state, current, random, c, events)) {
-      events.push(
-        { kind: "mule-fed", id: mule.id, target },
-        { kind: "mule-audio", id: mule.id, channel: 0x12 },
-      );
-      return;
+    if (c.plantDamage) c.plantDamage(state, c.terrain, random, target, 3);
+    else {
+      const damaged = damagePlant(state, c.terrain, c.rules, target, 3);
+      if (!damaged.committed) throw new Error(damaged.reason!);
+      if (damaged.events.some((event) => event.kind === "plant-retired"))
+        throw Error(
+          "Mule feeding retirement requires immediate6C780 host unlink/cleanup",
+        );
+      // The pure plant transaction replaces state's cloned Mule objects.
+      state.mules.find((candidate) => candidate.id === mule.id)!.native = n;
     }
+    const current = state.mules.find((candidate) => candidate.id === mule.id)!;
+    if (current.native !== n)
+      throw Error("Mule plant damage replaced a held native record");
+    const full = nutrition(current, amount);
+    events.push(
+      { kind: "mule-fed", id: mule.id, target },
+      { kind: "mule-audio", id: mule.id, channel: full ? 0x1b : 0x12 },
+    );
+    const capture: { query: MuleCombatQuery | null } = { query: null };
+    if (combatChoice(state, current, random, c, events, capture)) return;
     const peer = mateTarget(state, current, random, c);
-    nextRandom(random);
-    nextRandom(random);
+    consumeMuleCombatQuery(random, capture.query);
     if (peer) {
       beginPair(state, current, peer, c);
       pairAction(state, current, random, c, events);
-      events.push(
-        { kind: "mule-fed", id: mule.id, target },
-        { kind: "mule-audio", id: mule.id, channel: 0x12 },
-      );
       return;
     }
     if (retired || full) {
@@ -2364,13 +2738,78 @@ function action(
       resetAction(n);
       idleWait(state, current, random, c);
     }
-    events.push(
-      { kind: "mule-fed", id: mule.id, target },
-      { kind: "mule-audio", id: mule.id, channel: full ? 0x1b : 0x12 },
-    );
     return;
   }
   if (n[0x5e] === 1) {
+    if (n[87] === 3 || n[87] === 4) {
+      const { context, ports } = combatServices(state, random, c, events),
+        target = resolveMuleCombatTarget(state, context, n[87]!, w(n, 85));
+      if (!target) {
+        releaseAction(state, mule);
+        idleWait(state, mule, random, c);
+        return;
+      }
+      if (target.kind === 4 || target.dead) {
+        put(n, 63, muleRequestedSpeed(mule, c.rules));
+        if (w(n, 73) & 0x200 && !(n[96]! & 128)) {
+          beginMuleAttack(mule, target, random, context, events);
+          if (n[24] === 4) {
+            n.splice(114, 4, ...n.slice(7, 11));
+            n[96] = n[96]! | 8;
+          }
+          n[96] = n[96]! & 0xbf;
+        }
+        return;
+      }
+      if (
+        w(target.native, 73) & 0x400 &&
+        target.physicalHeight - d(target.native, 17) > 1280
+      ) {
+        if (!(n[96]! & 64) && ((w(n, 15) + c.frame) & 3) === 3) {
+          const fallback = queryMuleCellFallback(state, mule, context);
+          if (fallback) {
+            n[96] = n[96]! | 64;
+            put(n, 85, fallback.index);
+            n[87] = fallback.kind;
+            if (fallback.kind === 2)
+              acquireFood(
+                state,
+                mule,
+                { kind: 2, index: fallback.index },
+                c,
+                events,
+              );
+            else
+              acquireMuleHostile(
+                mule,
+                fallback,
+                ports,
+                events,
+                context,
+                random,
+              );
+            put(n, 108, 0);
+            return;
+          }
+        }
+        releaseAction(state, mule);
+        idleWait(state, mule, random, c);
+        return;
+      }
+      const elapsed =
+        (32767 - w(n, 108)) * (target.specialistStyle === 2 ? 2 : 1);
+      if (
+        ((w(n, 15) + c.frame) & 3) === 3 &&
+        elapsed > 256 &&
+        nextRandom(random) % 150 <= elapsed - 256
+      ) {
+        releaseAction(state, mule);
+        idleWait(state, mule, random, c);
+        return;
+      }
+      contactMuleHostile(mule, target, random, context, events);
+      return;
+    }
     if (n[0x57] === 1) {
       const corpse = state.mules.find((m) => m.index === w(n, 0x55));
       if (!corpse || corpse.native[6] === 0) {
@@ -2430,15 +2869,15 @@ function action(
   if (n[0x5e] !== 8)
     throw new Error("Mule action state requires an unported original callback");
   verifyNeighborhood(state, mule, c);
-  if (combatChoice(state, mule, random, c, events)) {
+  const capture: { query: MuleCombatQuery | null } = { query: null };
+  if (combatChoice(state, mule, random, c, events, capture)) {
     if (Number(n[0x5e]) === 1) action(state, mule, random, c, events);
     return;
   }
   const target = foodTarget(state, mule, random, c);
   if (target === null) {
     const peer = mateTarget(state, mule, random, c);
-    nextRandom(random);
-    nextRandom(random);
+    consumeMuleCombatQuery(random, capture.query);
     if (peer) {
       beginPair(state, mule, peer, c);
       pairAction(state, mule, random, c, events);
@@ -2470,8 +2909,7 @@ function action(
   }
   if (n[0x60]! & 2)
     throw new Error("Mule food acquisition requires prior action cleanup");
-  nextRandom(random);
-  nextRandom(random);
+  consumeMuleCombatQuery(random, capture.query);
   acquireFood(state, mule, target, c, events);
 }
 
@@ -2504,10 +2942,10 @@ function stepMule(
       (owned ? n[24]! >= 4 : n[24] !== 4) ||
       n[0x7a] !== 4 ||
       n[0x76] === null ||
-      ![0, 1, 3, 4, 5, 7, 8, 10, 16, 20, 21, 24, 25, 26, 27].includes(
-        n[0x5e]!,
-      ) ||
-      (!dead && w(n, 0x6a) <= 0)
+      ![
+        0, 1, 3, 4, 5, 6, 7, 8, 10, 15, 16, 18, 20, 21, 24, 25, 26, 27,
+      ].includes(n[0x5e]!) ||
+      (!dead && n[94] !== 18 && w(n, 0x6a) <= 0)
     )
       throw new Error("Mule callback owner/species/state is not admitted");
     if (owned && !c.owned)
@@ -2559,10 +2997,16 @@ function stepMule(
         n[0x49] = n[0x49]! | 8;
     } else if (
       n[0x49]! & 0x10 &&
-      w(n, 0x3d) <= 256 &&
-      d(n, 0x27) <= d(n, 0x11) &&
-      distance(terrain, point(n), goal) <= 1024
+      (n[79] === 4
+        ? distance(terrain, point(n), goal) <= 400
+        : w(n, 0x3d) <= 256 &&
+          d(n, 0x27) <= d(n, 0x11) &&
+          distance(terrain, point(n), goal) <= 1024)
     ) {
+      const oldCell = worldCell(...point(n)),
+        newCell = worldCell(...goal);
+      if (oldCell !== newCell)
+        sourceCellEntry(staged, mule, oldCell, newCell, random, c);
       put(n, 7, goal[0] & 32767);
       put(n, 9, goal[1] & 32767);
       put32(n, 0x11, groundHeight(terrain, ...point(n)));
@@ -2574,31 +3018,20 @@ function stepMule(
       put(n, 0x3f, 0);
       n[0x54] = 0;
       put(n, 0x49, (w(n, 0x49) & 0xfdcf) | 0x220);
+      if (n[79] === 4) {
+        n[74] = n[74]! & 0x2f;
+        n[21] = n[21]! & 0xdf;
+      }
       n[0x16] = n[0x16]! & 0x3f;
+      if (oldCell !== newCell)
+        events.push({ kind: "mule-moved", id: mule.id, position: point(n) });
     }
     if (phase & 1) {
-      put(n, 0x66, w(n, 0x66) - 1);
-      if (w(n, 0x66) <= 0) {
-        enterDeath(mule, events);
-        mortality(staged, mule, phase, c, events, true);
-        Object.assign(state, staged);
-        Object.assign(rng, random);
-        Object.assign(context.terrain, terrain);
-        return { committed: true, reason: null, events };
-      }
-      const reserve = w(n, 0x68),
-        health = w(n, 0x6a),
-        maximum = w(n, 0x64);
-      if (
-        reserve > 0 &&
-        health < maximum &&
-        phase % c.rules.mule.healthRecoveryPeriod <= 1
-      ) {
-        put(n, 0x6a, health + Math.min(maximum - health, 2));
-        put(n, 0x68, reserve < 3 ? 0 : reserve - 3);
-      } else if (reserve <= 0 && (phase & 31) <= 1) {
-        if (health <= 1) {
-          put(n, 0x6a, 0);
+      //5E0B0 skips a Mule already in cold state15 at entry. Its source
+      //timer/action/shared-tail still run below; no invented thermal thaw.
+      if (n[94] !== 15) {
+        put(n, 0x66, w(n, 0x66) - 1);
+        if (w(n, 0x66) <= 0) {
           enterDeath(mule, events);
           mortality(staged, mule, phase, c, events, true);
           Object.assign(state, staged);
@@ -2606,28 +3039,86 @@ function stepMule(
           Object.assign(context.terrain, terrain);
           return { committed: true, reason: null, events };
         }
-        put(n, 0x6a, health - 1);
-      }
-      if (n[0x60]! & 0x80) {
-        const mask = [2, 5].includes(ecologyTerrainClass(terrain, point(n)))
-          ? 63
-          : 127;
-        if ((w(n, 0x6c) & mask) === 0)
-          put(n, 0x68, Math.max(0, w(n, 0x68) - 1));
-      }
-      if (
-        (phase & 15) <= 1 &&
-        signed(
-          c.climate +
-            signed(
-              terrain.bytes[worldCell(...point(n)) * 14 + 9] |
-                (terrain.bytes[worldCell(...point(n)) * 14 + 10] << 8),
+        const reserve = w(n, 0x68),
+          health = w(n, 0x6a),
+          maximum = w(n, 0x64);
+        if (
+          reserve > 0 &&
+          health < maximum &&
+          phase % c.rules.mule.healthRecoveryPeriod <= 1
+        ) {
+          put(n, 0x6a, health + Math.min(maximum - health, 2));
+          put(n, 0x68, reserve < 3 ? 0 : reserve - 3);
+        } else if (reserve <= 0 && (phase & 31) <= 1) {
+          if (health <= 1) {
+            put(n, 0x6a, 0);
+            enterDeath(mule, events);
+            mortality(staged, mule, phase, c, events, true);
+            Object.assign(state, staged);
+            Object.assign(rng, random);
+            Object.assign(context.terrain, terrain);
+            return { committed: true, reason: null, events };
+          }
+          put(n, 0x6a, health - 1);
+        }
+        if (n[0x60]! & 0x80) {
+          const mask = [2, 5].includes(ecologyTerrainClass(terrain, point(n)))
+            ? 63
+            : 127;
+          if ((w(n, 0x6c) & mask) === 0)
+            put(n, 0x68, Math.max(0, w(n, 0x68) - 1));
+        }
+        if ((phase & 15) <= 1) {
+          const temperature = signed(
+              c.climate +
+                signed(
+                  terrain.bytes[worldCell(...point(n)) * 14 + 9] |
+                    (terrain.bytes[worldCell(...point(n)) * 14 + 10] << 8),
+                ),
             ),
-        ) <= c.rules.mule.warmThreshold
-      )
-        throw new Error(
-          "Mule temperature damage requires its original callback",
-        );
+            warmth = n[123];
+          if (!Number.isInteger(warmth) || warmth! < 0 || warmth! > 255)
+            throw new Error(
+              "Mule warmth byte has no initialized original value",
+            );
+          if (temperature < 26 && warmth) {
+            const response = c.coldResponse;
+            if (
+              !response ||
+              [response.primaryLoss, response.secondaryLoss].some(
+                (v) => !Number.isInteger(v) || v < -128 || v > 127,
+              )
+            )
+              throw new Error(
+                "Cold Mule requires admitted original component temperature losses",
+              );
+            n[123] =
+              (warmth -
+                Math.min(
+                  warmth,
+                  response.primaryLoss + response.secondaryLoss,
+                )) &
+              255;
+          } else if (temperature >= 26 && warmth! < 255)
+            n[123] =
+              warmth! + (temperature < 86 ? 1 : Math.min(2, 255 - warmth!));
+          if (n[123] === 0 && n[94] !== 15) {
+            releaseAction(staged, mule);
+            put(n, 63, 0);
+            put(n, 73, w(n, 73) & 0xefe8);
+            n[84] = 0;
+            n[22] = n[22]! & 63;
+            if (n[24] === c.owned?.selectedPlayer)
+              events.push({
+                kind: "mule-portrait-refresh",
+                id: mule.id,
+                index: mule.index,
+              });
+            n[94] = 15;
+            put(n, 108, 500);
+          }
+        }
+      }
       if (w(n, 0x49) & 0x200)
         n[0x60] = n[0x60]! & (n[0x5e] === 0 ? 0xcf : 0xef);
       if (n[0x60]! & 0x80 && w(n, 0x49) & 0x300) {
@@ -2647,8 +3138,8 @@ function stepMule(
         put(n, 0x6c, 0);
       if (
         ([0, 8].includes(n[0x5e]!) && w(n, 0x6c) === 0) ||
-        [1, 3, 4, 5, 10].includes(n[0x5e]!) ||
-        ([16, 20, 21].includes(n[0x5e]!) && w(n, 0x6c) <= 0) ||
+        [1, 3, 4, 5, 6, 10].includes(n[0x5e]!) ||
+        ([15, 16, 18, 20, 21].includes(n[0x5e]!) && w(n, 0x6c) <= 0) ||
         (oldState === 7 && (w(n, 0x6c) & 15) === 0) ||
         (n[0x5e] === 1 && (w(n, 0x49) & 0x200) !== 0 && !(n[0x60]! & 0x80))
       )
@@ -2672,7 +3163,8 @@ function stepMule(
         put(n, 0x6c, 0);
       }
     }
-    animation(n, c);
+    if (n[94]! >= 24) mortality(staged, mule, 0, c, events, true);
+    else animation(n, c);
     Object.assign(state, staged);
     Object.assign(rng, random);
     Object.assign(context.terrain, terrain);

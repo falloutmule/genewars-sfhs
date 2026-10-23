@@ -86,11 +86,39 @@ export function stepEffect26Record(
 ): ProductionEffectUpdate {
   return stepCommonEffectRecord(before, terrain, c, 26);
 }
+/** Source8 fire: the same full common no-gravity record physics, with
+ * virtual70 obstacle queries but an immovable/no-water descriptor. */
+export function stepEffect8Record(
+  before: readonly (number | null)[],
+  terrain: TerrainState,
+  c: ProductionEffectContext,
+): ProductionEffectUpdate {
+  return stepCommonEffectRecord(before, terrain, c, 8);
+}
+/** Source7 Botanist work dust: six zero-hold frames, otherwise the same
+ * immovable/no-water/no-gravity common effect contract as source8. */
+export function stepEffect7Record(
+  before: readonly (number | null)[],
+  terrain: TerrainState,
+  c: ProductionEffectContext,
+): ProductionEffectUpdate {
+  return stepCommonEffectRecord(before, terrain, c, 7);
+}
+/** Source60/61 share49129 factory and no-gravity common callbacks with26;
+ * their actual six/nine zero-hold ANB profiles remain distinct. */
+export function stepEconomyEffectRecord(
+  before: readonly (number | null)[],
+  terrain: TerrainState,
+  c: ProductionEffectContext,
+  code: 60 | 61,
+): ProductionEffectUpdate {
+  return stepCommonEffectRecord(before, terrain, c, code);
+}
 function stepCommonEffectRecord(
   before: readonly (number | null)[],
   terrain: TerrainState,
   c: ProductionEffectContext,
-  code: 26 | 32,
+  code: 7 | 8 | 26 | 32 | 60 | 61,
 ): ProductionEffectUpdate {
   validateEffectNativePrior(before);
   if (
@@ -111,17 +139,30 @@ function stepCommonEffectRecord(
     c.tables.cosine.length !== 2048
   )
     throw new Error("Original production effect motion tables required");
-  const p = c.profile;
+  const p = c.profile,
+    frames =
+      code === 7 || code === 60
+        ? 6
+        : code === 61
+          ? 9
+          : code === 8
+            ? 13
+            : code === 32
+              ? 10
+              : 5,
+    delayed = code === 26 || code === 60 || code === 61;
   if (
     p.flags !== 0 ||
-    p.holds.length !== (code === 32 ? 10 : 5) ||
-    p.holds.some((h) => h !== (code === 32 ? 0 : 1)) ||
-    p.last - p.first !== (code === 32 ? 9 : 4)
+    p.holds.length !== frames ||
+    p.holds.some((h) => h !== (code === 26 ? 1 : 0)) ||
+    p.last - p.first !== frames - 1
   )
     throw new Error(
-      code === 32
-        ? "Original EFF32 ten zero-hold frames required"
-        : "Original EFF26 five hold1 frames required",
+      code === 8
+        ? "Original EFF8 thirteen zero-hold frames required"
+        : code === 32
+          ? "Original EFF32 ten zero-hold frames required"
+          : "Original EFF26 five hold1 frames required",
     );
   const n = before.slice(),
     samples: [number, number][] = [],
@@ -135,7 +176,7 @@ function stepCommonEffectRecord(
     word(n, 53) !== 0 ||
     (code === 32 && byte(n, 73) !== 0) ||
     byte(n, 28) !== 1 ||
-    (code === 32 ? byte(n, 29) !== 0 : ![1, 2, 3].includes(byte(n, 29)))
+    (delayed ? ![1, 2, 3].includes(byte(n, 29)) : byte(n, 29) !== 0)
   )
     throw new Error("Unsupported production effect physics/animation state");
   const x = word(before, 7),
@@ -241,7 +282,7 @@ function stepCommonEffectRecord(
     id = word(n, 15);
   // Source performs queries before the final15-bit coordinate normalization.
   if (
-    code === 32 &&
+    !delayed &&
     (c.frame + (id & 255)) & 1 &&
     ((dword(n, 39) - dword(n, 17)) | 0) > 0
   ) {
@@ -275,7 +316,7 @@ function stepCommonEffectRecord(
       hold: byte(n, 26),
       frame: byte(n, 27),
       direction: 1,
-      delay: code === 32 ? 0 : byte(n, 29),
+      delay: delayed ? byte(n, 29) : 0,
       counter: (byte(n, 30) << 24) >> 24,
     },
     p,

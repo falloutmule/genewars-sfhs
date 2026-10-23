@@ -177,6 +177,9 @@ function synchronizeLinks(w: MuleEffectWorld): void {
       update(`source:${e.family}:${e.index}`, e.nativeBytes);
   for (const [slot, n] of (w.buildingNative ?? []).entries())
     if (n[6] !== 0) update(`source:3:${slot}`, n);
+  for (const [slot, n] of (w.specialists?.records ?? []).entries())
+    if (n[6] !== 0 && w.spatial.nodes[`source:2:${slot}`])
+      update(`source:2:${slot}`, n);
   for (const [slot, n] of (w.creatureNative ?? []).entries())
     if (n[6] !== 0) update(`source:0:${slot}`, n);
   for (const e of w.ethereals?.records ?? [])
@@ -203,6 +206,22 @@ export function consumeMuleEffects<W extends MuleEffectWorld>(
   pack: Pack,
   options: MuleEffectOptions<W>,
 ): MuleEffectReceipt {
+  if (!events.some((e) => e.kind === "mule-effect"))
+    return consumeStagedMuleEffects(w, events, pack, options);
+  const staged = structuredClone(w),
+    out = consumeStagedMuleEffects(staged, events, pack, options);
+  Object.assign(w, staged);
+  return out;
+}
+/** Same ordered source factories inside an enclosing host transaction. This
+ * port preserves caller-held actor/player/creature arrays across blood
+ * emission. Its caller owns rollback if a later callback or factory fails. */
+export function consumeStagedMuleEffects<W extends MuleEffectWorld>(
+  w: W,
+  events: readonly MuleEvent[],
+  pack: Pack,
+  options: MuleEffectOptions<W>,
+): MuleEffectReceipt {
   const requests = events.filter((e) => e.kind === "mule-effect");
   const out: MuleEffectReceipt = {
     created: [],
@@ -212,7 +231,7 @@ export function consumeMuleEffects<W extends MuleEffectWorld>(
     countDelta: 0,
   };
   if (!requests.length) return out;
-  const s = structuredClone(w);
+  const s = w;
   validate(s);
   for (const request of requests) {
     if (
@@ -308,6 +327,5 @@ export function consumeMuleEffects<W extends MuleEffectWorld>(
       s.powerEffects.slots.filter((p) => p.occupied).length,
     );
   validate(s);
-  Object.assign(w, s);
   return out;
 }

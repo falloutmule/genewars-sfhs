@@ -595,6 +595,7 @@ describe("ordinary owned Mule commands and shared natural lifecycle", () => {
     const f = fixture(),
       n: Native = Array(67).fill(0);
     n[6] = 4;
+    put(n, 49, 1); // Source mask1 requires this first candidate to be complete.
     put(n, 7, 0);
     put(n, 9, 0);
     put32(n, 17, 3354);
@@ -626,6 +627,26 @@ describe("ordinary owned Mule commands and shared natural lifecycle", () => {
         () => {
           throw Error("metadata read");
         },
+      ),
+    ).not.toBeNull();
+    put(n, 49, 0);
+    expect(
+      queryMuleAirborneBuilding(
+        f.context.terrain,
+        [0, 0],
+        -1,
+        () => n,
+        () => 168,
+      ),
+    ).toBeNull();
+    expect(
+      queryMuleAirborneBuilding(
+        f.context.terrain,
+        [0, 0],
+        -1,
+        () => n,
+        () => 168,
+        0,
       ),
     ).not.toBeNull();
   });

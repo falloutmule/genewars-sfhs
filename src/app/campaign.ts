@@ -32,6 +32,7 @@ import { animationProfile } from "../sim/mechanics/animation";
 import { groundHeight } from "../sim/mechanics/terrain";
 import type { ResultAction } from "../sim/mechanics/outcome";
 import { describeMissionObjectives } from "../sim/mechanics/mission-objectives";
+import { specialistCorpseBinding } from "../sim/mechanics/specialist-corpse";
 const NAMES: Record<number, string> = {
   0: "Genepod",
   1: "Turret",
@@ -78,6 +79,8 @@ export async function openCampaign(
     rendering = false,
     lastHud = -1,
     placing: number | null = null,
+    geneticistMuleTarget: number | null = null,
+    botanistPlantType: number | null = null,
     resultShown = "";
   let recording: CampaignReplay | null = null;
   const selected = new Set<number>(),
@@ -245,7 +248,7 @@ export async function openCampaign(
     input?.();
     scene?.dispose();
     app.innerHTML =
-      '<div class="game campaign-game"><header class="topbar"><strong id="campaign-title"></strong><button id="campaign-pause">Pause</button><label>Speed <select id="campaign-speed" aria-label="Campaign speed"><option value=".5">½×</option><option value="1">1×</option><option value="2">2×</option><option value="4">4×</option></select></label><button id="campaign-saves">Save / load</button><button id="campaign-restart">Restart</button><button id="campaign-menu">Menu</button></header><main class="world" id="campaign-world"><div class="overlay-label" id="campaign-phase"></div></main><aside class="sidebar"><section><h2>Mission</h2><div id="campaign-objectives"></div></section><section><h2>Specialists</h2><div id="campaign-specialists"></div><p id="campaign-selection"></p><button id="campaign-cancel">Stop selected order</button></section><section><h2>Construct</h2><div id="campaign-build"></div></section><section><h2>Power and GOOP</h2><div id="campaign-economy"></div></section><section><h2>Alerts</h2><div id="campaign-alerts"></div></section></aside><footer class="footer"><span id="campaign-resources"></span><span id="campaign-notice" role="status"></span></footer></div>';
+      '<div class="game campaign-game"><header class="topbar"><strong id="campaign-title"></strong><button id="campaign-pause">Pause</button><label>Speed <select id="campaign-speed" aria-label="Campaign speed"><option value=".5">½×</option><option value="1">1×</option><option value="2">2×</option><option value="4">4×</option></select></label><button id="campaign-saves">Save / load</button><button id="campaign-restart">Restart</button><button id="campaign-menu">Menu</button></header><main class="world" id="campaign-world"><div class="overlay-label" id="campaign-phase"></div></main><aside class="sidebar"><section><h2>Mission</h2><div id="campaign-objectives"></div></section><section><h2>Specialists</h2><div id="campaign-specialists"></div><p id="campaign-selection"></p><button id="campaign-cancel">Stop selected order</button><div id="campaign-role"></div></section><section><h2>Construct</h2><div id="campaign-build"></div></section><section><h2>Power and GOOP</h2><div id="campaign-economy"></div></section><section><h2>Alerts</h2><div id="campaign-alerts"></div></section></aside><footer class="footer"><span id="campaign-resources"></span><span id="campaign-notice" role="status"></span></footer></div>';
     node("campaign-title").textContent =
       `${w.missionId.toString().padStart(2, "0")} · ${currentMission().name}`;
     scene = new Stage(node("campaign-world"), pack);
@@ -546,7 +549,10 @@ export async function openCampaign(
     }
     const specialists = node("campaign-specialists");
     specialists.replaceChildren();
-    for (const a of w.actors.filter((a) => a.owner === w.selectedPlayer)) {
+    for (const a of w.actors.filter(
+      (a) =>
+        a.owner === w.selectedPlayer && w.specialists.records[a.id][6] === 3,
+    )) {
       const bp = p.blueprints[a.blueprintIndex],
         b = button(
           specialists,
@@ -584,10 +590,139 @@ export async function openCampaign(
       );
       b.setAttribute("aria-pressed", String(selected.has(2000 + mule.index)));
     }
-    const a = w.actors.find((a) => selected.has(a.id));
+    const a = w.actors.find(
+      (a) => selected.has(a.id) && w.specialists.records[a.id][6] === 3,
+    );
     node("campaign-selection").textContent = a
       ? `${a.reason}${w.builders.find((b) => b.id === a.id)?.task ? " · stage " + w.builders.find((b) => b.id === a.id)!.task!.stage : ""}`
       : "Tap a specialist, then a destination. Drag to pan; pinch or scroll to zoom.";
+    const role = node("campaign-role");
+    if (
+      !(
+        document.activeElement instanceof HTMLSelectElement &&
+        role.contains(document.activeElement)
+      )
+    ) {
+      role.replaceChildren();
+      if (a && p.blueprints[a.blueprintIndex].category === 1) {
+        const resource = document.createElement("p");
+        resource.textContent = `Plant samples: ${w.specialists.records[a.id][114]}/40`;
+        role.append(resource);
+        const label = document.createElement("label");
+        label.textContent = "Plant type ";
+        const target = document.createElement("select");
+        target.setAttribute("aria-label", "Plant type");
+        for (let selector = 0; selector < 12; selector++)
+          if (u32(p.raw, 0x67e + selector * 4) > 0) {
+            const option = document.createElement("option");
+            option.value = String(selector);
+            option.textContent = `Plant type ${selector + 1}`;
+            target.append(option);
+          }
+        if (
+          botanistPlantType !== null &&
+          [...target.options].some((o) => Number(o.value) === botanistPlantType)
+        )
+          target.value = String(botanistPlantType);
+        else
+          botanistPlantType = target.options.length
+            ? Number(target.value)
+            : null;
+        target.addEventListener("change", () => {
+          botanistPlantType = Number(target.value);
+        });
+        label.append(target);
+        role.append(label);
+        for (const [task, label] of [
+          [0, "Collect plant samples nearby"],
+          [1, "Plant selected type nearby"],
+          [2, "Clear nearby plants"],
+        ] as const) {
+          const control = button(role, label, () => {
+            const current = w.actors.find((p) => p.id === a.id)!,
+              command: CampaignCommand = {
+                type: "botanist-work",
+                actorId: a.id,
+                task,
+                point: [current.motion.x & 32767, current.motion.y & 32767],
+                ...(task === 1 ? { selector: Number(target.value) } : {}),
+              },
+              result = queueCampaign(w, command);
+            if (result.ok) {
+              recording?.commands.push({
+                tick: w.tick,
+                type: "command",
+                command,
+              });
+              say("Botanist order queued");
+            } else say(result.reason ?? "Botanist order rejected");
+          });
+          control.disabled =
+            !a.ready ||
+            w.phase !== "active" ||
+            (task === 1 && target.options.length === 0);
+        }
+      }
+      if (a && p.blueprints[a.blueprintIndex].category === 2) {
+        const quality = document.createElement("p");
+        quality.textContent = `Mule research quality: ${Math.min(100, u32(p.raw, 0x62a) >>> 11)}%`;
+        role.append(quality);
+        const label = document.createElement("label");
+        label.textContent = "Mule target ";
+        const target = document.createElement("select");
+        target.id = "campaign-mule-target";
+        target.setAttribute("aria-label", "Mule target");
+        for (const m of w.ecology.mules.filter((m) => m.native[6] === 1)) {
+          const option = document.createElement("option");
+          option.value = String(m.index);
+          option.textContent = `Mule ${m.index + 1} · ${m.native[24] === 4 ? "neutral" : "owner " + (m.native[24]! + 1)} · health ${i16(m.native as number[], 106)}/${i16(m.native as number[], 100)}${m.native[94]! >= 24 ? " · remains" : ""}`;
+          target.append(option);
+        }
+        if (
+          geneticistMuleTarget !== null &&
+          [...target.options].some(
+            (o) => Number(o.value) === geneticistMuleTarget,
+          )
+        )
+          target.value = String(geneticistMuleTarget);
+        else
+          geneticistMuleTarget = target.options.length
+            ? Number(target.value)
+            : null;
+        target.addEventListener("change", () => {
+          geneticistMuleTarget = Number(target.value);
+        });
+        label.append(target);
+        role.append(label);
+        for (const [type, label] of [
+          ["research-mule", "Capture / research"],
+          ["heal-mule", "Heal Mule"],
+        ] as const) {
+          const control = button(role, label, () => {
+            const command: CampaignCommand = {
+                type,
+                actorId: a.id,
+                muleIndex: Number(target.value),
+              },
+              result = queueCampaign(w, command);
+            if (result.ok) {
+              recording?.commands.push({
+                tick: w.tick,
+                type: "command",
+                command,
+              });
+              say(
+                type === "heal-mule"
+                  ? "Mule healing order queued"
+                  : "Mule research order queued",
+              );
+            } else say(result.reason ?? "Geneticist order rejected");
+          });
+          control.disabled =
+            !a.ready || target.options.length === 0 || w.phase !== "active";
+        }
+      }
+    }
     const build = node("campaign-build");
     build.replaceChildren();
     for (const selector of [11, 3, 6, 0, 1]) {
@@ -841,13 +976,16 @@ export async function openCampaign(
       const n = e.nativePrior,
         id = `source:4:${slot}`;
       if (!e.occupied || !n || drawn.has(id)) continue;
-      const profile = animationProfile(pack.assets.EFF, n[69]!);
+      const corpse =
+          n[69] === 69 ? specialistCorpseBinding(n, pack.rules!.tables) : null,
+        art = corpse?.assetKey ?? "EFF",
+        profile = animationProfile(pack.assets[art], corpse ? 9 : n[69]!);
       entities.push({
         id,
         x: i16(n as number[], 7) / 256,
         y: i16(n as number[], 9) / 256,
         height: (u32(n as number[], 39) | 0) / 512,
-        art: "EFF",
+        art,
         frame: profile.first + Math.min(n[27]!, profile.holds.length - 1),
       });
     }

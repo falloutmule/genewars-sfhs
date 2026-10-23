@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import {
   requestGeneticistInteraction,
   stepGeneticistRole,
@@ -7,6 +7,10 @@ import {
   stepGeneticistCallback,
   readGeneticistMotion,
   writeGeneticistMotion,
+  queueGeneticistMove,
+  cancelGeneticistWork,
+  cancelStagedGeneticistWork,
+  stepSpecialistLifecycleCallback,
   type GeneticistCallbackContext,
   type GeneticistContext,
   type GeneticistWorld,
@@ -441,6 +445,143 @@ function callback(
   };
 }
 describe("source57A10 Geneticist callback envelope", () => {
+  it("keeps one outer rollback transaction across staged idle and role dispatch without nested copies", () => {
+    for (const idle of [true, false]) {
+      const f = fixture();
+      f.w.frame = 1;
+      f.n()[85] = idle ? 1 : 11;
+      f.n()[88] = idle ? 0 : 1;
+      f.n()[126] = 1;
+      f.n()[28] = 1;
+      const clone = vi.spyOn(globalThis, "structuredClone");
+      try {
+        stepGeneticistCallback(f.w, 0, callback(f));
+        expect(clone).toHaveBeenCalledTimes(1);
+      } finally {
+        clone.mockRestore();
+      }
+    }
+  });
+  it.each([0, 1, 2, 3])(
+    "uses the same source lifecycle envelope for category%i without admitting its role",
+    (category) => {
+      const f = fixture();
+      f.w.specialists.bindings[0]!.category = category;
+      f.raw()[0x16 + 22] = category;
+      f.n()[85] = 5;
+      f.n()[28] = 1;
+      put32(f.n(), 100, 8);
+      const c = callback(f);
+      c.lifecycle = () => ({ handled: true, retired: false });
+      stepSpecialistLifecycleCallback(f.w, 0, c);
+      expect([f.n()[25], dword(f.n(), 100)]).toEqual([
+        10,
+        category >= 2 ? 7 : 8,
+      ]);
+      f.n()[85] = 1;
+      expect(() => stepSpecialistLifecycleCallback(f.w, 0, c)).toThrow(
+        /state4\/5/,
+      );
+    },
+  );
+  it("releases51E80 in an already isolated transaction without replacing held native/player/binding identities", () => {
+    const f = fixture(),
+      n = f.n(),
+      raw = f.raw(),
+      binding = f.w.specialists.bindings[0];
+    n[87] = 3;
+    const r = cancelStagedGeneticistWork(f.w, 0, 0);
+    expect(f.n()).toBe(n);
+    expect(f.raw()).toBe(raw);
+    expect(f.w.specialists.bindings[0]).toBe(binding);
+    expect([n[87], n[88]! & 1, n[126], f.w.rng.draws]).toEqual([3, 0, 255, 0]);
+    expect(r.status).toBe("released");
+  });
+  it("retains the native pointer after a real death dispatch deletes its blueprint and skips the ordinary tail", () => {
+    const f = fixture();
+    f.n()[85] = 4;
+    f.w.specialists.bindings[0]!.style = 3;
+    f.raw()[0x16 + 21] = 3;
+    f.raw()[0x610] = 1;
+    f.n()[115] = 223;
+    f.w.frame = 1;
+    let calls = 0;
+    const c = callback(f);
+    c.lifecycle = (s, index) => {
+      calls++;
+      expect(index).toBe(0);
+      s.specialists.records[index][6] = 0;
+      // The source retains binding/C0 identity after actual BP deletion.
+      s.players[0].raw.fill(0, 0x16, 0x16 + 36);
+      return { handled: true, retired: true };
+    };
+    c.charge = () => {
+      throw Error("deleted BP cannot select class3 charge");
+    };
+    c.animation = () => {
+      throw Error("retired actor cannot advance ANB");
+    };
+    const r = stepGeneticistCallback(f.w, 0, c);
+    expect([calls, f.n()[6], f.n()[115], f.w.rng.draws]).toEqual([
+      1, 0, 223, 0,
+    ]);
+    expect(f.w.specialists.bindings[0]).not.toBeNull();
+    expect(r).toMatchObject({
+      status: "released",
+      reason: "specialist-retired",
+    });
+  });
+  it("queues80FC0 before its resolver, defers ordinary active release to57A10, and honors inhibited commands", () => {
+    const f = fixture();
+    const c = callback(f);
+    c.resolveMovePoint = (s, _i, p) => {
+      const n = s.specialists.records[0];
+      expect([n[87]! & 2, n[91], word(n, 92), word(n, 94)]).toEqual([
+        2,
+        0,
+        ...p,
+      ]);
+      return [1800, 1900];
+    };
+    queueGeneticistMove(f.w, 0, { callerOwner: 0, point: [2000, 2000] }, c);
+    expect([
+      f.n()[88]! & 1,
+      f.n()[126],
+      word(f.n(), 11),
+      word(f.n(), 13),
+    ]).toEqual([1, 0, 1800, 1900]);
+    const motionFlags: number[] = [];
+    c.motion = (s) => motionFlags.push(s.specialists.records[0][88]! & 1);
+    f.w.frame = 1;
+    stepGeneticistCallback(f.w, 0, c);
+    expect(motionFlags).toEqual([1]);
+    expect([f.n()[88]! & 1, f.n()[85], f.n()[126]]).toEqual([0, 8, 255]);
+    const g = fixture();
+    g.n()[113] = 16;
+    const before = structuredClone(g.w);
+    expect(
+      queueGeneticistMove(g.w, 0, { callerOwner: 0, point: [2000, 2000] }, g.c)
+        .status,
+    ).toBe("ignored");
+    expect(g.w).toEqual(before);
+  });
+  it("releases80FC0's pending task gate immediately and exposes51E80 cancellation without clearing retained pending bits", () => {
+    const f = fixture();
+    f.n()[87] = 1;
+    f.n()[130] = 1;
+    const c = {
+      ...f.c,
+      resolveMovePoint: () => [1800, 1900] as [number, number],
+    };
+    queueGeneticistMove(f.w, 0, { callerOwner: 0, point: [2000, 2000] }, c);
+    expect([f.n()[87], f.n()[88]! & 1, f.n()[130], f.n()[126]]).toEqual([
+      2, 0, 0, 255,
+    ]);
+    f.n()[87] = 3;
+    cancelGeneticistWork(f.w, 0, 0);
+    expect(f.n()[87]).toBe(3);
+    expect(f.w.rng.draws).toBe(0);
+  });
   it("queues51960 independently and activates507D0 after real motion, before role work and animation", () => {
     const f = fixture();
     f.n()[85] = 1;

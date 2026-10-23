@@ -4,6 +4,7 @@ import { sourceEntityId, type SourceEntityId } from "./source-pools";
 import { i16, u32 } from "./bytes";
 import { worldCell } from "../mechanics/terrain";
 import type { BlastTarget } from "../mechanics/destruction-effect";
+import { copySpatialLinks } from "./spatial";
 
 export interface CampaignEntityView {
   id: SourceEntityId;
@@ -39,7 +40,9 @@ export function campaignEntity(
               ? w.powerEffects.slots[index]?.nativePrior
               : family === 7
                 ? w.ethereals.records[index]?.native
-                : w.source.entities.find((e) => e.id === id)?.nativeBytes;
+                : family === 5
+                  ? w.collapse.records[index]
+                  : w.source.entities.find((e) => e.id === id)?.nativeBytes;
   if (!native || native[6] === 0) return null;
   if (native[6] !== family + 1 || i16(native as number[], 15) !== index)
     throw new Error("Campaign entity native identity differs");
@@ -82,6 +85,14 @@ export function campaignQueryEntities(
     }
   }
   return result;
+}
+export function synchronizeCampaignLinks(w: CampaignWorld): void {
+  for (const id of Object.keys(w.spatial.nodes)) {
+    const e = campaignEntity(w, id as SourceEntityId);
+    if (!e)
+      throw new Error("Current campaign link references an inactive native");
+    copySpatialLinks(w.spatial, e.id, e.native);
+  }
 }
 /** Source virtual0/4/8/68, established independently for each admitted kind.
  * Descriptor metadata does not imply an EFF animation or callback exists. */

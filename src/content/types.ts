@@ -136,6 +136,9 @@ export const PackSchema = z
     geneticistRules: z
       .object({
         schemaVersion: z.literal(1),
+        revealRadii: z
+          .array(z.number().int().min(-2147483648).max(2147483647))
+          .length(4),
         projectiles: z
           .array(
             z.object({

@@ -132,6 +132,7 @@ export const establishedEffectPriorities: Readonly<Record<number, number>> =
     3: 3,
     5: 1,
     6: 27,
+    8: 22,
     21: 19,
     22: 20,
     26: 35,
@@ -149,6 +150,7 @@ export const establishedEffectPriorities: Readonly<Record<number, number>> =
     49: 1,
     59: 1,
     60: 11,
+    69: 1,
   });
 export function selectEffectSlot(
   pool: PowerEffectPool,

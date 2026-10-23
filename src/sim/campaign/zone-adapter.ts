@@ -16,6 +16,8 @@ import { createCampaignEthereal } from "./ethereal-adapter";
 import { cleanupCampaignReferences } from "./cleanup";
 import { animationProfile } from "../mechanics/animation";
 import { i16, u16 } from "./bytes";
+import { cloneSpecialistPool } from "../mechanics/specialist-native";
+import { cloneCampaignHostRoots } from "./clone-host";
 export interface CampaignZoneOptions {
   gravity: number;
   obstacleAt(position: [number, number]): boolean;
@@ -85,6 +87,7 @@ export function stepCampaignZones(
   if (!pack.zoneRules || !pack.rules)
     throw new Error("Original zone tables missing");
   const hooks: EffectSchedulerOptions<CampaignWorld> = {
+      cloneHostRoots: cloneCampaignHostRoots,
       gravity: options.gravity,
       obstacleAt: options.obstacleAt,
       cleanupReferences: (s, id) => cleanupCampaignReferences(s, id),
@@ -94,7 +97,7 @@ export function stepCampaignZones(
         s.creatureNative = original.creatureNative.map((n) => n.slice());
         s.ethereals = cloneEthereals(original.ethereals);
         s.presentation = structuredClone(original.presentation);
-        s.specialists = structuredClone(original.specialists);
+        s.specialists = cloneSpecialistPool(original.specialists);
       },
       commitHost(target, s) {
         target.missionPrefix = s.missionPrefix;

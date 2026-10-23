@@ -4,34 +4,62 @@ import type { MuleCombatEffectRequest } from "../mechanics/mule-combat";
 import type { EcologyState } from "../mechanics/ecology";
 import { groundHeight, type TerrainState } from "../mechanics/terrain";
 import type { GeneRng } from "../mechanics/random";
-import { consumeMuleEffects } from "./mule-effects";
+import { consumeStagedMuleEffects } from "./mule-effects";
 import { cleanupCampaignReferences } from "./cleanup";
 import { put16 } from "./bytes";
+import { moveSpatial } from "./spatial";
+import { synchronizeCampaignLinks } from "./entity-view";
+import type { EcologyMule } from "../mechanics/ecology";
 
 /** Lazily isolates extra host roots when a creature callback emits blood.
  * Core-held native arrays stay identical across the immediate factory call.
  * Only a successful complete creature callback may commit this transaction. */
-export function createMuleCombatTransaction(world: CampaignWorld, pack: Pack) {
+export function createMuleCombatTransaction(
+  world: CampaignWorld,
+  pack: Pack,
+  cloneHost: (world: CampaignWorld) => CampaignWorld = structuredClone,
+) {
   let staged: CampaignWorld | null = null;
+  const host = (
+    state: EcologyState,
+    terrain: TerrainState,
+    rng: GeneRng,
+  ): CampaignWorld => {
+    staged ??= cloneHost(world);
+    staged.ecology = state;
+    staged.terrain = terrain;
+    staged.rng = rng;
+    for (const m of state.mules) staged.creatureNative[m.index] = m.native;
+    return staged;
+  };
   return {
     current: () => staged ?? world,
+    host,
+    relocate(
+      state: EcologyState,
+      terrain: TerrainState,
+      rng: GeneRng,
+      mule: EcologyMule,
+      _oldCell: number,
+      newCell: number,
+    ): void {
+      staged = host(state, terrain, rng);
+      moveSpatial(staged.spatial, terrain, mule.id, newCell);
+      synchronizeCampaignLinks(staged);
+    },
     effect(
       state: EcologyState,
       terrain: TerrainState,
       rng: GeneRng,
       request: MuleCombatEffectRequest,
     ): void {
-      staged ??= structuredClone(world);
-      staged.ecology = state;
-      staged.terrain = terrain;
-      staged.rng = rng;
-      for (const m of state.mules) staged.creatureNative[m.index] = m.native;
+      staged = host(state, terrain, rng);
       put16(
         staged.missionPrefix,
         0x3554,
         staged.powerEffects.slots.filter((e) => e.occupied).length,
       );
-      consumeMuleEffects(
+      consumeStagedMuleEffects(
         staged,
         [
           {
@@ -39,29 +67,17 @@ export function createMuleCombatTransaction(world: CampaignWorld, pack: Pack) {
             id: request.source,
             code: 32,
             position: request.position,
-            height: groundHeight(terrain, ...request.position),
+            height:
+              request.height ?? groundHeight(terrain, ...request.position),
             angles: request.angles,
           },
         ],
         pack,
-        { cleanupReferences: cleanupCampaignReferences },
+        {
+          cleanupReferences: cleanupCampaignReferences,
+          priority: (code) => pack.effectRules?.descriptors[code]?.priority,
+        },
       );
-      // Replacement724C0 may clear live creature references. Retain every
-      // caller-held native identity while copying that exact afterimage back.
-      for (const m of state.mules) {
-        const next = staged.ecology.mules.find((n) => n.index === m.index);
-        if (!next)
-          throw new Error("Combat factory lost a live creature identity");
-        m.native.splice(0, m.native.length, ...next.native);
-      }
-      for (let i = 0; i < terrain.bytes.length; i++)
-        terrain.bytes[i] = staged.terrain.bytes[i];
-      terrain.revision = staged.terrain.revision;
-      Object.assign(rng, staged.rng);
-      staged.ecology = state;
-      staged.terrain = terrain;
-      staged.rng = rng;
-      for (const m of state.mules) staged.creatureNative[m.index] = m.native;
     },
     commit(): void {
       if (!staged) return;

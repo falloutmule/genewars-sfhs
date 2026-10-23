@@ -4,6 +4,7 @@ import type { Pack } from "../../content/types";
 import type { SourcePoolRegistry, SourceEntityId } from "./source-pools";
 import { decodeBytes, i16 } from "./bytes";
 import {
+  cloneSpatial,
   insertSpatial,
   moveSpatial,
   unlinkSpatial,
@@ -11,6 +12,7 @@ import {
   type SpatialState,
 } from "./spatial";
 import {
+  clonePowerEffectPool,
   createPowerEffectPool,
   launchPowerPackets,
   stepPowerPacketMotion,
@@ -25,6 +27,7 @@ import {
   type PowerEffectPool,
 } from "../mechanics/power-motion";
 import {
+  cloneEconomyState,
   stepEconomyPackets,
   type EconomyState,
   type EconomyReceipt,
@@ -110,7 +113,7 @@ export function synchronizePowerAdapter(
   w: PowerAdapterWorld,
   retiredParticles: readonly LandingParticle[] = [],
 ): void {
-  const pool = structuredClone(w.powerEffects);
+  const pool = clonePowerEffectPool(w.powerEffects);
   if (pool.slots.length !== 200)
     throw new Error("Shared effect pool must have200slots");
   for (const slot of pool.slots)
@@ -212,10 +215,10 @@ function synchronizeEffectLinks(
 function staged(w: PowerAdapterWorld, particles = false): PowerAdapterWorld {
   return {
     ...w,
-    powerEffects: structuredClone(w.powerEffects),
-    spatial: structuredClone(w.spatial),
+    powerEffects: clonePowerEffectPool(w.powerEffects),
+    spatial: cloneSpatial(w.spatial),
     terrain: { ...w.terrain, bytes: [...w.terrain.bytes] },
-    economy: structuredClone(w.economy),
+    economy: cloneEconomyState(w.economy),
     rng: { ...w.rng },
     landings: particles ? structuredClone(w.landings) : w.landings,
   };
@@ -271,7 +274,7 @@ export function applyPowerBuildingEvents(
     ),
   );
   s.powerEffects = launched.pool;
-  s.economy = structuredClone(receipt.state);
+  s.economy = cloneEconomyState(receipt.state);
   for (const allocation of launched.allocated) {
     const p = s.powerEffects.slots[allocation.slot].packet!;
     insertSpatial(

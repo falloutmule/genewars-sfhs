@@ -191,6 +191,17 @@ export interface PowerEffectSlot {
 export interface PowerEffectPool {
   slots: PowerEffectSlot[];
 }
+/** Copy retained priors even for inactive slots: later factories reuse them. */
+export function clonePowerEffectPool(pool: PowerEffectPool): PowerEffectPool {
+  return {
+    ...pool,
+    slots: pool.slots.map((slot) => ({
+      ...slot,
+      ...(slot.nativePrior ? { nativePrior: slot.nativePrior.slice() } : {}),
+      packet: slot.packet ? { ...slot.packet } : null,
+    })),
+  };
+}
 export interface PowerLaunchRequest {
   id: number;
   sourceId: number;
@@ -210,13 +221,6 @@ const validInteger = (n: number, min: number, max: number) =>
   Number.isInteger(n) && n >= min && n <= max;
 const wrap16 = (n: number) => (n << 16) >> 16;
 const delta = (a: number, b: number) => wrap16((a - b) * 2) >> 1;
-const clone = (pool: PowerEffectPool): PowerEffectPool => ({
-  slots: pool.slots.map((s) => ({
-    ...s,
-    ...(s.nativePrior ? { nativePrior: s.nativePrior.slice() } : {}),
-    packet: s.packet ? { ...s.packet } : null,
-  })),
-});
 function invalidPool(pool: PowerEffectPool) {
   if (pool.slots.length !== 200) return "power-effect-pool-must-have-200-slots";
   const ids = new Set<number>();
@@ -307,7 +311,7 @@ export function launchPowerPackets(
     )
   )
     return { ok: false, reason: "source-power-motion-tables-required" };
-  const pool = clone(before),
+  const pool = clonePowerEffectPool(before),
     allocated: { packetId: number; slot: number }[] = [];
   const ids = new Set(
     pool.slots.flatMap((s) => (s.packet ? [s.packet.id] : [])),
@@ -438,7 +442,7 @@ export function stepPowerPacketMotion(
       onlySlots.some((slot) => !validInteger(slot, 0, 199)))
   )
     return { ok: false, reason: "invalid-power-callback-slot" };
-  const pool = clone(before),
+  const pool = clonePowerEffectPool(before),
     samples: { id: number; x: number; y: number; targetValid: boolean }[] = [],
     moved: {
       packetId: number;
@@ -507,7 +511,7 @@ export function detachPowerPacketTargets(
 ): PowerMotionResult<PowerEffectPool> {
   const invalid = invalidPool(before);
   if (invalid) return { ok: false, reason: invalid };
-  const pool = clone(before);
+  const pool = clonePowerEffectPool(before);
   for (const slot of pool.slots)
     if (slot.packet?.targetId === targetId) {
       slot.packet.targetId = null;
@@ -524,7 +528,7 @@ export function retirePowerPacketSlots(
 ): PowerMotionResult<PowerEffectPool> {
   const invalid = invalidPool(before);
   if (invalid) return { ok: false, reason: invalid };
-  const pool = clone(before),
+  const pool = clonePowerEffectPool(before),
     seen = new Set<number>();
   for (const id of packetIds) {
     const slot = pool.slots.find((s) => s.packet?.id === id);

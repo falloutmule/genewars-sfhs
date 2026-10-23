@@ -28,6 +28,7 @@ import {
 } from "../mechanics/reward-effect";
 import { validateEffectNativePrior } from "../mechanics/power-motion";
 import {
+  cloneSpatial,
   insertSpatial,
   moveSpatial,
   unlinkSpatial,
@@ -92,7 +93,7 @@ function stage(w: WaterAdapterWorld): WaterAdapterWorld {
         nativePrior: (s as SharedSlot).nativePrior?.slice(),
       })),
     },
-    spatial: structuredClone(w.spatial),
+    spatial: cloneSpatial(w.spatial),
     terrain: { bytes: w.terrain.bytes.slice(), revision: w.terrain.revision },
     rng: { ...w.rng },
     source: {

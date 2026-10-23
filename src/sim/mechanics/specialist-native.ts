@@ -26,6 +26,19 @@ export interface SpecialistPool {
   records: SpecialistNative[];
   bindings: (SpecialistBinding | null)[];
 }
+function cloneBinding(binding: SpecialistBinding): SpecialistBinding {
+  return { ...binding, internal: { ...binding.internal } };
+}
+/** Preserve unknown numeric cells and inactive retained resource bindings. */
+export function cloneSpecialistPool(pool: SpecialistPool): SpecialistPool {
+  return {
+    ...pool,
+    records: pool.records.map((record) => record.slice()),
+    bindings: pool.bindings.map((binding) =>
+      binding ? cloneBinding(binding) : null,
+    ),
+  };
+}
 export interface SpecialistOrigin {
   position: [number, number];
   height: number;
@@ -214,7 +227,7 @@ export function loadSpecialistPool(
     schemaVersion: 1,
     records: priors.map((n) => n.slice()),
     bindings: (options.bindings ?? Array(20).fill(null)).map((binding) =>
-      binding ? structuredClone(binding) : null,
+      binding ? cloneBinding(binding) : null,
     ),
   };
   for (let slot = 0; slot < 20; slot++) {
@@ -288,7 +301,7 @@ export function createSpecialist(
   int(request.origin.shade, 0, 255, "origin shade");
   const count = (raw[3] << 24) >> 24;
   int(count, 0, 5, "stored actor count");
-  const pool = structuredClone(before),
+  const pool = cloneSpecialistPool(before),
     next = raw.slice(),
     local = pool.records
       .slice(owner * 5, owner * 5 + 5)
@@ -388,7 +401,7 @@ export function createMissionSpecialists(
   input.target.forEach((v) =>
     int(v, -32768, 32767, "mission target coordinate"),
   );
-  let pool = structuredClone(before),
+  let pool = cloneSpecialistPool(before),
     next = raw.slice(),
     attempted = 0;
   const attempts: {

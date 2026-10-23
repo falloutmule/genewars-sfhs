@@ -46,7 +46,7 @@ import {
   validateSpatial,
 } from "./spatial";
 import type { SourceEntityId } from "./source-pools";
-import type {EtherealPunishmentServices} from "../mechanics/ethereal-punishment";
+import type { EtherealPunishmentServices } from "../mechanics/ethereal-punishment";
 export type EtherealAdapterWorld = EffectSchedulerWorld & {
   ethereals: EtherealState;
   missionPrefix: number[];
@@ -65,6 +65,7 @@ export interface EtherealAdapterOptions<
   gravity: number;
   obstacleAt: (position: [number, number]) => boolean;
   cleanupReferences: (world: W, id: SourceEntityId) => number | void;
+  cloneHostRoots?: EffectSchedulerOptions<W>["cloneHostRoots"];
   onEvent?: (world: W, event: EtherealAdapterEvent) => void;
   stageHost?: (original: W, staged: W) => void;
   commitHost?: (target: W, staged: W) => void;
@@ -73,7 +74,7 @@ export interface EtherealAdapterOptions<
     record: EtherealRecord,
     request: EtherealRewardEffect,
   ) => void;
-  punishmentServices?: (world:W)=>EtherealPunishmentServices;
+  punishmentServices?: (world: W) => EtherealPunishmentServices;
 }
 export interface EtherealPassReceipt {
   countdown: CountdownTransition;
@@ -113,6 +114,7 @@ function shell<W extends EtherealAdapterWorld>(
     gravity: options.gravity,
     obstacleAt: options.obstacleAt,
     cleanupReferences: options.cleanupReferences,
+    cloneHostRoots: options.cloneHostRoots,
     stageHost: (w, s) => {
       s.ethereals = cloneEthereals(w.ethereals);
       s.missionPrefix = w.missionPrefix.slice();
@@ -304,7 +306,7 @@ function context<W extends EtherealAdapterWorld>(
       !options.obstacleAt(position) &&
       ecologyTerrainClass(w.terrain, position) > 1,
     playerInactive: (owner) => w.players[owner].raw[0x6e3] !== 0,
-    playerRaw: (owner)=>w.players[owner].raw,
+    playerRaw: (owner) => w.players[owner].raw,
     punishment: options.punishmentServices?.(w),
     createParticle: (parent, request, rng) => {
       const current = w.ethereals.records[parent.slot],

@@ -5,6 +5,7 @@ import { createMuleCombatTransaction } from "../src/sim/campaign/mule-combat-ada
 import { insertSpatial } from "../src/sim/campaign/spatial";
 import { worldCell } from "../src/sim/mechanics/terrain";
 import { checksum } from "../src/sim/checksum";
+import { put16 } from "../src/sim/campaign/bytes";
 
 function fixture() {
   const pack = campaignFixture();
@@ -82,4 +83,26 @@ it("discards staged shared effects when a later combat branch fails", () => {
   // A rejected callback never calls commit; none of its extra roots escape.
   expect(checksum(w)).toBe(before);
   expect(w.powerEffects.slots.every((p) => !p.occupied)).toBe(true);
+});
+it("publishes movement inside the same isolated callback so later head queries see current occupants", () => {
+  const { w } = fixture(),
+    tx = createMuleCombatTransaction(w, campaignFixture()),
+    state = structuredClone(w.ecology),
+    terrain = structuredClone(w.terrain),
+    rng = { ...w.rng },
+    before = checksum(w),
+    mule = state.mules[0],
+    native = mule.native;
+  put16(native as number[], 7, 8448);
+  tx.relocate(state, terrain, rng, mule, 32 * 128 + 32, 32 * 128 + 33);
+  expect(checksum(w)).toBe(before);
+  expect(tx.current().spatial.heads[32 * 128 + 33]).toBe(mule.id);
+  expect(tx.current().spatial.heads[32 * 128 + 32]).toBeNull();
+  expect(mule.native).toBe(native);
+  Object.assign(w.ecology, state);
+  Object.assign(w.terrain, terrain);
+  Object.assign(w.rng, rng);
+  tx.commit();
+  expect(w.spatial.nodes[mule.id].cell).toBe(32 * 128 + 33);
+  expect(w.ecology.mules[0].native).toBe(native);
 });

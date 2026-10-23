@@ -36,6 +36,8 @@ TABLES = (
      'f6eabc9426aaddab4771fa55ed3addd23954384524eb6c0771f16271a0af7345'),
     ('buildingFootprints', 3, 0x4DE0, 'B', 14,
      'e692c7083a76eb15e192f34897d136461f9337e3c2e8a705f31ef7905749eee7'),
+    ('buildingCombatHalfWidths', 3, 0x4E12, 'h', 4,
+     '8cb0e2422b9e82feae1c3e540d689a87a2675f952d36fe60b52ad62e6a88cec5'),
     ('buildingNameIndices', 3, 0x4D74, 'B', 14,
      '8e1676afcef52f169d26f920a8eac151a0f28469db0b218717428609fa7d8f39'),
     ('buildingPrerequisites', 3, 0x4E74, 'B', 14,

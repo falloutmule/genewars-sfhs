@@ -46,7 +46,6 @@ import {
   stepNeutralMule,
   stepOwnedMule,
   requestOwnedMuleMove,
-  queryMuleAirborneBuilding,
   type MuleEvent,
 } from "../mechanics/mule";
 import {
@@ -99,6 +98,8 @@ import type { WaterEffect } from "../mechanics/water";
 import { consumeMuleWaterEvents } from "./water-adapter";
 import {
   stepEffectScheduler,
+  cloneEffectHost,
+  createStagedDestructionEffect,
   type EffectSchedulerOptions,
 } from "./effect-scheduler";
 import {
@@ -133,16 +134,63 @@ import {
   type GenepodState,
 } from "../mechanics/genepod";
 import { stepCampaignZones } from "./zone-adapter";
-import { flushEatenPlantRetirements } from "./ecology-adapter";
+import {
+  flushEatenPlantRetirements,
+  synchronizeCampaignPlantCounts,
+} from "./ecology-adapter";
 import { consumeMuleEffects } from "./mule-effects";
 import { stepCampaignCraters } from "./crater-adapter";
 import { createMuleCombatTransaction } from "./mule-combat-adapter";
 import {
+  makeCollapsePool,
+  stepCollapsePool,
+  type CollapsePool,
+} from "../mechanics/collapse";
+import {
   loadSpecialistPool,
   createSpecialist,
+  cloneSpecialistPool,
   validateSpecialistNative,
   type SpecialistPool,
 } from "../mechanics/specialist-native";
+import { readGeneticistMotion } from "../mechanics/geneticist";
+import { campaignBlastAreaContext, damageCampaignPlant } from "./blast-adapter";
+import { damageCampaignBuilding } from "./building-damage-adapter";
+import {
+  campaignAirborneBuilding,
+  campaignMuleCombatEntity,
+  campaignMuleBuildingPointAccepted,
+  damageCampaignMule,
+} from "./mule-damage-adapter";
+import { stepCampaignGeneticistEffect } from "./geneticist-effect-adapter";
+import {
+  createStagedEtherealAttack,
+  stepCampaignEtherealAttackEffect,
+} from "./ethereal-attack-adapter";
+import { campaignPunishmentServices } from "./punishment-adapter";
+import { cloneCampaignHostRoots } from "./clone-host";
+import { revealCampaignRadius } from "./reveal-adapter";
+import {
+  stepCampaignGeneticist,
+  stepCampaignSpecialistMotion,
+  requestCampaignGeneticist,
+  stepCampaignSpecialistLifecycle,
+  stepCampaignSpecialistAbduction,
+  cancelStagedCampaignSpecialistWork,
+  retireCampaignSpecialist,
+  mirrorCampaignSpecialist,
+  damageCampaignSpecialist,
+  moveCampaignGeneticist,
+  stopCampaignGeneticist,
+  type CampaignSpecialistServices,
+} from "./specialist-adapter";
+import {
+  stepCampaignBotanist,
+  requestCampaignBotanist,
+  moveCampaignBotanist,
+  stopCampaignBotanist,
+  cancelStagedCampaignBotanist,
+} from "./botanist-adapter";
 type CampaignCarry = NonNullable<Parameters<typeof bootstrapCampaign>[3]> & {
   specialistOrigin?: [number, number];
 };
@@ -159,6 +207,23 @@ const point = z.tuple([
   z.number().int().min(0).max(32767),
 ]);
 export const CampaignCommandSchema = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("botanist-work"),
+    actorId: z.number().int().min(0).max(19),
+    task: z.union([z.literal(0), z.literal(1), z.literal(2)]),
+    point,
+    selector: z.number().int().min(0).max(11).optional(),
+  }),
+  z.object({
+    type: z.literal("research-mule"),
+    actorId: z.number().int().min(0).max(19),
+    muleIndex: z.number().int().min(0).max(299),
+  }),
+  z.object({
+    type: z.literal("heal-mule"),
+    actorId: z.number().int().min(0).max(19),
+    muleIndex: z.number().int().min(0).max(299),
+  }),
   z.object({
     type: z.literal("move-mule"),
     muleIndex: z.number().int().min(0).max(299),
@@ -203,6 +268,7 @@ export interface CampaignNotice {
 export interface CampaignWorld extends CampaignBootstrap {
   entryCarry: CampaignCarry | null;
   specialists: SpecialistPool;
+  collapse: CollapsePool;
   /** Explicit112D10 host scratch. Fresh admitted data is zero; carry retains
    * it. No factory silently resets it or resamples its final target. */
   specialistOrigin: [number, number];
@@ -311,6 +377,10 @@ export function createCampaign(
   const w: CampaignWorld = {
     ...b,
     specialists,
+    collapse: makeCollapsePool(
+      initializeNativePool(b.source, 5),
+      u16(b.missionPrefix, 0x3556),
+    ),
     specialistOrigin,
     entryCarry: carry ? structuredClone(carry) : null,
     tick: 0,
@@ -421,6 +491,22 @@ export function restartCampaign(w: CampaignWorld, pack: Pack): CampaignWorld {
     w.entryCarry ?? undefined,
   );
 }
+/** Lossless upgrade of an unreleased snapshot made before family6 existed.
+ * Only an absent, provably empty pool may be restored from its retained source
+ * priors. Live native state is never synthesized from a count or actor list. */
+export function upgradeEmptyCollapsePool(w: CampaignWorld): boolean {
+  if (w.collapse) return false;
+  if (
+    u16(w.missionPrefix, 0x3556) !== 0 ||
+    w.source.source.pools[5].activeCount !== 0
+  )
+    throw new Error("Earlier development snapshot lacks live collapse state");
+  const records = initializeNativePool(w.source, 5);
+  if (records.some((n) => n[6] !== 0))
+    throw new Error("Collapse upgrade requires retained inactive priors");
+  w.collapse = makeCollapsePool(records, 0);
+  return true;
+}
 export function campaignObjectiveContext(w: CampaignWorld) {
   const result = readMissionObjectiveContext(w.missionPrefix, {
     flags: w.flags,
@@ -513,19 +599,7 @@ export function enterCampaign(w: CampaignWorld, pack?: Pack): void {
   w.phase = "active";
 }
 function reveal(w: CampaignWorld, p: [number, number]): void {
-  for (let dy = -16; dy <= 16; dy++)
-    for (let dx = -16; dx <= 16; dx++) {
-      const x = ((p[0] >> 8) + dx) & 127,
-        y = ((p[1] >> 8) + dy) & 127,
-        d = dx * dx + dy * dy;
-      if (d < 256) {
-        const at = (y * 128 + x) * 14 + 12;
-        w.terrain.bytes[at] = Math.max(
-          w.terrain.bytes[at],
-          Math.min(64, Math.trunc((4096 - Math.sqrt(d) * 256) / 8)),
-        );
-      }
-    }
+  revealCampaignRadius(w, p, 4096);
 }
 function notice(
   w: CampaignWorld,
@@ -896,8 +970,45 @@ export function queueCampaign(
       return { ok: false, reason: "Select a completed Genepod you own" };
   } else {
     const a = w.actors.find((a) => a.id === command.actorId);
-    if (!a || a.owner !== w.selectedPlayer || !a.ready)
+    if (
+      !a ||
+      a.owner !== w.selectedPlayer ||
+      !a.ready ||
+      w.specialists.records[a.id][6] !== 3
+    )
       return { ok: false, reason: "Select a landed specialist" };
+    if (w.specialists.records[a.id][85] === 4)
+      return { ok: false, reason: "This specialist is dying" };
+    if (w.specialists.records[a.id][85] === 3)
+      return { ok: false, reason: "This specialist is being abducted" };
+    const category = w.players[a.owner].blueprints[a.blueprintIndex].category;
+    if (command.type === "construct" && category !== 0)
+      return { ok: false, reason: "Select a landed Engineer" };
+    if (command.type === "botanist-work") {
+      if (category !== 1)
+        return { ok: false, reason: "Select a landed Botanist" };
+      if (
+        command.task === 1 &&
+        (command.selector === undefined ||
+          u32(w.players[a.owner].raw, 0x67e + command.selector * 4) === 0)
+      )
+        return {
+          ok: false,
+          reason: "Research this plant type before planting it",
+        };
+    }
+    if (command.type === "research-mule" || command.type === "heal-mule") {
+      const m = w.ecology.mules.find((m) => m.index === command.muleIndex);
+      if (category !== 2)
+        return { ok: false, reason: "Select a landed Geneticist" };
+      if (!m || m.native[6] !== 1 || m.native[122] !== 4)
+        return {
+          ok: false,
+          reason: "Select a Mule available for this interaction",
+        };
+      if (command.type === "heal-mule" && m.native[94]! >= 24)
+        return { ok: false, reason: "A dead Mule cannot be healed" };
+    }
   }
   if (w.phase !== "active")
     return { ok: false, reason: "Mission is not accepting orders" };
@@ -966,6 +1077,96 @@ function issue(w: CampaignWorld, c: CampaignCommand, pack: Pack): void {
     return;
   }
   const a = w.actors.find((a) => a.id === c.actorId)!;
+  const category = w.players[a.owner].blueprints[a.blueprintIndex].category;
+  if (c.type === "botanist-work") {
+    requestCampaignBotanist(
+      w,
+      a.id,
+      c.task === 1
+        ? {
+            task: 1,
+            selector: c.selector!,
+            point: c.point,
+            callerOwner: a.owner,
+          }
+        : { task: c.task, point: c.point, callerOwner: a.owner },
+      pack,
+      specialistServices(pack),
+    );
+    const current = w.actors.find((p) => p.id === a.id)!;
+    current.orders = [];
+    current.goal = null;
+    current.route = [];
+    notice(w, "Botanist work ordered", "info", a.id);
+    return;
+  }
+  if (c.type === "research-mule" || c.type === "heal-mule") {
+    requestCampaignGeneticist(
+      w,
+      a.id,
+      c.type === "research-mule" ? 0 : 1,
+      c.muleIndex,
+      pack,
+      specialistServices(pack),
+    );
+    const current = w.actors.find((p) => p.id === a.id)!;
+    current.orders = [];
+    current.goal = null;
+    current.route = [];
+    notice(
+      w,
+      c.type === "research-mule"
+        ? "Mule research ordered"
+        : "Mule healing ordered",
+      "info",
+      a.id,
+    );
+    return;
+  }
+  if (category === 1) {
+    if (c.type === "cancel") {
+      stopCampaignBotanist(w, a.id, pack, specialistServices(pack));
+      const current = w.actors.find((p) => p.id === a.id)!;
+      current.orders = [];
+      current.goal = null;
+      current.route = [];
+      current.reason = "Stopped";
+      return;
+    }
+    if (c.type !== "move")
+      throw new Error("Botanist does not perform construction");
+    if (c.queued) a.orders.push({ type: "move", point: c.point });
+    else {
+      moveCampaignBotanist(w, a.id, c.point, pack, specialistServices(pack));
+      const current = w.actors.find((p) => p.id === a.id)!;
+      current.orders = [];
+      current.goal = null;
+      current.route = [];
+    }
+    return;
+  }
+  if (category === 2) {
+    if (c.type === "cancel") {
+      stopCampaignGeneticist(w, a.id);
+      const current = w.actors.find((p) => p.id === a.id)!;
+      current.orders = [];
+      current.goal = null;
+      current.route = [];
+      current.reason = "Stopped";
+      return;
+    }
+    if (c.type !== "move")
+      throw new Error("Geneticist does not perform construction");
+    if (c.queued) a.orders.push({ type: "move", point: c.point });
+    else {
+      moveCampaignGeneticist(w, a.id, c.point, pack, specialistServices(pack));
+      const current = w.actors.find((p) => p.id === a.id)!;
+      current.orders = [];
+      current.goal = null;
+      current.route = [];
+    }
+    return;
+  }
   const builder = w.builders.find((b) => b.id === a.id);
   if (c.type === "cancel" || !c.queued) {
     if (builder?.task) {
@@ -1114,6 +1315,50 @@ function idle(w: CampaignWorld, a: CampaignActor, pack: Pack): void {
 }
 function actorStep(w: CampaignWorld, a: CampaignActor, pack: Pack): void {
   if (!a.ready) return;
+  if (w.specialists.records[a.id][6] !== 3) return;
+  if (w.specialists.records[a.id][85] === 3) {
+    stepCampaignSpecialistAbduction(w, a.id, pack, specialistServices(pack));
+    return;
+  }
+  if ([4, 5].includes(w.specialists.records[a.id][85]!)) {
+    stepCampaignSpecialistLifecycle(w, a.id, pack, specialistServices(pack));
+    return;
+  }
+  const category = w.players[a.owner].blueprints[a.blueprintIndex].category;
+  if (category === 1) {
+    const n = w.specialists.records[a.id];
+    if (a.orders.length && n[85] !== 8 && !(n[87]! & 3)) {
+      const order = a.orders.shift()!;
+      if (order.type !== "move")
+        throw new Error("Unsupported Botanist queued order");
+      moveCampaignBotanist(
+        w,
+        a.id,
+        order.point,
+        pack,
+        specialistServices(pack),
+      );
+    }
+    stepCampaignBotanist(w, a.id, pack, specialistServices(pack));
+    return;
+  }
+  if (category === 2) {
+    const n = w.specialists.records[a.id];
+    if (a.orders.length && n[85] !== 8 && !(n[87]! & 3)) {
+      const order = a.orders.shift()!;
+      if (order.type !== "move")
+        throw new Error("Unsupported Geneticist queued order");
+      moveCampaignGeneticist(
+        w,
+        a.id,
+        order.point,
+        pack,
+        specialistServices(pack),
+      );
+    }
+    stepCampaignGeneticist(w, a.id, pack, specialistServices(pack));
+    return;
+  }
   if (a.egressBuildingId !== null) {
     const completed = w.buildings.find((b) => b.id === a.egressBuildingId);
     const extent = completed
@@ -1165,6 +1410,7 @@ function actorStep(w: CampaignWorld, a: CampaignActor, pack: Pack): void {
     }
     a.route = route;
     a.goal = route.shift()!;
+    a.motion.desiredSpeed = w.specialists.bindings[a.id]!.classSpeed;
     moveGoal(a.motion, a.goal, pack.rules!.tables);
   }
   if (a.goal) {
@@ -1201,7 +1447,11 @@ function actorStep(w: CampaignWorld, a: CampaignActor, pack: Pack): void {
       a.animation,
       animationProfile(pack.assets[a.art], action),
     );
-  } else idle(w, a, pack);
+  } else {
+    stepCampaignSpecialistMotion(w, a.id, pack, specialistServices(pack));
+    a = w.actors.find((current) => current.id === a.id)!;
+    idle(w, a, pack);
+  }
 }
 function syncEconomy(w: CampaignWorld): void {
   const old = new Map(w.economy.buildings.map((b) => [b.id, b]));
@@ -1256,7 +1506,11 @@ function stageNativeHost(original: CampaignWorld, staged: CampaignWorld): void {
   staged.creatureNative = original.creatureNative.map((n) => n.slice());
   staged.ethereals = cloneEthereals(original.ethereals);
   staged.presentation = structuredClone(original.presentation);
-  staged.specialists = structuredClone(original.specialists);
+  staged.specialists = cloneSpecialistPool(original.specialists);
+  staged.collapse = {
+    ...original.collapse,
+    records: original.collapse.records.map((n) => n.slice()),
+  };
   staged.buildings = structuredClone(original.buildings);
   staged.jobs = structuredClone(original.jobs);
   staged.muleQueues = structuredClone(original.muleQueues);
@@ -1268,6 +1522,7 @@ function commitNativeHost(target: CampaignWorld, staged: CampaignWorld): void {
   target.ethereals = staged.ethereals;
   target.presentation = staged.presentation;
   target.specialists = staged.specialists;
+  target.collapse = staged.collapse;
   target.buildings = staged.buildings;
   target.jobs = staged.jobs;
   target.muleQueues = staged.muleQueues;
@@ -1298,11 +1553,96 @@ function rewardFactoryOptions(
   pack: Pack,
 ): EffectSchedulerOptions<CampaignWorld> {
   return {
+    cloneHostRoots: cloneCampaignHostRoots,
     gravity: context(w, pack).gravity,
     obstacleAt: (p) => buildingObstacle(w, p),
     cleanupReferences: (s, id) => cleanupCampaignReferences(s, id),
     stageHost: stageNativeHost,
     commitHost: commitNativeHost,
+    geneticistEffect: (staged, slot, out) =>
+      stepCampaignGeneticistEffect(
+        staged,
+        slot,
+        pack,
+        rewardFactoryOptions(staged, pack),
+        out,
+      ),
+    etherealAttackEffect: (staged, slot, out) =>
+      stepCampaignEtherealAttackEffect(
+        staged,
+        slot,
+        pack,
+        rewardFactoryOptions(staged, pack),
+        out,
+      ),
+    blastArea: (staged) =>
+      campaignBlastAreaContext(staged, pack, {
+        effectOptions: (s) => rewardFactoryOptions(s, pack),
+        damageSpecialist: (s, index, amount, attacker) =>
+          damageCampaignSpecialist(
+            s,
+            index,
+            amount,
+            attacker,
+            pack,
+            specialistServices(pack),
+          ),
+        damageBuilding: (s, index, amount, attacker) =>
+          damageCampaignBuilding(s, pack, index, amount, attacker, {
+            effectOptions: (staged) => rewardFactoryOptions(staged, pack),
+            cancelConstruction: (staged, actor) =>
+              specialistServices(pack).cancelConstruction!(staged, actor),
+            onEvent: (staged, event) => {
+              if (event.type === "destroyed-message")
+                notice(staged, "Building destroyed", "warning");
+            },
+          }),
+      }),
+    destructionObstacle: (staged, p, height) => {
+      const b = campaignAirborneBuilding(staged, pack, p, height);
+      return b ? { position: b.position, ground: b.ground } : null;
+    },
+  };
+}
+function specialistServices(pack: Pack): CampaignSpecialistServices {
+  return {
+    effectOptions: (staged) => rewardFactoryOptions(staged, pack),
+    cancelRole: (s, index) =>
+      cancelStagedCampaignBotanist(s, index, pack, specialistServices(pack)),
+    damage: (s, index, amount) =>
+      damageCampaignSpecialist(
+        s,
+        index,
+        amount,
+        null,
+        pack,
+        specialistServices(pack),
+      ),
+    cancelConstruction: (s, index) => {
+      const terrain = s.terrain,
+        rng = s.rng,
+        prefix = s.missionPrefix;
+      const r = cancelConstruction(
+        projection(s),
+        index,
+        tables(pack),
+        context(s, pack),
+        "new-command",
+      );
+      applyConstruction(s, r.state, r.events, pack);
+      //A creature/blast callback can retain these source-like roots.
+      terrain.bytes = s.terrain.bytes;
+      terrain.revision = s.terrain.revision;
+      Object.assign(rng, s.rng);
+      prefix.splice(0, prefix.length, ...s.missionPrefix);
+      s.terrain = terrain;
+      s.rng = rng;
+      s.missionPrefix = prefix;
+      for (const p of s.players) {
+        put32(p.raw, 0x4a3, p.funds);
+        put32(p.raw, 0x4a7, p.goop);
+      }
+    },
   };
 }
 function syncNativeBindings(w: CampaignWorld): void {
@@ -1371,11 +1711,7 @@ function syncNativeBindings(w: CampaignWorld): void {
     0x3550,
     w.ecology.mules.filter((m) => m.native[6] !== 0).length,
   );
-  put16(
-    w.missionPrefix,
-    0x3552,
-    w.ecology.plants.filter((p) => p.active).length,
-  );
+  synchronizeCampaignPlantCounts(w);
   put16(
     w.missionPrefix,
     0x3554,
@@ -1552,7 +1888,12 @@ export function stepCampaign(w: CampaignWorld, pack: Pack): void {
         mule = w.ecology.mules.find((m) => m.index === muleIndex)!;
       }
       const callback = mule.native[24] === 4 ? stepNeutralMule : stepOwnedMule;
-      const combatTransaction = createMuleCombatTransaction(w, pack);
+      const combatTransaction = createMuleCombatTransaction(
+        w,
+        pack,
+        (original) =>
+          cloneEffectHost(original, rewardFactoryOptions(original, pack)),
+      );
       const shepherds = w.actors.filter(
         (a) =>
           a.ready &&
@@ -1573,10 +1914,82 @@ export function stepCampaign(w: CampaignWorld, pack: Pack): void {
         bounce: pack.rules!.tables.bounce,
         profile: (action) => animationProfile(pack.assets.MULE, action),
         bonesProfile: (action) => animationProfile(pack.assets.BONES, action),
-        obstacleAt: (p) => buildingObstacle(w, p),
+        obstacleAt: (p) => buildingObstacle(combatTransaction.current(), p),
         creaturePriors: w.creatureNative,
         combat: pack.ecologyRules!.muleCombat,
+        combatEntity: (state, terrain, rng, id) =>
+          campaignMuleCombatEntity(
+            combatTransaction.host(state, terrain, rng),
+            pack,
+            id,
+          ),
+        combatDamage: (state, terrain, rng, self, target, amount) => {
+          const staged = combatTransaction.host(state, terrain, rng),
+            attacker = self.id;
+          if (target.kind === 3)
+            return damageCampaignSpecialist(
+              staged,
+              target.index,
+              amount,
+              attacker,
+              pack,
+              specialistServices(pack),
+            );
+          if (target.kind === 4)
+            return damageCampaignBuilding(
+              staged,
+              pack,
+              target.index,
+              amount,
+              attacker,
+              {
+                effectOptions: (s) => rewardFactoryOptions(s, pack),
+                cancelConstruction: (s, index) =>
+                  specialistServices(pack).cancelConstruction!(s, index),
+                onEvent: (s, e) => {
+                  if (e.type === "destroyed-message")
+                    notice(s, "Building destroyed", "warning");
+                },
+              },
+            ).destroyed;
+          if (target.kind === 1) {
+            damageCampaignMule(staged, pack, target.index, amount, attacker);
+            return (
+              staged.ecology.mules.find((m) => m.index === target.index)!
+                .native[94]! >= 24
+            );
+          }
+          throw new Error("Unsupported Mule combat damage target");
+        },
+        combatBuildingAt: (state, terrain, rng, self) => {
+          const staged = combatTransaction.host(state, terrain, rng),
+            n = self.native,
+            b = campaignAirborneBuilding(
+              staged,
+              pack,
+              [i16(n as number[], 7), i16(n as number[], 9)],
+              u32(n as number[], 39) | 0,
+            );
+          return b ? `source:3:${i16(b.native as number[], 15)}` : null;
+        },
+        combatBuildingPointAccepted: (state, terrain, self, point, index) =>
+          campaignMuleBuildingPointAccepted(
+            { ...combatTransaction.current(), ecology: state, terrain },
+            pack,
+            self,
+            point,
+            index,
+          ),
         combatEffect: combatTransaction.effect,
+        plantDamage: (state, terrain, rng, index, amount) =>
+          damageCampaignPlant(
+            combatTransaction.host(state, terrain, rng),
+            pack,
+            index,
+            amount,
+          ),
+        relocate: combatTransaction.relocate,
+        coldResponse: pack.ecologyRules!.muleCold,
         effectCode: (id) => {
           const slot = Number(id.split(":")[2]);
           const code =
@@ -1608,29 +2021,11 @@ export function stepCampaign(w: CampaignWorld, pack: Pack): void {
           operators: [],
         },
         airborneObstacle: (p, height) =>
-          queryMuleAirborneBuilding(
-            w.terrain,
+          campaignAirborneBuilding(
+            combatTransaction.current(),
+            pack,
             p,
             height,
-            (cell) => {
-              let id = w.spatial.heads[cell];
-              while (id) {
-                const node = w.spatial.nodes[id];
-                if (node.family === 3) return w.buildingNative[node.index];
-                id = node.next;
-              }
-              return null;
-            },
-            (n) => {
-              const asset = pack.assets[BUILDING_ART[n[45]!]],
-                a = asset.animations?.[n[25]!],
-                heightRaw = a
-                  ? asset.frames?.[a.first + n[27]!]?.sourceSize?.[1]
-                  : undefined;
-              if (heightRaw === undefined)
-                throw new Error("Original building raw frame height missing");
-              return heightRaw;
-            },
           ),
       });
       if (!r.committed) {
@@ -1676,13 +2071,9 @@ export function stepCampaign(w: CampaignWorld, pack: Pack): void {
         }
         if (event.kind === "mule-audio" && event.channel !== undefined)
           emitAudio(w, event.id, event.channel);
-        if (event.kind === "mule-moved" && event.position)
-          moveSpatial(
-            w.spatial,
-            w.terrain,
-            event.id as `source:0:${number}`,
-            worldCell(...event.position),
-          );
+        // The staged relocation port already applied physics and any later
+        // arrival snap in source order. A buffered physics receipt may describe
+        // an earlier cell; replaying it here would undo the final relocation.
         if (event.kind === "mule-retired") {
           delete w.muleQueues[muleIndex];
           if (w.spatial.nodes[event.id])
@@ -1700,6 +2091,7 @@ export function stepCampaign(w: CampaignWorld, pack: Pack): void {
         }
       }
       flushEatenPlantRetirements(w);
+      synchronizeCampaignPlantCounts(w);
       if (r.events.some((e) => e.kind === "mule-effect")) {
         put16(
           w.missionPrefix,
@@ -1726,11 +2118,54 @@ export function stepCampaign(w: CampaignWorld, pack: Pack): void {
         });
     }
     stepCountdownEthereals(w, pack, {
+      cloneHostRoots: cloneCampaignHostRoots,
       gravity: context(w, pack).gravity,
       obstacleAt: (p) => buildingObstacle(w, p),
       cleanupReferences: (staged, id) => cleanupCampaignReferences(staged, id),
       stageHost: stageNativeHost,
       commitHost: commitNativeHost,
+      punishmentServices: (s) =>
+        campaignPunishmentServices(s, {
+          cancelWork: (staged, index) =>
+            cancelStagedCampaignSpecialistWork(
+              staged,
+              index,
+              pack,
+              specialistServices(pack),
+            ),
+          removeSpecialist: (staged, index) =>
+            retireCampaignSpecialist(
+              staged,
+              index,
+              pack,
+              specialistServices(pack),
+            ),
+          damageBuilding: (staged, index, amount, attacker) => {
+            damageCampaignBuilding(staged, pack, index, amount, attacker, {
+              effectOptions: (world) => rewardFactoryOptions(world, pack),
+              cancelConstruction: (world, actor) =>
+                specialistServices(pack).cancelConstruction!(world, actor),
+              onEvent: (world, event) => {
+                if (event.type === "destroyed-message")
+                  notice(world, "Building destroyed", "warning");
+              },
+            });
+          },
+          attack: (staged, parent, target) => {
+            //The visitor callback holds a staged numeric afterimage. Publish its
+            //current pose before6D830 aims from the parent, retaining link bytes.
+            const current = staged.ethereals.records[parent.slot].native;
+            parent.native.splice(0, 6, ...current.slice(0, 6));
+            current.splice(0, current.length, ...parent.native);
+            createStagedEtherealAttack(
+              staged,
+              parent.slot,
+              target.id,
+              pack,
+              rewardFactoryOptions(staged, pack),
+            );
+          },
+        }),
       rewardEffect(staged, _record, request) {
         createCampaignReward(
           staged,
@@ -1788,6 +2223,17 @@ export function stepCampaign(w: CampaignWorld, pack: Pack): void {
           notice(staged, "Ethereal observation timer started");
       },
     });
+    //13780 can change a held specialist's action, lift flags and physical
+    //height after57A10. Keep the render/motion mirror current for next tick.
+    for (const a of w.actors)
+      if (
+        a.ready &&
+        w.specialists.records[a.id][6] === 3 &&
+        w.specialists.records[a.id][85] === 3
+      ) {
+        mirrorCampaignSpecialist(w, a.id);
+        a.reason = "Being abducted";
+      }
     const plants = stepPlants(
       w.ecology,
       w.terrain,
@@ -1813,18 +2259,28 @@ export function stepCampaign(w: CampaignWorld, pack: Pack): void {
     w.ecology.pending = w.ecology.pending.filter(
       (e) => e.kind !== "cleanup-required",
     );
+    synchronizeCampaignPlantCounts(w);
+    if (w.collapse.count)
+      stepCollapsePool(w, {
+        directions: pack.ecologyRules!.spreadDirections as [number, number][],
+        stageHost: (original, staged) =>
+          Object.assign(staged, structuredClone(original)),
+        commitHost: (target, staged) => Object.assign(target, staged),
+        effect: (staged, request) =>
+          createStagedDestructionEffect(
+            staged,
+            request,
+            pack,
+            rewardFactoryOptions(staged, pack),
+          ),
+      });
     stepEffectScheduler(
       w,
       pack,
       createRewardSchedulerOptions(
         pack,
         {
-          gravity: context(w, pack).gravity,
-          obstacleAt: (p) => buildingObstacle(w, p),
-          cleanupReferences: (staged, id) =>
-            cleanupCampaignReferences(staged, id),
-          stageHost: stageNativeHost,
-          commitHost: commitNativeHost,
+          ...rewardFactoryOptions(w, pack),
           onLandingEvent(staged, landing, event, landingContext) {
             if (event.type === "audio") {
               emitAudio(staged, `source:4:${landing.slot}`, 0x50, 4);
@@ -1842,15 +2298,16 @@ export function stepCampaign(w: CampaignWorld, pack: Pack): void {
                   (u16(native as number[], 0x70) & 0xfbfe) | 1,
                 );
                 native[0x16] = native[0x16]! & ~8;
-                a.motion.desiredSpeed =
-                  staged.specialists.bindings[a.id]!.classSpeed;
-                a.goal = activationDestination(
+                const candidate = activationDestination(
                   landing.point,
                   staged.rng,
                   landingContext,
                 );
+                put16(native as number[], 7, candidate[0]);
+                put16(native as number[], 9, candidate[1]);
+                a.motion = readGeneticistMotion(native);
+                a.goal = null;
                 a.route = [];
-                moveGoal(a.motion, a.goal, pack.rules!.tables);
                 staged.players[a.owner].blueprints[
                   a.blueprintIndex
                 ].runtimeFlags |= 2;
@@ -2069,6 +2526,10 @@ export function validateCampaignWorld(w: CampaignWorld, hash: string): void {
     !bytes(w.terrain.bytes, 229376) ||
     !pool(w.buildingNative, 256, 67) ||
     !pool(w.creatureNative, 300, 124) ||
+    !w.collapse ||
+    !pool(w.collapse.records, 32, 49) ||
+    w.collapse.count !== w.collapse.records.filter((n) => n[6] !== 0).length ||
+    w.collapse.count !== u16(w.missionPrefix, 0x3556) ||
     !w.specialists ||
     w.specialists.records.length !== 20 ||
     w.specialists.bindings.length !== 20 ||

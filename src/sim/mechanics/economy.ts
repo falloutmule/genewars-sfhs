@@ -124,6 +124,32 @@ export interface EconomyState {
   packets: EnergyPacket[];
   nextPacketId: number;
 }
+/** Transaction copy of every mutable economy record, including retained
+ * producer animation and pending audio requests. Numeric rule inputs are not
+ * part of this state and remain separate. */
+export function cloneEconomyState(before: EconomyState): EconomyState {
+  return {
+    ...before,
+    resources: before.resources.slice(),
+    players: before.players.map((player) => ({ ...player })),
+    buildings: before.buildings.map((building) => ({
+      ...building,
+      ...(building.extractor ? { extractor: { ...building.extractor } } : {}),
+      ...(building.producer
+        ? {
+            producer: {
+              ...building.producer,
+              animation: { ...building.producer.animation },
+              audioRequests: building.producer.audioRequests.map((request) => ({
+                ...request,
+              })),
+            },
+          }
+        : {}),
+    })),
+    packets: before.packets.map((packet) => ({ ...packet })),
+  };
+}
 export interface EconomyContext {
   frame: number;
   /** Explicit mission solar global; zero is meaningful and is not a default. */
@@ -410,17 +436,7 @@ function stepEconomyPhase(
 ): EconomyResult {
   const invalid = invalidInput(before, context, rules, phase !== "packets");
   if (invalid) return { ok: false, reason: invalid };
-  const state: EconomyState = {
-    ...before,
-    resources: [...before.resources],
-    players: before.players.map((p) => ({ ...p })),
-    buildings: before.buildings.map((b) => ({
-      ...b,
-      ...(b.extractor ? { extractor: { ...b.extractor } } : {}),
-      ...(b.producer ? { producer: structuredClone(b.producer) } : {}),
-    })),
-    packets: before.packets.map((p) => ({ ...p })),
-  };
+  const state = cloneEconomyState(before);
   const events: EconomyEvent[] = [];
   const reasons: EconomyReceipt["reasons"] = [];
   const byId = new Map(state.buildings.map((b) => [b.id, b]));

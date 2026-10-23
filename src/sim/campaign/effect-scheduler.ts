@@ -47,6 +47,7 @@ import {
   type RewardQuery,
 } from "../mechanics/reward-effect";
 import {
+  clonePowerEffectPool,
   validateEffectNativePrior,
   putEffectWord,
   effectTerrainShade,
@@ -62,6 +63,7 @@ import {
   type WaterAdapterReceipt,
 } from "./water-adapter";
 import {
+  cloneSpatial,
   insertSpatial,
   moveSpatial,
   unlinkSpatial,
@@ -69,7 +71,23 @@ import {
 } from "./spatial";
 import { worldCell } from "../mechanics/terrain";
 import type { SourceEntityId } from "./source-pools";
-import type { EconomyReceipt } from "../mechanics/economy";
+import { cloneEconomyState, type EconomyReceipt } from "../mechanics/economy";
+import type { GeneticistProjectileStep } from "../mechanics/geneticist-projectile";
+import {
+  makePlantFireEffect,
+  stepPlantFireEffectRecord,
+  type PlantFireRequest,
+} from "../mechanics/plant-fire";
+import type { SpecialistCorpseRequest } from "../mechanics/specialist-damage";
+import {
+  stepBotanistWorkEffectRecord,
+  stepBotanistEconomyEffectRecord,
+} from "../mechanics/botanist-effect";
+import {
+  makeSpecialistCorpseEffect,
+  specialistCorpseBinding,
+  stepSpecialistCorpseEffect,
+} from "../mechanics/specialist-corpse";
 export type EffectSchedulerWorld = PowerAdapterWorld &
   WaterAdapterWorld & {
     ecology: EcologyState;
@@ -87,6 +105,14 @@ export interface EffectSchedulerOptions<
   gravity: number;
   obstacleAt: (position: [number, number]) => boolean;
   cleanupReferences: (world: W, id: SourceEntityId) => number | void;
+  /** Representation-specific complete copy of these optional host roots.
+   * Generic hosts retain the structuredClone default. */
+  cloneHostRoots?: (
+    world: W,
+  ) => Pick<
+    EffectSchedulerWorld,
+    "actors" | "builders" | "players" | "notices" | "audio"
+  >;
   onLandingEvent?: (
     world: W,
     landing: LandingState,
@@ -119,6 +145,19 @@ export interface EffectSchedulerOptions<
     slot: number,
     event: DestructionAudio,
   ) => void;
+  /** Actual20/41/42/43 callback, including inline factories and host ports.
+   * It receives staged state; the scheduler publishes its numeric afterimage. */
+  geneticistEffect?: (
+    world: W,
+    slot: number,
+    receipt: EffectSchedulerReceipt,
+  ) => GeneticistProjectileStep;
+  /** Concrete25/0x19 callback, including real explosion5 and water factories. */
+  etherealAttackEffect?: (
+    world: W,
+    slot: number,
+    receipt: EffectSchedulerReceipt,
+  ) => GeneticistProjectileStep;
 }
 export interface EffectSchedulerReceipt {
   callbacks: { phase: "primary" | "newborn"; slot: number; code: number }[];
@@ -126,6 +165,8 @@ export interface EffectSchedulerReceipt {
   water: WaterAdapterReceipt[];
   power: EconomyReceipt[];
   rewards: { slot: number; update: RewardEffectUpdate }[];
+  geneticist: { slot: number; update: GeneticistProjectileStep }[];
+  attacks?: { slot: number; update: GeneticistProjectileStep }[];
   createdNewborns: number;
   retired: SourceEntityId[];
   cleanedReferenceBytes: number;
@@ -136,25 +177,21 @@ export function cloneEffectHost<W extends EffectSchedulerWorld>(
   w: W,
   options: EffectSchedulerOptions<W>,
 ): W {
-  const host = structuredClone({
-    actors: w.actors,
-    builders: w.builders,
-    players: w.players,
-    notices: w.notices,
-    audio: w.audio,
-  });
+  const host =
+    options.cloneHostRoots?.(w) ??
+    structuredClone({
+      actors: w.actors,
+      builders: w.builders,
+      players: w.players,
+      notices: w.notices,
+      audio: w.audio,
+    });
   const s = {
     ...w,
     ...host,
     terrain: { bytes: w.terrain.bytes.slice(), revision: w.terrain.revision },
-    spatial: structuredClone(w.spatial),
-    powerEffects: {
-      slots: w.powerEffects.slots.map((p) => ({
-        ...p,
-        packet: p.packet ? { ...p.packet } : null,
-        nativePrior: p.nativePrior?.slice(),
-      })),
-    },
+    spatial: cloneSpatial(w.spatial),
+    powerEffects: clonePowerEffectPool(w.powerEffects),
     waterEffects: w.waterEffects.map(cloneWaterEffect),
     landings: w.landings.map((l) => ({
       ...l,
@@ -166,7 +203,7 @@ export function cloneEffectHost<W extends EffectSchedulerWorld>(
         animation: { ...p.animation },
       })),
     })),
-    economy: structuredClone(w.economy),
+    economy: cloneEconomyState(w.economy),
     rng: { ...w.rng },
     ...(w.missionPrefix ? { missionPrefix: w.missionPrefix.slice() } : {}),
     source: {
@@ -227,7 +264,9 @@ function validate(w: EffectSchedulerWorld) {
   validateSpatial(w.spatial);
 }
 function links(w: EffectSchedulerWorld) {
+  let occupied = 0;
   for (const [slot, p] of w.powerEffects.slots.entries()) {
+    if (p.occupied) occupied++;
     const n = p.nativePrior,
       node = w.spatial.nodes[id(slot)];
     if (!n || !node) continue;
@@ -238,6 +277,7 @@ function links(w: EffectSchedulerWorld) {
     if (next) putEffectWord(n, 3, next.index);
     n[5] = next ? next.family + 1 : 0;
   }
+  if (w.missionPrefix) putEffectWord(w.missionPrefix, 0x3554, occupied);
   for (const landing of w.landings) {
     if (landing.phase !== 4 && landing.native)
       landing.native = w.powerEffects.slots[landing.slot].nativePrior?.slice();
@@ -292,9 +332,19 @@ function retire<W extends EffectSchedulerWorld>(
   out.cleanedReferenceBytes += options.cleanupReferences(w, id(slot)) ?? 0;
   native[6] = 0;
   const shared = w.powerEffects.slots[slot];
+  if (shared.packet)
+    w.economy.packets = w.economy.packets.filter(
+      (p) => p.id !== shared.packet!.id,
+    );
   if (shared.nativePrior) shared.nativePrior[6] = 0;
   shared.occupied = false;
   shared.packet = null;
+  if (w.missionPrefix)
+    putEffectWord(
+      w.missionPrefix,
+      0x3554,
+      w.powerEffects.slots.filter((e) => e.occupied).length,
+    );
   out.retired.push(id(slot));
 }
 function clearNewborn(w: EffectSchedulerWorld, slot: number) {
@@ -313,8 +363,13 @@ function clearNewborn(w: EffectSchedulerWorld, slot: number) {
   }
 }
 function removeReplacedHost(w: EffectSchedulerWorld, slot: number) {
-  for (const l of w.landings)
+  for (const l of w.landings) {
+    if (l.slot === slot && l.phase !== 4) {
+      l.phase = 4;
+      l.native = w.powerEffects.slots[slot].nativePrior!.slice();
+    }
     l.particles = l.particles.filter((p) => p.slot !== slot);
+  }
   for (const e of w.waterEffects)
     if (e.slot === slot && e.active) {
       e.active = false;
@@ -328,6 +383,7 @@ function emptyReceipt(): EffectSchedulerReceipt {
     water: [],
     power: [],
     rewards: [],
+    geneticist: [],
     createdNewborns: 0,
     retired: [],
     cleanedReferenceBytes: 0,
@@ -339,6 +395,141 @@ function effectPriority(pack: Pack, code: number): number | undefined {
     pack.effectRules?.descriptors[code]?.priority ??
     establishedEffectPriorities[code]
   );
+}
+function requireSharedSlot(w: EffectSchedulerWorld, slot: number) {
+  if (!Number.isInteger(slot) || slot < 0 || slot >= 200)
+    throw Error("Source shared effect slot is invalid");
+  const shared = w.powerEffects.slots[slot];
+  if (!shared?.nativePrior)
+    throw Error("Source shared effect numeric prior is required");
+  validateEffectNativePrior(shared.nativePrior);
+  if (
+    shared.occupied !== !!w.spatial.nodes[id(slot)] ||
+    shared.occupied !== (shared.nativePrior[6] === 5) ||
+    (!shared.occupied && shared.nativePrior[6] !== 0)
+  )
+    throw Error("Source shared effect occupancy is inconsistent");
+  return shared;
+}
+/** Already-staged48790 allocation. No reservation or factory RNG is added:
+ * callers must construct/publish immediately before another allocation. */
+export function allocateStagedSharedEffect<W extends EffectSchedulerWorld>(
+  w: W,
+  code: number,
+  pack: Pack,
+  options: EffectSchedulerOptions<W>,
+  out: EffectSchedulerReceipt = emptyReceipt(),
+): number | null {
+  if (
+    !Number.isInteger(code) ||
+    code < 0 ||
+    code > 255 ||
+    effectPriority(pack, code) === undefined
+  )
+    throw Error("Original requested shared effect descriptor is required");
+  const allocation = selectEffectSlot(w.powerEffects, code, (selector) =>
+    effectPriority(pack, selector),
+  );
+  if (!allocation) return null;
+  requireSharedSlot(w, allocation.slot);
+  if (allocation.replace)
+    retireStagedSharedEffect(w, allocation.slot, options, out);
+  return allocation.slot;
+}
+/** Publishes a real factory/callback image, then rebinds logical spatial links.
+ * It does not run a constructor, set newborn flags, register AI or draw RNG. */
+export function publishStagedSharedEffect(
+  w: EffectSchedulerWorld,
+  slot: number,
+  native: readonly (number | null)[],
+): void {
+  const shared = requireSharedSlot(w, slot);
+  validateEffectNativePrior(native);
+  const word = (at: number) => {
+    if (native[at] === null || native[at + 1] === null)
+      throw Error("Source shared effect identity/position is unknown");
+    return ((native[at]! | (native[at + 1]! << 8)) << 16) >> 16;
+  };
+  if (native[6] !== 5 || word(15) !== slot || native[69] === null)
+    throw Error("Source shared effect publication has invalid identity");
+  const cell = worldCell(word(7), word(9));
+  publish(w, slot, native.slice());
+  shared.occupied = true;
+  moveSpatial(w.spatial, w.terrain, id(slot), cell);
+  links(w);
+}
+/**49D30 over the current published carrier. Callback callers must publish
+ * their final kind5 image first; cleanup therefore sees the real afterimage. */
+export function retireStagedSharedEffect<W extends EffectSchedulerWorld>(
+  w: W,
+  slot: number,
+  options: EffectSchedulerOptions<W>,
+  out: EffectSchedulerReceipt = emptyReceipt(),
+): void {
+  const shared = requireSharedSlot(w, slot);
+  if (!shared.occupied)
+    throw Error("Retiring source shared effect is inactive");
+  retire(w, slot, shared.nativePrior!, out, options);
+  removeReplacedHost(w, slot);
+  links(w);
+}
+/** Already-staged6C6B0 fire8 factory. The plant state is committed by its
+ * caller before this attempt; shared capacity failure leaves that state. */
+export function createStagedPlantFireEffect<W extends EffectSchedulerWorld>(
+  w: W,
+  request: PlantFireRequest,
+  pack: Pack,
+  options: EffectSchedulerOptions<W>,
+  out: EffectSchedulerReceipt = emptyReceipt(),
+): number | null {
+  if (
+    request.code !== 8 ||
+    request.owner !== 0 ||
+    request.parameter !== 0 ||
+    request.delay !== 0 ||
+    request.newborn !== false ||
+    request.angles.length !== 3 ||
+    request.angles.some((value) => value !== 0)
+  )
+    throw Error("Original plant fire request is invalid");
+  const slot = allocateStagedSharedEffect(w, 8, pack, options, out);
+  if (slot === null) return null;
+  const native = makePlantFireEffect(
+    w.powerEffects.slots[slot].nativePrior!,
+    { slot, position: request.position, height: request.height },
+    w.terrain,
+    animationProfile(pack.assets.EFF, 8),
+  );
+  publishStagedSharedEffect(w, slot, native);
+  return slot;
+}
+/** Successful57FD8 state4 corpse factory. Full capacity returns null before
+ * resource access; the caller still owns specialist death/count/retirement. */
+export function createStagedSpecialistCorpseEffect<
+  W extends EffectSchedulerWorld,
+>(
+  w: W,
+  request: SpecialistCorpseRequest,
+  pack: Pack,
+  options: EffectSchedulerOptions<W>,
+  out: EffectSchedulerReceipt = emptyReceipt(),
+): number | null {
+  const slot = allocateStagedSharedEffect(w, 69, pack, options, out);
+  if (slot === null) return null;
+  if (!pack.rules || !pack.assets[request.assetKey])
+    throw Error("Original specialist corpse resource/rules are required");
+  const native = makeSpecialistCorpseEffect(
+    w.powerEffects.slots[slot].nativePrior!,
+    { ...request, slot },
+    w.terrain,
+    pack.rules.tables,
+    animationProfile(pack.assets[request.assetKey], 9),
+  );
+  const binding = specialistCorpseBinding(native, pack.rules.tables);
+  if (binding.assetKey !== request.assetKey)
+    throw Error("Original specialist corpse packed/resource binding differs");
+  publishStagedSharedEffect(w, slot, native);
+  return slot;
 }
 /** Runs on an already staged world. Shared allocation occurs before every
  * factory's RNG, and real recursive area damage completes before returning. */
@@ -519,6 +710,7 @@ export function createCampaignRewardEffect<W extends EffectSchedulerWorld>(
     water: [],
     power: [],
     rewards: [],
+    geneticist: [],
     createdNewborns: 0,
     retired: [],
     cleanedReferenceBytes: 0,
@@ -573,6 +765,7 @@ export function stepEffectScheduler<W extends EffectSchedulerWorld>(
       water: [],
       power: [],
       rewards: [],
+      geneticist: [],
       createdNewborns: 0,
       retired: [],
       cleanedReferenceBytes: 0,
@@ -649,6 +842,98 @@ export function stepEffectScheduler<W extends EffectSchedulerWorld>(
       }
       if (landing.phase === 4) retire(s, slot, landing.native, out, options);
       else publish(s, slot, landing.native);
+    } else if (code === 69) {
+      if (!pack.rules)
+        throw Error("Original specialist corpse resource/rules are required");
+      const binding = specialistCorpseBinding(n, pack.rules.tables);
+      if (!pack.assets[binding.assetKey])
+        throw Error("Original specialist corpse actor resource is missing");
+      const result = stepSpecialistCorpseEffect(n, s.terrain, {
+        frame: s.frame,
+        gravity: options.gravity,
+        water: s.source.source.terrain.loadedPhysicalWaterHeight,
+        tables: pack.rules.tables,
+        bounce: pack.rules.tables.bounce,
+        profile: animationProfile(pack.assets[binding.assetKey], 9),
+        obstacle: options.destructionObstacle
+          ? (point, height) => options.destructionObstacle!(s, point, height)
+          : undefined,
+        child(request, parentNative) {
+          publishStagedSharedEffect(s, slot, parentNative);
+          parentNative.splice(
+            0,
+            81,
+            ...s.powerEffects.slots[slot].nativePrior!,
+          );
+          const child = destructionFactory(s, request, pack, options, out);
+          parentNative.splice(
+            0,
+            81,
+            ...s.powerEffects.slots[slot].nativePrior!,
+          );
+          return child !== null;
+        },
+      });
+      publishStagedSharedEffect(s, slot, result.native);
+      if (result.retirementRequired)
+        retireStagedSharedEffect(s, slot, options, out);
+    } else if (code === 7 || code === 60 || code === 61) {
+      const c = {
+        frame: s.frame,
+        gravity: options.gravity,
+        water: s.source.source.terrain.loadedPhysicalWaterHeight,
+        tables: pack.rules!.tables,
+        bounce: pack.rules!.tables.bounce,
+        profile: animationProfile(pack.assets.EFF, code),
+        obstacleAt: options.obstacleAt,
+      };
+      const result =
+        code === 7
+          ? stepBotanistWorkEffectRecord(n, s.terrain, c)
+          : stepBotanistEconomyEffectRecord(n, s.terrain, c, code);
+      publishStagedSharedEffect(s, slot, result.native);
+      if (result.retirementRequired)
+        retireStagedSharedEffect(s, slot, options, out);
+    } else if (code === 8) {
+      const result = stepPlantFireEffectRecord(n, s.terrain, {
+        frame: s.frame,
+        gravity: options.gravity,
+        water: s.source.source.terrain.loadedPhysicalWaterHeight,
+        tables: pack.rules!.tables,
+        bounce: pack.rules!.tables.bounce,
+        profile: animationProfile(pack.assets.EFF, 8),
+        obstacleAt: (point) => options.obstacleAt(point),
+      });
+      publishStagedSharedEffect(s, slot, result.native);
+      if (result.retirementRequired)
+        retireStagedSharedEffect(s, slot, options, out);
+    } else if (code === 25 || [20, 41, 42, 43].includes(code)) {
+      const provider =
+        code === 25 ? options.etherealAttackEffect : options.geneticistEffect;
+      if (!provider)
+        throw Error(
+          code === 25
+            ? "Original Ethereal attack callback service is required"
+            : "Original Geneticist effect callback service is required",
+        );
+      const result = provider(s, slot, out);
+      if (
+        !result ||
+        typeof result.retirementRequired !== "boolean" ||
+        !Number.isInteger(result.newborns) ||
+        result.newborns < 0 ||
+        result.newborns > 255 ||
+        !Array.isArray(result.events) ||
+        !Array.isArray(result.samples) ||
+        (result.query !== null && typeof result.query !== "object")
+      )
+        throw Error("Original Geneticist effect callback receipt is invalid");
+      publishStagedSharedEffect(s, slot, result.native);
+      if (code === 25) (out.attacks ??= []).push({ slot, update: result });
+      else out.geneticist.push({ slot, update: result });
+      created = result.newborns;
+      if (result.retirementRequired)
+        retireStagedSharedEffect(s, slot, options, out);
     } else if ([2, 3, 5, 27, 28, 29, 30, 31, 46].includes(code)) {
       if (!pack.ecologyRules)
         throw Error("Original destruction ecology motion tables are required");

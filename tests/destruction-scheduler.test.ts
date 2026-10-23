@@ -240,7 +240,7 @@ describe("destruction factories in the native shared scheduler", () => {
       f.pack.rules!.tables,
       animationProfile(f.pack.assets.EFF, 46),
     ).native;
-    p.nativePrior[69] = 69;
+    p.nativePrior[69] = 68;
     p.occupied = true;
     insertSpatial(
       f.world.spatial,
@@ -251,7 +251,7 @@ describe("destruction factories in the native shared scheduler", () => {
     copySpatialLinks(f.world.spatial, id(199), p.nativePrior);
     const before = JSON.stringify(f.world);
     expect(() => stepEffectScheduler(f.world, f.pack, f.options)).toThrow(
-      /selector 69/,
+      /selector 68/,
     );
     expect(JSON.stringify(f.world)).toBe(before);
   });

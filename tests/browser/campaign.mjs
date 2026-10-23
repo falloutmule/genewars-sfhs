@@ -239,6 +239,38 @@ try {
     assert.equal(krell.phase, "active");
     assert.deepEqual(krell.renderErrors, []);
     assert.equal(krell.pure, true);
+    if (viewport.width < viewport.height)
+      await page.getByRole("button", { name: "Units", exact: true }).click();
+    await page.getByRole("button", { name: /Geneticist · skill/ }).click();
+    const target = page.getByRole("combobox", {
+      name: "Mule target",
+      exact: true,
+    });
+    assert.equal(await target.locator("option").count(), 4);
+    await target.selectOption("0");
+    const activate = page.getByRole("button", {
+      name: "Capture / research",
+      exact: true,
+    });
+    if (viewport.width < 1000) await activate.tap();
+    else await activate.click();
+    await page.evaluate(() => window.CR.advanceCampaign(1));
+    const geneticist = await page.evaluate(() => {
+      const w = window.CR.inspect().campaign.world,
+        a = w.actors.find((a) => w.specialists.bindings[a.id]?.category === 2),
+        n = w.specialists.records[a.id];
+      return {
+        actor: a.id,
+        state: n[85],
+        task: n[126],
+        target: n[127] | (n[128] << 8),
+        errors: w.notices.filter((n) => n.severity === "error"),
+      };
+    });
+    assert.equal(geneticist.state, 11);
+    assert.equal(geneticist.task, 0);
+    assert.equal(geneticist.target, 0);
+    assert.deepEqual(geneticist.errors, []);
     await page.screenshot({
       path: resolve(out, `${viewport.width}-krell.png`),
     });
@@ -326,6 +358,7 @@ try {
       beforeResult,
       carried,
       krell,
+      geneticist,
       replayed,
       restarted,
       downloadFailure,

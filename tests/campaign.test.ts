@@ -34,6 +34,7 @@ describe("campaign host, separate from the workbench", () => {
     for (let i = 0; i < 200; i++) stepCampaign(w, p);
     expect(w.phase).toBe("active");
     expect(w.actors.every((a) => a.ready)).toBe(true);
+    expect(w.notices.filter((n) => n.severity === "error")).toEqual([]);
     const r = recordCampaign(w, null),
       command = {
         type: "move" as const,

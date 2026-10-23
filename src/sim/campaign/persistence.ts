@@ -6,6 +6,7 @@ import {
   actOnCampaignResult,
   continueCampaign,
   enterCampaign,
+  upgradeEmptyCollapsePool,
   type CampaignWorld,
   type CampaignCommand,
 } from "./world";
@@ -62,6 +63,8 @@ export function loadCampaign(text: string, hash: string): CampaignSave {
     );
   if (checksum({ world: s.world, session: s.session }) !== s.checksum)
     throw new Error("Campaign save checksum mismatch");
+  if (upgradeEmptyCollapsePool(s.world))
+    s.checksum = checksum({ world: s.world, session: s.session });
   validateCampaignWorld(s.world, hash);
   return s;
 }

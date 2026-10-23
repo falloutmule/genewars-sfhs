@@ -12,6 +12,13 @@ export interface SpatialState {
   heads: (SourceEntityId | null)[];
   nodes: Record<string, SpatialNode>;
 }
+/** Transaction copy: map heads and every mutable chain node are independent. */
+export function cloneSpatial(before: SpatialState): SpatialState {
+  const nodes: Record<string, SpatialNode> = {};
+  for (const [id, node] of Object.entries(before.nodes))
+    nodes[id] = { ...node };
+  return { ...before, heads: before.heads.slice(), nodes };
+}
 export function createSpatial(registry: SourcePoolRegistry): SpatialState {
   const nodes: Record<string, SpatialNode> = {};
   for (const e of registry.entities)

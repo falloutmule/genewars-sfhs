@@ -47,22 +47,22 @@ height adds 1280; the target predicted height does not receive that offset.
 
 `readGeneticistMotion` / `writeGeneticistMotion` map these known fields only:
 
-| Native offset, decimal | Motion field |
-| --- | --- |
-| 7 / 9 | x / y |
-| 17 / 39 | ground / physical height, signed dwords |
-| 43 | width, unsigned word |
-| 45 / 47 / 49 | vx / vy / vz |
-| 57 / 59 / 61 / 63 | yaw / pitch / speed / desired speed |
-| 67 / 68 | retained fixed fractions |
-| word 73 bit 2000 hexadecimal | turn braking |
+| Native offset, decimal       | Motion field                            |
+| ---------------------------- | --------------------------------------- |
+| 7 / 9                        | x / y                                   |
+| 17 / 39                      | ground / physical height, signed dwords |
+| 43                           | width, unsigned word                    |
+| 45 / 47 / 49                 | vx / vy / vz                            |
+| 57 / 59 / 61 / 63            | yaw / pitch / speed / desired speed     |
+| 67 / 68                      | retained fixed fractions                |
+| word 73 bit 2000 hexadecimal | turn braking                            |
 
 Native word 65 is the separate contact speed used for walking animation delay.
 Routing flags, accelerations, references and unknown bytes stay authoritative in
 the native backing. Mirroring `MotionState` cannot reconstruct them.
 
 Context supplies actual shared cell order (including eligibility completeness),
-75890 visibility, 73AC0 approach search, 707A0 escape ray, 6D830/shared 48790 shot
+75890 visibility, pure 73AC0 standoff, 707A0 escape ray, 6D830/shared 48790 shot
 creation and kind 1 virtual 34 damage. Runtime globals 118770, 118968, 180D80 and
 11C2BC are explicit inputs. Actual animation profiles are required; no default
 holds are used. 57860 charge and 8B520/code 6 footsteps are required lazily at
@@ -75,9 +75,30 @@ the callback reacquires native records afterward. Port implementations must keep
 side effects inside the staged world; send returned audio/presentation events
 after commit. Any missing required service rolls back state and RNG together.
 
-Specialist death/removal callbacks and other role categories are explicit
-unadmitted boundaries. This module does not replace the owning generic common
-motion or shared scheduler families.
+The admitted four reveal dwords at object 3 offsets 4AEC, 4AFC, 4B0C and 4B1C
+bind combined SHA-256
+`2d5bc62eabe8e715b61cff309e65bbd852fc04477c710600e30d78b9de3ff0e4`.
+`specialistRevealRadius` applies the class 3 charge formula before 75B00.
+`specialist-motion.ts` supplies the source motion, visibility, standoff,
+category 2 plant blocker and escape helpers; see `SPECIALIST_MOTION.md`.
+The approach distance is `128 + skill × (task0 ? 12 : 4)`, passed explicitly
+to the pure standoff helper. It takes no query or RNG draw. Escape has a caller
+610 distance draw followed by the 707A0 5EC direction draw, both retained.
+
+`cancelStagedGeneticistWork` exposes in-place51E80 for an already isolated
+damage transaction, preserving native/player/binding identity. The atomic
+command entry remains available. `stepSpecialistLifecycleCallback` admits only
+actual category0..3 states4/5 and delegates their dispatcher to
+`specialist-damage.ts`. The source checks retained C0 blueprint bytes after
+deletion before its class3 charge gate; retired actors then skip the ordinary
+ANB/stamina/footstep tail. No live-actor validation is performed after retirement.
+
+The shared57A10 envelope also supports the category1 Botanist hooks. Its
+cooldown100 decrement belongs only to categories2/3. Staged idle/role entries
+run inside the callback's single outer rollback transaction; public isolated
+entries retain their own atomic clone. Bind `stepStagedSpecialistMotion` inside
+this envelope to avoid another full-world copy. Missing later services still
+roll back all earlier motion, RNG, role and lifecycle changes together.
 
 ## Evidence and checks
 
@@ -91,7 +112,7 @@ physical metric; and 1EC10/1EC20/1EC30/1EC50 Mule virtual predicates.
 Query scoring uses exact terrain heights in 736F0's squared metric, including
 the source corpse penalty and strict first-winner tie behavior.
 
-Twenty-one public tests use synthetic states/rules. A private frozen comparison
+Thirty public tests use synthetic states/rules. A private frozen comparison
 of fifteen closed 55200/capture/release cases matches **112,740 numeric bytes**
 and all RNG state across **6,511 static source instructions**. Cases include
 live-stunned and corpse research, minimum gain, young/non-cadence healing,

@@ -65,8 +65,13 @@ export interface GeneticistContext<W extends GeneticistWorld> {
   cellOrder(world: W, cell: number): readonly string[];
   /** Real75890 visibility between the current actor and target. */
   lineOfSight?(world: W, actor: number, target: number): boolean;
-  /** Real73AC0(point,target,-1), including its original RNG and terrain query. */
-  approachPoint?(world: W, actor: number, target: number): [number, number];
+  /** Pure73AC0(point,target,distance,-1); it has no query or RNG draw. */
+  approachPoint?(
+    world: W,
+    actor: number,
+    target: number,
+    distance: number,
+  ): [number, number];
   /**707A0 actor ray at this heading; sourcecaller already consumed610 draw. */
   escapeRay?(
     world: W,
@@ -81,6 +86,12 @@ export interface GeneticistContext<W extends GeneticistWorld> {
   /** Actual kind1 virtual34/5B9F0; source amount5 and logical kind3 attacker. */
   damageMule?(world: W, target: number, amount: 5, attacker: number): void;
   animation?(world: W, actor: number, action: number): AnimationProfile;
+  /** Actual74A50 mask0 resolver, called after80FC0 stages pending/target bytes. */
+  resolveMovePoint?(
+    world: W,
+    actor: number,
+    requested: [number, number],
+  ): [number, number];
 }
 /** Role service adapters mutate their staged world in place. Retained numeric
  * records model stable source pointers across calls; replacing them is rejected. */
@@ -90,13 +101,13 @@ function guardPort<W extends GeneticistWorld, T>(
   run: () => T,
   target?: EcologyMule,
 ): T {
-  const a = actor(w, index),
+  const a = actor(w, index, [0, 1, 2]),
     n = a.native,
     raw = a.blueprint,
     t = target?.native;
   const result = run();
   if (
-    actor(w, index).native !== n ||
+    actor(w, index, [0, 1, 2]).native !== n ||
     w.players[a.owner].raw !== raw ||
     (target && mule(w, target.index)?.native !== t)
   )
@@ -186,6 +197,7 @@ const moving = (n: Native) =>
 function actor<W extends GeneticistWorld>(
   w: W,
   index: number,
+  categories: readonly number[] = [2],
 ): {
   native: SpecialistNative;
   skill: number;
@@ -204,7 +216,7 @@ function actor<W extends GeneticistWorld>(
     byte(n, 6) !== 3 ||
     word(n, 15) !== index ||
     byte(n, 24) !== binding.owner ||
-    binding.category !== 2
+    !categories.includes(binding.category)
   )
     throw Error("Actual live Geneticist specialist/binding is required");
   const raw = w.players[binding.owner]?.raw;
@@ -212,7 +224,7 @@ function actor<W extends GeneticistWorld>(
     throw Error("Actual Geneticist player record is required");
   const offset = 0x16 + binding.blueprintIndex * 36;
   if (
-    signed(byte(raw, offset + 22)) !== 2 ||
+    signed(byte(raw, offset + 22)) !== binding.category ||
     signed(byte(raw, offset + 21)) !== binding.style
   )
     throw Error("Geneticist blueprint binding differs from retained player");
@@ -228,6 +240,13 @@ function actor<W extends GeneticistWorld>(
     style: binding.style,
     speed: binding.classSpeed,
   };
+}
+/** Shared kind3 control view; role modules must enforce their own category. */
+export function readSpecialistControlActor<W extends GeneticistWorld>(
+  w: W,
+  index: number,
+) {
+  return actor(w, index, [0, 1, 2, 3]);
 }
 function mule<W extends GeneticistWorld>(
   w: W,
@@ -320,7 +339,7 @@ function query<W extends GeneticistWorld>(
   kind: Query,
   c: GeneticistContext<W>,
 ): EcologyMule | null {
-  const a = actor(w, index),
+  const a = actor(w, index, [0, 1, 2]),
     n = a.native,
     at = point(n),
     sx = nextRandom(w.rng) % 2 ? -256 : 256,
@@ -379,6 +398,16 @@ function query<W extends GeneticistWorld>(
       }
     }
   return winner;
+}
+/** Shared52780/58A70 hostile scorer. Category0/1 callers escape instead of
+ * assigning the category2 healing task after this same source query. */
+export function querySpecialistHostileMule<W extends GeneticistWorld>(
+  world: W,
+  index: number,
+  radius: number,
+  c: Pick<GeneticistContext<W>, "cellOrder">,
+): EcologyMule | null {
+  return query(world, index, radius, "hostile", c as GeneticistContext<W>);
 }
 /**51960 category2 and507D0 category2; common pending-action prefix made
  *58-bit0 true before507D0. No native record or player byte is invented. */
@@ -465,6 +494,9 @@ export function requestGeneticistInteraction<W extends GeneticistWorld>(
 
 export interface GeneticistCallbackContext<W extends GeneticistWorld>
   extends GeneticistContext<W> {
+  /** Complete host-owned isolation; absent provider uses a full structured
+   * clone. A provider must isolate every mutable callback/service root. */
+  stageWorld?(world: W): W;
   /** The actual6FB60 phase, including route prefix, physics, arrival, water and
    * spatial relocation. Called first on the isolated transaction. It may replace
    * world fields. A normalized ground-motion approximation is not this port. */
@@ -475,6 +507,14 @@ export interface GeneticistCallbackContext<W extends GeneticistWorld>
   animation(world: W, actor: number, action: number): AnimationProfile;
   /** Actual57860, lazily needed only when a powered class3 charge reaches224. */
   charge?(world: W, actor: number): void;
+  /** Actual52B90 abduction dispatch, before the shared charge/animation tail. */
+  abductionState?(world: W, actor: number): void;
+  /** Actual57F92 state4/5 dispatch, before common animation. Returned events
+   * are already-normalized side effects; retired suppresses the animation tail. */
+  lifecycle?(
+    world: W,
+    actor: number,
+  ): { handled: boolean; retired: boolean; events?: GeneticistEvent[] };
   /** Actual8B520 classification, lazily called on the source footstep gate. */
   terrainClass?(world: W, position: [number, number]): number;
   /** Actual shared48790 code6 factory. Capacity failure does not suppress4B audio. */
@@ -551,7 +591,7 @@ export function writeGeneticistMotion(
   put(n, 73, m.turnBraking ? word(n, 73) | 0x2000 : word(n, 73) & ~0x2000);
 }
 function resetIdle<W extends GeneticistWorld>(w: W, index: number): void {
-  const n = actor(w, index).native;
+  const n = actor(w, index, [0, 1, 2]).native;
   n[85] = 1;
   put32(n, 104, 0);
   n[25] = 8;
@@ -563,9 +603,9 @@ function resetIdle<W extends GeneticistWorld>(w: W, index: number): void {
 function idleTail<W extends GeneticistWorld>(
   w: W,
   index: number,
-  c: GeneticistCallbackContext<W>,
+  c: Omit<GeneticistCallbackContext<W>, "rules">,
 ): void {
-  const n = actor(w, index).native,
+  const n = actor(w, index, [0, 1, 2]).native,
     override = c.runtimeMode & 1 ? 0 : c.override180d80;
   if (c.runtimeCount11c2bc !== 0 && override === 0) {
     n[25] = 8;
@@ -587,18 +627,50 @@ export function stepGeneticistCallback<W extends GeneticistWorld>(
   index: number,
   c: GeneticistCallbackContext<W>,
 ): GeneticistReceipt {
-  const s = structuredClone(world),
+  return stepSpecialistRoleCallback(world, index, c, {
+    category: 2,
+    roleState: 11,
+    activate: (s, i, c, out) => activate(s, i, c, out),
+    release: (s, i, out) => release(s, i, out),
+    idle: (s, i, c) => tryStagedGeneticistIdleAcquisition(s, i, c),
+    role: (s, i, c) => stepStagedGeneticistRole(s, i, c),
+  });
+}
+export interface SpecialistRoleHooks<
+  W extends GeneticistWorld,
+  C extends Omit<GeneticistCallbackContext<W>, "rules">,
+> {
+  category: 0 | 1 | 2 | 3;
+  roleState: 9 | 10 | 11 | 12;
+  activate(world: W, index: number, context: C, out: GeneticistReceipt): void;
+  release(world: W, index: number, out: GeneticistReceipt): void;
+  idle(world: W, index: number, context: C): GeneticistReceipt;
+  role(world: W, index: number, context: C): GeneticistReceipt;
+}
+/** Shared57A10 envelope. Role hooks execute at their actual pending/idle/work
+ * sites, and retain the same atomic world transaction and animation ordering. */
+export function stepSpecialistRoleCallback<
+  W extends GeneticistWorld,
+  C extends Omit<GeneticistCallbackContext<W>, "rules">,
+>(
+  world: W,
+  index: number,
+  c: C,
+  hooks: SpecialistRoleHooks<W, C>,
+): GeneticistReceipt {
+  const s = c.stageWorld?.(world) ?? structuredClone(world),
     out: GeneticistReceipt = {
       events: [],
       status: "ignored",
       reason: "inactive",
     };
-  if (!(byte(actor(s, index).native, 112) & 1)) return out;
+  if (!(byte(actor(s, index, [hooks.category]).native, 112) & 1)) return out;
   if (!c.motion) throw Error("Geneticist callback requires actual6FB60 motion");
   c.motion(s, index);
-  let a = actor(s, index),
+  let a = actor(s, index, [hooks.category]),
     n = a.native;
-  if (dword(n, 100) > 0) put32(n, 100, dword(n, 100) - 1);
+  if (hooks.category >= 2 && dword(n, 100) > 0)
+    put32(n, 100, dword(n, 100) - 1);
   const mask = a.style === 2 ? 127 : 255;
   if (
     ((s.frame + index) & mask) === 0 &&
@@ -616,7 +688,7 @@ export function stepGeneticistCallback<W extends GeneticistWorld>(
       }
     } else {
       stop(n);
-      release(s, index, out);
+      hooks.release(s, index, out);
       resetIdle(s, index);
       out.events.push({
         type: "feedback",
@@ -636,12 +708,12 @@ export function stepGeneticistCallback<W extends GeneticistWorld>(
         n[87] = byte(n, 87) & 254;
         n[122] = 0;
         n[88] = byte(n, 88) | 1;
-        activate(s, index, c, out);
+        hooks.activate(s, index, c, out);
       }
     } else {
       n[122] = 0;
       if (byte(n, 88) & 1) {
-        release(s, index, out);
+        hooks.release(s, index, out);
         n[87] = byte(n, 87) & 254;
       }
       const mode = byte(n, 91);
@@ -668,9 +740,10 @@ export function stepGeneticistCallback<W extends GeneticistWorld>(
     if (r.status !== "ignored") out.status = r.status;
     out.reason = r.reason;
   };
+  let retired = false;
   switch (byte(n, 85)) {
     case 1: {
-      const r = tryGeneticistIdleAcquisition(s, index, c);
+      const r = hooks.idle(s, index, c);
       absorb(r);
       //52780 skips the timer tail only if its scorer actually acquired a target.
       if (r.status !== "pending") idleTail(s, index, c);
@@ -679,7 +752,27 @@ export function stepGeneticistCallback<W extends GeneticistWorld>(
     case 2:
     case 8:
       break;
+    case 3:
+      if (!c.abductionState)
+        throw Error(
+          "Specialist state3 requires actual52B90 abduction dispatch",
+        );
+      c.abductionState(s, index);
+      break;
+    case 4:
     case 5:
+      if (c.lifecycle) {
+        const r = c.lifecycle(s, index);
+        if (!r.handled)
+          throw Error(
+            "Required specialist lifecycle dispatcher did not handle current state",
+          );
+        out.events.push(...(r.events ?? []));
+        retired = r.retired;
+        break;
+      }
+      if (byte(n, 85) === 4)
+        throw Error("Specialist death lifecycle requires actual dispatch");
       if (
         byte(n, 25) === 10 &&
         animationFinished(
@@ -698,16 +791,25 @@ export function stepGeneticistCallback<W extends GeneticistWorld>(
         put32(n, 104, dword(n, 108));
       }
       break;
-    case 11:
-      absorb(stepGeneticistRole(s, index, c));
-      break;
     default:
-      throw Error("Geneticist common callback lifecycle state is not admitted");
+      if (byte(n, 85) === hooks.roleState) absorb(hooks.role(s, index, c));
+      else
+        throw Error(
+          "Specialist common callback lifecycle state is not admitted",
+        );
   }
   // Nested role transactions may replace records; reacquire before the tail.
-  a = actor(s, index);
+  a = retired
+    ? {
+        ...a,
+        native: s.specialists.records[index],
+        blueprint: s.players[a.owner].raw,
+      }
+    : actor(s, index, [hooks.category]);
   n = a.native;
-  if (a.style === 3) {
+  //80360/800B0 may delete this blueprint during the death dispatch. The source
+  // still dereferences the retained C0 address here, not its earlier style.
+  if (signed(byte(a.blueprint, a.offset + 21)) === 3) {
     if (byte(a.blueprint, 0x610) === 0) n[115] = 0;
     else if (byte(n, 115) < 255 && (s.frame + index) & 1 && !moving(n)) {
       n[115] = (byte(n, 115) + 1) & 255;
@@ -717,10 +819,22 @@ export function stepGeneticistCallback<W extends GeneticistWorld>(
             "Geneticist powered class3 requires actual57860 charge callback",
           );
         c.charge(s, index);
-        a = actor(s, index);
+        a = retired
+          ? {
+              ...a,
+              native: s.specialists.records[index],
+              blueprint: s.players[a.owner].raw,
+            }
+          : actor(s, index, [hooks.category]);
         n = a.native;
       }
     }
+  }
+  if (retired) {
+    out.status = "released";
+    out.reason = "specialist-retired";
+    Object.assign(world, s);
+    return out;
   }
   if (
     signed(byte(a.blueprint, a.offset + 27)) <
@@ -821,6 +935,34 @@ export function stepGeneticistCallback<W extends GeneticistWorld>(
   Object.assign(world, s);
   return out;
 }
+/** Common57A10 for actual kind3 states4/5 only. No Engineer/Shepherd role or
+ * idle behavior is implied by this deliberately bounded entry point. */
+export function stepSpecialistLifecycleCallback<W extends GeneticistWorld>(
+  world: W,
+  index: number,
+  c: Omit<GeneticistCallbackContext<W>, "rules">,
+): GeneticistReceipt {
+  const binding = world.specialists.bindings[index];
+  if (
+    !binding ||
+    ![0, 1, 2, 3].includes(binding.category) ||
+    ![4, 5].includes(byte(world.specialists.records[index], 85))
+  )
+    throw Error(
+      "Specialist lifecycle callback requires actual category0..3 state4/5",
+    );
+  const unsupported = (): never => {
+    throw Error("Unadmitted specialist role dispatch");
+  };
+  return stepSpecialistRoleCallback(world, index, c, {
+    category: binding.category as 0 | 1 | 2 | 3,
+    roleState: (9 + binding.category) as 9 | 10 | 11 | 12,
+    activate: unsupported,
+    release: unsupported,
+    idle: unsupported,
+    role: unsupported,
+  });
+}
 /** UI admission through51E80/51960.57A10 consumes57-bit0 on the next callback;
  * no507D0 activation, cooldown step, animation or physical movement occurs here. */
 export function queueGeneticistInteraction<W extends GeneticistWorld>(
@@ -859,14 +1001,103 @@ export function queueGeneticistInteraction<W extends GeneticistWorld>(
   Object.assign(world, s);
   return out;
 }
-/** Source52780 pulse/acquisition only. With no target the caller continues its
- * original idle timer/animation tail; this function never replaces that tail. */
-export function tryGeneticistIdleAcquisition<W extends GeneticistWorld>(
+/**80FC0 setter. The existing active role is released at its source gate, either
+ * here for native82/pending57-bit0 or during57A10's pending-move dispatch. */
+export function queueGeneticistMove<W extends GeneticistWorld>(
   world: W,
   index: number,
+  request: { callerOwner: number; point: [number, number] },
   c: GeneticistContext<W>,
 ): GeneticistReceipt {
   const s = structuredClone(world),
+    a = actor(s, index),
+    n = a.native,
+    out: GeneticistReceipt = {
+      events: [],
+      status: "ignored",
+      reason: "move-inhibited",
+    };
+  if (request.callerOwner !== a.owner)
+    throw Error("Geneticist request owner differs");
+  if (byte(n, 113) & 16) return out;
+  if (
+    request.point.length !== 2 ||
+    request.point.some((v) => !Number.isInteger(v) || v < -32768 || v > 32767)
+  )
+    throw Error("Invalid Geneticist requested move point");
+  if (!c.resolveMovePoint)
+    throw Error("Geneticist queued move requires actual74A50 resolver");
+  n[87] = byte(n, 87) | 2;
+  put(n, 92, request.point[0]);
+  put(n, 94, request.point[1]);
+  n[91] = 0;
+  const resolved = guardPort(s, index, () =>
+    c.resolveMovePoint!(s, index, request.point),
+  );
+  if (
+    resolved.length !== 2 ||
+    resolved.some((v) => !Number.isInteger(v) || v < -32768 || v > 32767)
+  )
+    throw Error("Invalid Geneticist resolved move point");
+  put(n, 92, resolved[0]);
+  put(n, 94, resolved[1]);
+  put(n, 11, resolved[0]);
+  put(n, 13, resolved[1]);
+  if (byte(n, 130) !== 0 || byte(n, 87) & 1) {
+    n[87] = byte(n, 87) & 254;
+    release(s, index, out);
+  }
+  out.status = "pending";
+  out.reason = "move-queued";
+  Object.assign(world, s);
+  return out;
+}
+/** Exact category2 51E80 release, with pending57 bits retained as in source. */
+export function cancelGeneticistWork<W extends GeneticistWorld>(
+  world: W,
+  index: number,
+  callerOwner: number,
+): GeneticistReceipt {
+  const s = structuredClone(world),
+    a = actor(s, index),
+    out: GeneticistReceipt = {
+      events: [],
+      status: "ignored",
+      reason: "inactive",
+    };
+  if (a.owner !== callerOwner) throw Error("Geneticist request owner differs");
+  release(s, index, out);
+  out.reason = "work-released";
+  Object.assign(world, s);
+  return out;
+}
+/**51E80 inside an already isolated host transaction. Numeric records, player
+ * arrays and blueprint bindings retain their source pointer identities. */
+export function cancelStagedGeneticistWork<W extends GeneticistWorld>(
+  world: W,
+  index: number,
+  callerOwner: number,
+): GeneticistReceipt {
+  const a = actor(world, index),
+    out: GeneticistReceipt = {
+      events: [],
+      status: "ignored",
+      reason: "inactive",
+    };
+  if (a.owner !== callerOwner) throw Error("Geneticist request owner differs");
+  release(world, index, out);
+  out.reason = "work-released";
+  return out;
+}
+/** Source52780 pulse/acquisition only. With no target the caller continues its
+ * original idle timer/animation tail; this function never replaces that tail. */
+function runGeneticistIdleAcquisition<W extends GeneticistWorld>(
+  world: W,
+  index: number,
+  c: GeneticistContext<W>,
+  staged: boolean,
+): GeneticistReceipt {
+  const s = staged ? world : structuredClone(world),
     a = actor(s, index),
     n = a.native,
     out: GeneticistReceipt = {
@@ -904,14 +1135,29 @@ export function tryGeneticistIdleAcquisition<W extends GeneticistWorld>(
   Object.assign(world, s);
   return out;
 }
+export function tryGeneticistIdleAcquisition<W extends GeneticistWorld>(
+  w: W,
+  index: number,
+  c: GeneticistContext<W>,
+): GeneticistReceipt {
+  return runGeneticistIdleAcquisition(w, index, c, false);
+}
+/** Already-isolated57A10 service; caller owns rollback on every later failure. */
+export function tryStagedGeneticistIdleAcquisition<W extends GeneticistWorld>(
+  w: W,
+  index: number,
+  c: GeneticistContext<W>,
+): GeneticistReceipt {
+  return runGeneticistIdleAcquisition(w, index, c, true);
+}
 /** Source526C0 plus52340's role1/4/5 movement continuations. */
 function continueMovement<W extends GeneticistWorld>(
   w: W,
   index: number,
   mode: 0 | 1,
-  c: GeneticistContext<W>,
+  c: Pick<GeneticistContext<W>, "tables" | "escapeRay">,
 ): boolean {
-  const a = actor(w, index),
+  const a = actor(w, index, [0, 1, 2]),
     n = a.native;
   if (byte(n, 112) & 32) return false;
   if (a.style === 3 && (w.frame + index) & 1 && byte(n, 115) > 0)
@@ -931,12 +1177,20 @@ function continueMovement<W extends GeneticistWorld>(
   return false;
 }
 /**52340 role movement dispatcher. Pending commands call it unconditionally. */
+export function continueSpecialistMovement<W extends GeneticistWorld>(
+  w: W,
+  index: number,
+  mode: 0 | 1,
+  c: Pick<GeneticistContext<W>, "tables" | "escapeRay">,
+): boolean {
+  return continueMovement(w, index, mode, c);
+}
 function issueMovement<W extends GeneticistWorld>(
   w: W,
   index: number,
-  c: GeneticistContext<W>,
+  c: Pick<GeneticistContext<W>, "tables" | "escapeRay">,
 ): void {
-  const a = actor(w, index),
+  const a = actor(w, index, [0, 1, 2]),
     n = a.native,
     task = byte(n, 90);
   if (task === 4) {
@@ -1008,7 +1262,13 @@ function approach<W extends GeneticistWorld>(
   const p = guardPort(
     w,
     index,
-    () => c.approachPoint!(w, index, target.index),
+    () =>
+      c.approachPoint!(
+        w,
+        index,
+        target.index,
+        128 + a.skill * (byte(n, 126) === 0 ? 12 : 4),
+      ),
     target,
   );
   if (
@@ -1162,12 +1422,13 @@ function nutrition(n: Native, amount: number): void {
 }
 /** Runs55200 only, after the normal57A10 prefix (including cooldown100
  * decrement), before common animation selection/advance and footsteps. */
-export function stepGeneticistRole<W extends GeneticistWorld>(
+function runGeneticistRole<W extends GeneticistWorld>(
   world: W,
   index: number,
   c: GeneticistContext<W>,
+  staged: boolean,
 ): GeneticistReceipt {
-  const s = structuredClone(world),
+  const s = staged ? world : structuredClone(world),
     a = actor(s, index),
     n = a.native,
     out: GeneticistReceipt = {
@@ -1388,4 +1649,19 @@ export function stepGeneticistRole<W extends GeneticistWorld>(
   } else continueMovement(s, index, 0, c);
   Object.assign(world, s);
   return out;
+}
+export function stepGeneticistRole<W extends GeneticistWorld>(
+  w: W,
+  index: number,
+  c: GeneticistContext<W>,
+): GeneticistReceipt {
+  return runGeneticistRole(w, index, c, false);
+}
+/** Already-isolated57A10 service; retained actor/target/player records stay held. */
+export function stepStagedGeneticistRole<W extends GeneticistWorld>(
+  w: W,
+  index: number,
+  c: GeneticistContext<W>,
+): GeneticistReceipt {
+  return runGeneticistRole(w, index, c, true);
 }

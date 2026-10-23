@@ -193,6 +193,26 @@ export function campaignFixture(): Pack {
     sounds: {},
     texts: Array.from({ length: 128 }, (_, i) => `Fixture${i}`),
     unknown: [],
+    geneticistRules: {
+      schemaVersion: 1,
+      revealRadii: [1024, 1024, 1024, 1024],
+      projectiles: [0, 1, 2].map((i) => ({
+        speedWord: 20,
+        rangeFactor: 64,
+        cooldown: 20,
+        effectCode: 41 + i,
+      })),
+      effectDescriptors: [20, 41, 42, 43].map((code) => ({
+        code,
+        completion: code === 20 ? 0 : 4,
+        gravity: false,
+        priority: code === 20 ? 12 : 9,
+        childCode: code === 20 ? null : 20,
+        obstacle: true,
+        water: true,
+      })),
+      provenance: { executableSha256: sha, originalExecution: false },
+    },
     rules: {
       schemaVersion: 1,
       tables: {
@@ -213,6 +233,7 @@ export function campaignFixture(): Pack {
         buildingHealth: Array(42).fill(80),
         buildingProgressThresholds: Array(42).fill(0),
         buildingFootprints: Array(14).fill(1),
+        buildingCombatHalfWidths: [0, 75, 150, 225],
         buildingPrerequisites: Array(14).fill(255),
       },
       provenance: { executableSha256: sha, originalExecution: false },
