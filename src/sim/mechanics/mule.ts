@@ -1,0 +1,2705 @@
+import { nextRandom, type GeneRng } from "./random";
+import {
+  originalAngle,
+  terrainNormal,
+  velocity,
+  createMotion,
+  resolveMovementTarget,
+  type MotionTables,
+} from "./motion";
+import {
+  groundHeight,
+  worldCell,
+  integerSqrt,
+  torusDelta,
+  type TerrainState,
+} from "./terrain";
+import {
+  advanceAnimation,
+  animationFinished,
+  type AnimationProfile,
+  type AnimationState,
+} from "./animation";
+import {
+  cloneEcologyState,
+  damagePlant,
+  ecologyTerrainClass,
+  muleLifecycleTail,
+  muleRequestedSpeed,
+  plantBlockerWeight,
+  type EcologyState,
+  type EcologyRules,
+  type EcologyMule,
+} from "./ecology";
+import { initializeMuleNative } from "./genepod";
+import {
+  chooseMuleHostile,
+  contactMuleHostile,
+  acquireMuleHostile,
+  completeMuleAttack,
+  queryMuleCombat,
+  resolveMuleHostileQuery,
+  type MuleCombatTraits,
+  type MuleCombatEffectRequest,
+  type MuleCombatContext,
+  type MuleCombatPorts,
+} from "./mule-combat";
+
+type Native = (number | null)[];
+const signed = (v: number) => (v << 16) >> 16;
+const w = (n: Native, p: number) => {
+  if (n[p] === null || n[p + 1] === null)
+    throw new Error("Mule native field has no initialized value");
+  return signed(n[p]! | (n[p + 1]! << 8));
+};
+const d = (n: Native, p: number) => (w(n, p) & 65535) | (w(n, p + 2) << 16);
+const put = (n: Native, p: number, v: number) => {
+  n[p] = v & 255;
+  n[p + 1] = (v >> 8) & 255;
+};
+const put32 = (n: Native, p: number, v: number) => {
+  put(n, p, v);
+  put(n, p + 2, v >> 16);
+};
+const point = (n: Native): [number, number] => [w(n, 7), w(n, 9)];
+export interface MuleContext {
+  terrain: TerrainState;
+  tables: MotionTables;
+  rules: EcologyRules;
+  frame: number;
+  gravity: number;
+  water: number;
+  climate: number;
+  bounce: readonly number[];
+  profile(action: number, state: number): AnimationProfile;
+  bonesProfile?(action: number): AnimationProfile;
+  /** Source74270 building/entity obstacle result, before terrain/plant checks. */
+  obstacleAt(position: [number, number], mule: EcologyMule): boolean;
+  /** Actual source shared-cell list order, head first. Required when more than
+   * one living Mule can affect a5B100/5B260 query. */
+  cellOrder?(cell: number): readonly string[];
+  /** Native69 selector for an actual shared family4 identity. Read lazily
+   * when a query visits an effect, before the source code11 exception. */
+  effectCode?(id: string): number;
+  /** Exact74270 result at current physical height, not a broad rectangle. */
+  airborneObstacle?(
+    position: [number, number],
+    height: number,
+    mule: EcologyMule,
+  ): { position: [number, number]; ground: number } | null;
+  /** Actual300-slot native backing, including inactive retained bytes. Only
+   * read by a successful natural birth; never synthesized from a slot count. */
+  creaturePriors?: readonly Native[];
+  combat?: MuleCombatTraits;
+  combatEffect?(
+    state: EcologyState,
+    terrain: TerrainState,
+    rng: GeneRng,
+    request: MuleCombatEffectRequest,
+  ): void;
+  owned?: {
+    selectedPlayer: number;
+    globalFlags: number;
+    allianceMasks: readonly number[];
+    buildings: readonly { index: number; native: Native }[];
+    /** Actual player1805 records, read lazily for inherited-trait birth gates. */
+    players?: readonly (readonly number[])[];
+    /** Complete actual category3 roster's control fields for source5D700.
+     * An empty actual roster establishes no operator; absence is not assumed. */
+    operators: readonly {
+      owner: number;
+      position: [number, number];
+      enabled: number;
+      commandState: number;
+      flags70: number;
+      mode: number;
+      range: number;
+      /** Source blueprint byte17, used only by a qualifying mode1 operator. */
+      attackBonus?: number;
+    }[];
+  };
+}
+export interface MuleEvent {
+  kind:
+    | "mule-moved"
+    | "mule-target"
+    | "mule-fed"
+    | "mule-died"
+    | "mule-retired"
+    | "mule-audio"
+    | "mule-water-effect"
+    | "mule-water-damage"
+    | "mule-reveal"
+    | "mule-command-feedback"
+    | "mule-born"
+    | "mule-effect"
+    | "mule-combat-damage"
+    | "mule-combat-kill";
+  id: string;
+  position?: [number, number];
+  target?: number;
+  targetKind?: 1 | 2;
+  channel?: number;
+  code?: number;
+  height?: number;
+  damage?: number;
+  attackerOwner?: number;
+  victimOwner?: number;
+  index?: number;
+  angles?: [number, number, number];
+  vertices?: [number, number][];
+  buildingShades?: { index: number; shade: number }[];
+  newborn?: {
+    index: number;
+    native: Native;
+    owner: number;
+    bornCounterIncrement: number;
+  };
+  retirement?: {
+    cleanupTarget: { index: number; kind: 1 };
+    countDelta: -1;
+    displayPhase: 11;
+    portraitRefresh: true;
+    moduleCleanup: true;
+  };
+}
+export interface MuleStepResult {
+  committed: boolean;
+  reason: string | null;
+  events: MuleEvent[];
+}
+/**74270/74160's source ordering, physical-height argument and first-candidate
+ * rejection semantics. Current frame metadata must come from the actual ANB. */
+export function queryMuleAirborneBuilding(
+  terrain: TerrainState,
+  at: [number, number],
+  height: number,
+  firstLinkedBuilding: (cell: number) => Native | null,
+  heightRaw: (native: Native) => number,
+): { native: Native; position: [number, number]; ground: number } | null {
+  if (!(terrain.bytes[worldCell(...at) * 14 + 11] & 1)) return null;
+  const classes = [3, 1, 2, 3, 2, 2, 1, 2, 1, 2, 3, 3, 2, 1];
+  const offsets = [
+    [0, 0],
+    [256, 0],
+    [256, 256],
+    [0, 256],
+    [-256, 256],
+    [-256, 0],
+    [-256, -256],
+    [256, -256],
+    [7680, 0],
+  ];
+  for (const [i, delta] of offsets.entries()) {
+    const n = firstLinkedBuilding(
+      worldCell(signed(at[0] + delta[0]), signed(at[1] + delta[1])),
+    );
+    if (!n) continue;
+    if (n[6] !== 4 || !classes[n[45]!])
+      throw new Error(
+        "Airborne building query has an invalid actual native record",
+      );
+    const shape = classes[n[45]!];
+    if (shape === 2 && i >= 4) continue;
+    const extent = shape === 1 ? 85 : shape === 2 ? 128 : 256;
+    if (
+      Math.abs(signed(w(n, 7) - at[0])) > extent ||
+      Math.abs(signed(w(n, 9) - at[1])) > extent
+    )
+      return null;
+    const ground = d(n, 17);
+    if (height >= 0) {
+      const raw = heightRaw(n);
+      if (!Number.isInteger(raw) || raw < -32768 || raw > 32767)
+        throw new Error(
+          "Original building current-frame raw height is required",
+        );
+      if (((height - ground) | 0) > (((raw << 6) - 320) | 0)) return null;
+    }
+    return { native: n, position: point(n), ground };
+  }
+  return null;
+}
+function distance(
+  terrain: TerrainState,
+  from: [number, number],
+  to: [number, number],
+): number {
+  const x = torusDelta(to[0], from[0]),
+    y = torusDelta(to[1], from[1]),
+    z = (groundHeight(terrain, ...to) - groundHeight(terrain, ...from)) >> 3;
+  return (Math.imul(x, x) + Math.imul(y, y) + Math.imul(z, z)) | 0;
+}
+function renderShade(
+  terrain: TerrainState,
+  position: [number, number],
+): number {
+  const [x, y] = position.map((v) => v >> 8),
+    [fx, fy] = position.map((v) => v & 255);
+  const vertex = (dx: number, dy: number) => {
+    const at = (((y + dy) & 127) * 128 + ((x + dx) & 127)) * 14;
+    return (
+      (signed(terrain.bytes[at] | (terrain.bytes[at + 1] << 8)) *
+        terrain.bytes[at + 12]) >>
+      6
+    );
+  };
+  const a = vertex(0, 0),
+    b = vertex(1, 0),
+    c = vertex(0, 1),
+    e = vertex(1, 1);
+  return Math.max(
+    0,
+    Math.min(
+      64,
+      ((2 * a +
+        ((fx < fy
+          ? (e - c) * fx + (c - a) * fy
+          : (b - a) * fx + (e - b) * fy) >>
+          7) -
+        0x1e00) >>
+        8) +
+        16,
+    ),
+  );
+}
+function accepted(
+  state: EcologyState,
+  mule: EcologyMule,
+  at: [number, number],
+  c: MuleContext,
+): boolean {
+  if (c.obstacleAt(at, mule)) return false;
+  if (ecologyTerrainClass(c.terrain, at) === 0) return false;
+  const n = mule.native,
+    cell = worldCell(...at);
+  if ((n[0x5f] === 1 || n[0x5e] === 1 || n[0x5e] === 7) && n[0x57] === 2) {
+    const target = state.plants[w(n, 0x55)];
+    if (target?.active && worldCell(...target.position) === cell) return true;
+  }
+  return plantBlockerWeight(state, cell) < 10;
+}
+/** Exact743C0 fixed-point sample walk, with live point-admission callback. */
+function straightRay(
+  from: [number, number],
+  to: [number, number],
+  tables: MotionTables,
+  accept: (point: [number, number]) => boolean,
+): { clear: boolean; failure: [number, number] | null } {
+  if (!accept(from)) return { clear: true, failure: null }; // source's initial rejected point bypasses loop
+  let fixed = [from[0] << 16, from[1] << 16],
+    step = [0, 0];
+  for (let iteration = 0; iteration < 1024; iteration++) {
+    const p: [number, number] = [fixed[0] >> 16, fixed[1] >> 16];
+    if ((iteration & 63) === 0) {
+      const a = originalAngle(
+          signed(signed(to[0] - p[0]) * 2),
+          signed(signed(to[1] - p[1]) * 2),
+          tables.atan,
+        ),
+        index = a < 512 ? a + 1536 : a - 512;
+      step = [tables.cosine[index] << 6, tables.sine[index] << 6];
+    }
+    const dx = signed(signed(to[0] - p[0]) * 2) >> 1,
+      dy = signed(signed(to[1] - p[1]) * 2) >> 1,
+      done = (Math.imul(dx, dx) + Math.imul(dy, dy)) >>> 0 <= 4096;
+    if (!accept(done ? to : p))
+      return {
+        clear: false,
+        failure: [
+          ((fixed[0] - step[0]) | 0) >> 16,
+          ((fixed[1] - step[1]) | 0) >> 16,
+        ],
+      };
+    fixed = [(fixed[0] + step[0]) | 0, (fixed[1] + step[1]) | 0];
+    if (done) return { clear: true, failure: null };
+  }
+  throw new Error("Original Mule ray sample bound exceeded");
+}
+export function muleStraightRay(
+  from: [number, number],
+  to: [number, number],
+  tables: MotionTables,
+  accept: (point: [number, number]) => boolean,
+): boolean {
+  return straightRay(from, to, tables, accept).clear;
+}
+const WALK_STEPS: [number, number][] = [
+  [0, -128],
+  [128, -128],
+  [128, 0],
+  [128, 128],
+  [0, 128],
+  [-128, 128],
+  [-128, 0],
+  [-128, -128],
+];
+const walkPoint = (
+  at: [number, number],
+  direction: number,
+): [number, number] => [
+  signed(at[0] + WALK_STEPS[direction][0]),
+  signed(at[1] + WALK_STEPS[direction][1]),
+];
+function boundaryDirection(
+  at: [number, number],
+  direction: number,
+  clockwise: boolean,
+  accept: (p: [number, number]) => boolean,
+) {
+  const original = accept(walkPoint(at, direction));
+  for (let i = 0; i < 8; i++) {
+    const forward = original ? clockwise : !clockwise;
+    direction = (direction + (forward ? 1 : 7)) & 7;
+    if (accept(walkPoint(at, direction)) !== original)
+      return original ? (direction + (clockwise ? 7 : 1)) & 7 : direction;
+  }
+  return direction;
+}
+export interface MuleWaypoint {
+  cost: number;
+  point: [number, number] | null;
+}
+/** Source6F0C0/6EDE0: two callers choose the boundary side; no invented grid path. */
+export function muleWaypoint(
+  position: [number, number],
+  start: [number, number],
+  target: [number, number],
+  side: boolean,
+  limit: number,
+  tables: MotionTables,
+  accept: (p: [number, number]) => boolean,
+): MuleWaypoint {
+  if (!Number.isInteger(limit) || limit < 1 || limit > 120)
+    throw new Error("Original Mule waypoint limit is invalid");
+  if (!accept(target)) return { cost: limit + 1, point: null };
+  const angle = originalAngle(
+    signed(signed(target[0] - start[0]) * 2),
+    signed(signed(target[1] - start[1]) * 2),
+    tables.atan,
+  );
+  let direction = boundaryDirection(
+      start,
+      ((angle + 128) >> 8) & 7,
+      !side,
+      accept,
+    ),
+    at: [number, number] = [...start],
+    output: [number, number] = [...start],
+    first: [number, number] | null = null,
+    bestStep = 0,
+    steps = 0;
+  const visited: ([number, number] | null)[] = Array(128).fill(null),
+    equal = (a: [number, number], b: [number, number]) =>
+      a[0] === b[0] && a[1] === b[1];
+  const squared = (p: [number, number]) => {
+    const dx = signed(signed(p[0] - position[0]) * 2) >> 1,
+      dy = signed(signed(p[1] - position[1]) * 2) >> 1;
+    return (Math.imul(dx, dx) + Math.imul(dy, dy)) >>> 0;
+  };
+  for (;;) {
+    const hash = signed(at[0] + at[1]) & 127;
+    let slot = hash,
+      repeat = false;
+    for (let i = 0; i < 128; i++) {
+      const prior = visited[slot];
+      if (!prior) break;
+      if (equal(prior, at)) {
+        repeat = true;
+        break;
+      }
+      slot = (slot + 1) & 127;
+    }
+    if (repeat) {
+      if (bestStep > Math.trunc(steps / 2)) {
+        if (!first)
+          throw new Error("Original waypoint cycle has no first point");
+        output = first;
+      }
+      return { cost: limit + 1, point: output };
+    }
+    direction = boundaryDirection(at, direction, side, accept);
+    slot = hash;
+    for (let i = 0; i < 128 && visited[slot]; i++) slot = (slot + 1) & 127;
+    if (visited[slot])
+      throw new Error("Original waypoint visited table is full");
+    visited[slot] = at;
+    at = walkPoint(at, direction);
+    if (
+      !first ||
+      (muleStraightRay(at, position, tables, accept) &&
+        squared(at) >= squared(output))
+    ) {
+      if (!first) first = at;
+      output = at;
+      bestStep = steps;
+    }
+    const finished = muleStraightRay(at, target, tables, accept);
+    steps = (steps + 1) & 255;
+    if (finished || steps >= limit) return { cost: steps, point: output };
+  }
+}
+/** Bounded5B100 state8/plant-approach predicate. Source list order matters only
+ * with multiple live creatures; that interaction remains an explicit gate. */
+function cellEntryPredicate(
+  state: EcologyState,
+  mule: EcologyMule,
+  cell: number,
+  c?: MuleContext,
+  entering = false,
+): boolean {
+  const n = mule.native,
+    occupants = state.mules.filter(
+      (other) =>
+        other.native[6] === 1 &&
+        other.native[0x5e]! < 24 &&
+        worldCell(...point(other.native)) === cell,
+    );
+  let ordered = occupants;
+  if (occupants.length > 1) {
+    if (!c?.cellOrder)
+      throw new Error("Mule cell-entry requires shared creature list order");
+    const ids = [...c.cellOrder(cell)].filter(
+      (id) => id !== mule.id || !entering,
+    );
+    if (entering) ids.unshift(mule.id);
+    ordered = ids.flatMap((id) => occupants.filter((other) => other.id === id));
+    if (
+      ordered.length !== occupants.length ||
+      new Set(ordered.map((other) => other.id)).size !== occupants.length
+    )
+      throw new Error("Mule cell-entry list does not match living occupants");
+  }
+  if (w(n, 0x49) & 0x400)
+    throw new Error("Mule attached cell-entry predicate is required");
+  const last = ordered.at(-1);
+  if (n[0x5e] === 10 && worldCell(w(n, 11), w(n, 13)) === cell)
+    return cellHasEffect11(state, cell, c);
+  if (n[0x5e] === 1 && n[0x57] === 1 && last?.id !== mule.id) {
+    const target = state.mules.find((other) => other.index === w(n, 0x55));
+    if (
+      target &&
+      last?.id === target.id &&
+      target.native[0x5e]! < 24 &&
+      worldCell(...point(target.native)) === cell
+    )
+      return ordered.length > 2 || cellHasEffect11(state, cell, c);
+    return true;
+  }
+  return last?.id !== mule.id || cellHasEffect11(state, cell, c);
+}
+function cellHasEffect11(
+  state: EcologyState,
+  cell: number,
+  c?: MuleContext,
+): boolean {
+  const ids =
+    c?.cellOrder?.(cell).filter((id) => id.startsWith("source:4:")) ??
+    state.otherEntities
+      .filter((e) => e.kind === 5 && worldCell(...e.position) === cell)
+      .map((e) => e.id);
+  return ids.some((id) => {
+    if (!c?.effectCode)
+      throw new Error(
+        "Mule effect query requires the actual shared-pool selector",
+      );
+    const selector = c.effectCode(id);
+    if (!Number.isInteger(selector) || selector < 0 || selector > 255)
+      throw new Error("Mule shared effect has no initialized numeric selector");
+    return selector === 17;
+  });
+}
+function routePrefix(
+  state: EcologyState,
+  mule: EcologyMule,
+  random: GeneRng,
+  c: MuleContext,
+  phase: number,
+): { working: [number, number]; savedSpeed: number | null } {
+  const n = mule.native,
+    current = point(n),
+    accept = (at: [number, number]) => accepted(state, mule, at, c);
+  let target: [number, number] = [w(n, 11), w(n, 13)];
+  const associated =
+    n[0x52] === 1
+      ? state.mules.find(
+          (m) =>
+            m.index === w(n, 0x50) && m.id !== mule.id && m.native[6] === 1,
+        )
+      : undefined;
+  if (n[0x4f] !== 0 || (n[0x52] !== 0 && !associated) || n[0x4a]! & 4)
+    throw new Error("Mule association movement prefix is required");
+  if (associated && (n[0x49]! & 3) === 3) target = point(associated.native);
+  n[0x49] = n[0x49]! & 0x9f;
+  if ((n[0x49]! & 3) === 3) {
+    let flags = w(n, 0x49);
+    if (
+      (phase & 3) === 3 &&
+      !cellEntryPredicate(state, mule, worldCell(...target), c)
+    ) {
+      n[0x54] = 20;
+      flags &= 0xeffc;
+      n[0x16] = n[0x16]! & 0x7f;
+    } else {
+      n[0x54] = (n[0x54]! - 1) & 255;
+      if (n[0x54] === 0) {
+        n[0x54] = 20;
+        flags = (flags & 0xeebc) | 0x140;
+        n[0x16] = n[0x16]! & 0x7f;
+      }
+    }
+    put(n, 0x49, flags);
+    if (phase & 1)
+      put(
+        n,
+        0x4b,
+        originalAngle(
+          signed(signed(target[0] - current[0]) * 2),
+          signed(signed(target[1] - current[1]) * 2),
+          c.tables.atan,
+        ),
+      );
+    const savedSpeed = w(n, 0x3f);
+    put(n, 0x3f, 0);
+    return { working: target, savedSpeed };
+  }
+  let working: [number, number] =
+      n[0x49]! & 3 ? [w(n, 0x45), w(n, 0x47)] : target,
+    immediate = false;
+  if (
+    n[0x49]! & 0x10 &&
+    (n[0x49]! & 0x0c || (associated && (phase & 3) === 3 && !(n[0x49]! & 3)))
+  ) {
+    if (associated) {
+      target = point(associated.native);
+      put(n, 11, target[0]);
+      put(n, 13, target[1]);
+      if (!(n[0x49]! & 3)) working = target;
+    }
+    if (!accept(target)) {
+      target = resolveMovementTarget(current, target, c.tables, accept);
+      put(n, 11, target[0]);
+      put(n, 13, target[1]);
+      if (!(n[0x49]! & 3)) working = target;
+    }
+    const from = n[0x49]! & 3 ? working : current,
+      ray = straightRay(from, target, c.tables, accept);
+    if (ray.clear) {
+      if (n[0x49]! & 3) {
+        put(n, 0x49, w(n, 0x49) & 0xeffc);
+        n[0x16] = n[0x16]! & 0x7f;
+        immediate = true;
+      }
+      n[0x49] = n[0x49]! & 0xf3;
+      working = target;
+    } else {
+      if (n[0x49]! & 3) {
+        if (n[0x49]! & 8) {
+          const result = muleWaypoint(
+            current,
+            from,
+            target,
+            !!(n[0x49]! & 1),
+            120,
+            c.tables,
+            accept,
+          );
+          working = result.point ?? from;
+          if (result.cost < 120) immediate = true;
+          else {
+            n[0x54] = (n[0x54]! - 1) & 255;
+            if (n[0x54] === 0) {
+              put(n, 0x49, (w(n, 0x49) & 0xeebc) | 0x140);
+              n[0x16] = n[0x16]! & 0x7f;
+            }
+          }
+        }
+      } else {
+        if (!ray.failure)
+          throw new Error("Blocked Mule ray has no failure point");
+        const first = muleWaypoint(
+            current,
+            ray.failure,
+            target,
+            false,
+            120,
+            c.tables,
+            accept,
+          ),
+          second = muleWaypoint(
+            current,
+            ray.failure,
+            target,
+            true,
+            first.cost < 120 ? first.cost + 1 : 120,
+            c.tables,
+            accept,
+          );
+        put(n, 0x49, w(n, 0x49) & 0xeffc);
+        n[0x16] = n[0x16]! & 0x7f;
+        const failed = first.cost >= 120 && second.cost >= 120;
+        if (failed) n[0x54] = (n[0x54]! - 1) & 255;
+        if (failed && n[0x54] === 0) {
+          put(n, 0x49, w(n, 0x49) | 0x140);
+          working = [w(n, 0x45), w(n, 0x47)];
+        } else {
+          if (failed && first.cost === 121 && second.cost === 121)
+            n[0x16] = n[0x16]! | 0x80;
+          const chooseFirst =
+              failed && first.cost === second.cost
+                ? nextRandom(random) % 10 < 5
+                : first.cost < second.cost,
+            result = chooseFirst ? first : second;
+          if (!result.point)
+            throw new Error("Original Mule waypoint did not produce a point");
+          working = result.point;
+          put(n, 0x49, w(n, 0x49) | (chooseFirst ? 0x1002 : 0x1001));
+          immediate = true;
+        }
+      }
+      put(n, 0x45, working[0]);
+      put(n, 0x47, working[1]);
+      n[0x49] = n[0x49]! & 0xf3;
+    }
+  }
+  if (n[0x49]! & 0x10 && (immediate || phase & 1))
+    put(
+      n,
+      0x4b,
+      originalAngle(
+        signed(signed(working[0] - current[0]) * 2),
+        signed(signed(working[1] - current[1]) * 2),
+        c.tables.atan,
+      ),
+    );
+  return { working, savedSpeed: null };
+}
+function setVelocity(n: Native, tables: MotionTables) {
+  const m = createMotion(
+    ...point(n),
+    d(n, 0x11),
+    w(n, 0x3f),
+    w(n, 0x2b) & 65535,
+  );
+  m.yaw = w(n, 0x39);
+  m.pitch = w(n, 0x3b);
+  m.speed = w(n, 0x3d);
+  if (m.yaw < 0 || m.yaw > 2048 || m.pitch < 0 || m.pitch > 2048 || m.speed < 0)
+    throw new Error("Mule velocity is outside original angle/speed bounds");
+  velocity(m, tables);
+  put(n, 0x2d, m.vx);
+  put(n, 0x2f, m.vy);
+  put(n, 0x31, m.vz);
+}
+function angles(n: Native, c: MuleContext) {
+  const x = w(n, 0x2d),
+    y = w(n, 0x2f),
+    z = w(n, 0x31),
+    xy = integerSqrt((Math.imul(x, x) + Math.imul(y, y)) >>> 0);
+  if (xy) put(n, 0x39, originalAngle(x, y, c.tables.atan));
+  const speed = signed(
+    integerSqrt((Math.imul(xy, xy) + Math.imul(z, z)) >>> 0),
+  );
+  put(n, 0x3d, speed);
+  put(n, 0x3b, speed === 0 ? 512 : originalAngle(xy, -z, c.tables.atan));
+}
+function commonContactSpeed(
+  n: Native,
+  normal: [number, number, number],
+  previous: number,
+  desired: number,
+  squaredDistance: number,
+): number {
+  const speed = w(n, 0x41),
+    width = w(n, 0x2b) & 65535,
+    brake = () => (speed > width ? signed(speed - width) : 0);
+  if (n[0x4a]! & 0x20) return brake();
+  if (!(n[0x4a]! & 0x10)) {
+    if (!width) throw new Error("Original zero-width contact division");
+    const quotient = Math.trunc((speed * speed) / (width << 7));
+    if (squaredDistance <= Math.imul(quotient, quotient)) return brake();
+  }
+  const surface = normal[2] + (previous < d(n, 0x11) ? 0 : 128) - 128;
+  desired = Math.imul(surface, desired) >> 7;
+  return Math.abs(speed - desired) <= width
+    ? signed(desired)
+    : desired < speed
+      ? brake()
+      : signed(speed + width);
+}
+function contact(
+  state: EcologyState,
+  n: Native,
+  normal: [number, number, number],
+  previous: number,
+  c: MuleContext,
+): number {
+  const at = point(n),
+    cell = worldCell(...at),
+    terrainClass = ecologyTerrainClass(c.terrain, at);
+  let desired = w(n, 0x3f);
+  if (terrainClass === 2) desired = signed(Math.trunc((desired * 4) / 5));
+  if (terrainClass === 5) desired = signed(Math.trunc((desired * 5) / 6));
+  const candidates = state.plants.filter(
+    (plant) => plant.active && worldCell(...plant.position) === cell,
+  );
+  const order = state.plantOrder?.[String(cell)];
+  if (candidates.length > 1 && !order)
+    throw new Error("Source cell plant order is required for contact query");
+  const nearby = order
+    ? state.plants[order.find((index) => state.plants[index].active)!]
+    : candidates[0];
+  if (nearby) {
+    const dx = torusDelta(nearby.position[0], at[0]),
+      dy = torusDelta(nearby.position[1], at[1]),
+      z = (nearby.height - d(n, 0x27)) >> 3;
+    if (
+      ((Math.imul(dx, dx) + Math.imul(dy, dy) + Math.imul(z, z)) | 0) <=
+      nearby.animation * 32 + 64
+    )
+      desired = signed(Math.trunc((desired * 3) / 4));
+  }
+  return commonContactSpeed(
+    n,
+    normal,
+    previous,
+    desired,
+    n[0x52] === 1 &&
+      ([1, 3, 4, 5].includes(n[0x5e]!) || (n[24] === 4 && n[0x5e] === 8))
+      ? (() => {
+          const peer = state.mules.find((m) => m.index === w(n, 0x50));
+          if (!peer) throw new Error("Mule physical target is missing");
+          const to = point(peer.native),
+            dx = torusDelta(to[0], at[0]),
+            dy = torusDelta(to[1], at[1]),
+            z = ((d(peer.native, 0x27) - d(n, 0x27)) | 0) >> 3;
+          return (Math.imul(dx, dx) + Math.imul(dy, dy) + Math.imul(z, z)) | 0;
+        })()
+      : distance(
+          c.terrain,
+          at,
+          n[0x49]! & 3 ? [w(n, 0x45), w(n, 0x47)] : [w(n, 11), w(n, 13)],
+        ),
+  );
+}
+function physics(
+  state: EcologyState,
+  mule: EcologyMule,
+  c: MuleContext,
+  events: MuleEvent[],
+  random: GeneRng,
+) {
+  const n = mule.native,
+    before = n.slice(),
+    oldCell = worldCell(...point(n)),
+    oldGround = d(n, 0x11),
+    wasGrounded = d(n, 0x27) <= oldGround;
+  const corpse =
+    n[0x5e]! >= 24 &&
+    w(n, 0x3f) === -1 &&
+    n[0x15]! & 0x80 &&
+    wasGrounded &&
+    [0x33, 0x35, 0x37].every((at) => w(n, at) === 0);
+  if (
+    n[0x16]! & 9 ||
+    n[0x15]! & 0x20 ||
+    w(n, 0x49) & 0x400 ||
+    (w(n, 0x3f) < 0 && !corpse)
+  )
+    throw new Error(
+      "Mule airborne/dead/attached physics branch is not admitted",
+    );
+  for (let axis = 0; axis < 3; axis++)
+    put(
+      n,
+      0x2d + 2 * axis,
+      w(before, 0x2d + 2 * axis) +
+        w(before, 0x33 + 2 * axis) -
+        (axis === 2 ? c.gravity : 0),
+    );
+  const candidateHeight = (d(before, 0x27) + (w(n, 0x31) >> 3)) | 0;
+  const fixed = (axis: number) =>
+    ((w(n, 7 + 2 * axis) << 16) +
+      (n[0x43 + axis]! << 8) +
+      (w(n, 0x2d + 2 * axis) << 10)) |
+    0;
+  const candidate: [number, number] = [fixed(0) >> 16, fixed(1) >> 16],
+    ground = groundHeight(c.terrain, ...candidate);
+  put32(n, 0x11, ground);
+  n[0x17] = renderShade(c.terrain, candidate);
+  if (candidateHeight <= ground) {
+    put32(n, 0x27, ground);
+    if (wasGrounded || before[0x15]! & 0x40) {
+      if (corpse) {
+        const speed = integerSqrt(
+          [0x2d, 0x2f, 0x31].reduce(
+            (sum, at) => (sum + Math.imul(w(n, at), w(n, at))) >>> 0,
+            0,
+          ),
+        );
+        if (speed) {
+          const friction =
+            c.rules.corpseFriction?.[
+              ecologyTerrainClass(c.terrain, point(before))
+            ];
+          if (friction === undefined)
+            throw new Error("Original corpse-friction table is required");
+          if (speed <= friction) n.fill(0, 0x2d, 0x33);
+          else {
+            const factor = Math.trunc(((speed - friction) << 6) / speed);
+            for (const at of [0x2d, 0x2f, 0x31])
+              put(n, at, Math.floor((w(n, at) * factor) / 64));
+          }
+        }
+      }
+      const normal = terrainNormal(c.terrain, ...point(before));
+      put(n, 0x31, signed(signed(ground) - signed(oldGround)) * 8);
+      angles(n, c);
+      if (!corpse) {
+        const speed = contact(state, n, normal, signed(oldGround), c);
+        put(n, 0x41, speed);
+        put(n, 0x3d, speed);
+      }
+      setVelocity(n, c.tables);
+      for (let axis = 0; axis < 2; axis++) {
+        const value = fixed(axis);
+        put(n, 7 + 2 * axis, value >> 16);
+        n[0x43 + axis] = (value >> 8) & 255;
+      }
+      const sampled = groundHeight(c.terrain, ...point(n));
+      put32(n, 0x11, sampled);
+      put32(n, 0x27, sampled);
+      n[0x17] = renderShade(c.terrain, point(n));
+    } else {
+      for (let axis = 0; axis < 2; axis++) {
+        const value = fixed(axis);
+        put(n, 7 + 2 * axis, candidate[axis]);
+        n[0x43 + axis] = (value >> 8) & 255;
+      }
+      const normal = terrainNormal(c.terrain, ...candidate),
+        cls = ecologyTerrainClass(c.terrain, candidate),
+        vz = w(n, 0x31);
+      if (Math.trunc((vz >> 6) / 16) > 0 || c.bounce.length !== 8)
+        throw new Error("Mule contact bounce requires an admitted coefficient");
+      const bounced = signed((Math.abs(vz) * c.bounce[cls]) >> 8);
+      put(n, 0x31, bounced);
+      for (let axis = 0; axis < 2; axis++)
+        put(
+          n,
+          0x2d + 2 * axis,
+          w(n, 0x2d + 2 * axis) + Math.trunc((bounced * normal[axis]) / 256),
+        );
+      angles(n, c);
+    }
+  } else {
+    for (let axis = 0; axis < 2; axis++) {
+      const value = fixed(axis);
+      put(n, 7 + 2 * axis, candidate[axis]);
+      n[0x43 + axis] = (value >> 8) & 255;
+    }
+    put32(n, 0x27, Math.max(candidateHeight, 0));
+    angles(n, c);
+  }
+  const newCell = worldCell(...point(n));
+  if (newCell !== oldCell) {
+    if (cellEntryPredicate(state, mule, newCell, c, true)) {
+      if (![1, 3, 8].includes(n[0x5e]!) || n[0x53] !== 1 || n[0x4f] !== 0)
+        throw new Error(
+          "Mule cell-entry action requires its associated entity callback",
+        );
+      const step = nextRandom(random) & 1 ? 256 : -256;
+      let heading = w(n, 0x4b),
+        at: [number, number] = point(n);
+      for (let attempt = 0; attempt < 8; attempt++) {
+        heading = (heading + 2048 + step) & 2047;
+        const index = (heading + 1536) & 2047;
+        at = [
+          (signed(
+            signed(w(n, 7) * 2) + signed((c.tables.cosine[index] * 512) >> 16),
+          ) >>
+            1) &
+            32767,
+          (signed(
+            signed(w(n, 9) * 2) + signed((c.tables.sine[index] * 512) >> 16),
+          ) >>
+            1) &
+            32767,
+        ];
+        if (accepted(state, mule, at, c)) break;
+      }
+      put(n, 0x45, at[0]);
+      put(n, 0x47, at[1]);
+      n[0x49] = n[0x49]! | 1;
+      if (worldCell(w(n, 11), w(n, 13)) === newCell) {
+        n[0x54] = 80;
+        n[0x4a] = n[0x4a]! & 0xef;
+      } else n[0x4a] = n[0x4a]! | 0x10;
+    }
+    events.push({ kind: "mule-moved", id: mule.id, position: point(n) });
+  }
+  const phase = (c.frame + w(n, 15)) >>> 0;
+  if (phase & 1 && d(n, 0x27) > d(n, 0x11)) {
+    const obstacle = c.airborneObstacle?.(point(n), d(n, 0x27), mule);
+    if (obstacle) {
+      const dx = signed(w(n, 7) * 2 - obstacle.position[0] * 2),
+        dy = signed(w(n, 9) * 2 - obstacle.position[1] * 2);
+      const yaw = originalAngle(dx, dy, c.tables.atan),
+        distance = integerSqrt(
+          (Math.imul(dx >> 1, dx >> 1) + Math.imul(dy >> 1, dy >> 1)) >>> 0,
+        );
+      const pitch = originalAngle(
+        distance,
+        ((obstacle.ground - d(n, 0x27)) | 0) >> 3,
+        c.tables.atan,
+      );
+      const impulse = createMotion(0, 0, 0, 0);
+      impulse.yaw = yaw;
+      impulse.pitch = pitch;
+      impulse.speed = w(n, 0x3d) >> 1;
+      velocity(impulse, c.tables);
+      for (const [axis, value] of [
+        impulse.vx,
+        impulse.vy,
+        impulse.vz,
+      ].entries())
+        put(n, 0x2d + axis * 2, w(n, 0x2d + axis * 2) + value);
+      angles(n, c);
+    } else if (!c.airborneObstacle && c.obstacleAt(point(n), mule))
+      throw new Error(
+        "Mule airborne entity collision response requires actual74270 height result",
+      );
+  }
+  if (
+    (phase & 3) === 3 &&
+    ((c.water >>> 0) + 320) >>> 0 >= d(n, 0x27) >>> 0 &&
+    ecologyTerrainClass(c.terrain, point(n)) <= 1
+  ) {
+    if (w(n, 0x3d) >= 128) {
+      const above = d(before, 0x27) >>> 0 > c.water >>> 0,
+        deep = !above && ((c.water >>> 0) - 512) >>> 0 > d(n, 0x27) >>> 0;
+      events.push({
+        kind: "mule-water-effect",
+        id: mule.id,
+        position: point(n),
+        code: deep ? 0x15 : 0x30,
+        height: deep
+          ? d(n, 0x27)
+          : d(n, 0x11) >>> 0 > c.water >>> 0
+            ? d(n, 0x11)
+            : c.water,
+        angles: deep ? [0, 0, 128] : [0, 0, 0],
+      });
+    }
+    if (
+      d(n, 0x27) === 0 &&
+      ecologyTerrainClass(c.terrain, point(n)) === 0 &&
+      n[0x53]! & 1
+    )
+      events.push({
+        kind: "mule-water-damage",
+        id: mule.id,
+        damage:
+          n[24] === 4
+            ? applyNeutralMuleSelfWaterDamage(mule)
+            : applyOwnedMuleSelfWaterDamage(mule),
+      });
+  }
+  put(n, 7, w(n, 7) & 32767);
+  put(n, 9, w(n, 9) & 32767);
+}
+/** Owned counterpart of the admitted null-reference nonlethal5B9F0 reset.
+ * Retained command7/high80 survives and ordinary AI can resume its goal. */
+export function applyOwnedMuleSelfWaterDamage(mule: EcologyMule): number {
+  const n = mule.native,
+    idle = [8, 0x88].includes(n[0x60]!) && n[0x61] === 0 && n[0x78] === 0,
+    commanded =
+      [0x18, 0x98].includes(n[0x60]!) && n[0x61] === 0x80 && n[0x78] === 7;
+  if (
+    n[6] !== 1 ||
+    n[24]! >= 4 ||
+    n[0x7a] !== 4 ||
+    n[0x5e] !== 8 ||
+    !(idle || commanded) ||
+    n[0x76] === null ||
+    [0x4f, 0x52, 0x57, 0x5d].some((at) => n[at] !== 0) ||
+    w(n, 0x6a) <= 5
+  )
+    throw new Error(
+      "Owned self-water damage requires lethal/action/reference continuation",
+    );
+  const damage = Math.max(
+    1,
+    5 - Math.trunc((6 * (50 + Math.trunc((50 * n[0x76]!) / 100))) / 100),
+  );
+  resetAction(n);
+  put(n, 0x6c, 0);
+  put(n, 0x6a, w(n, 0x6a) - damage);
+  return damage;
+}
+/** 5B9F0 attacker==self, neutral state8/null-reference, nonlethal domain.
+ * Literal 184-instruction neutral case agrees; no RNG/audio/retaliation. */
+export function applyNeutralMuleSelfWaterDamage(mule: EcologyMule): number {
+  const n = mule.native;
+  if (
+    n[6] !== 1 ||
+    n[24] !== 4 ||
+    n[0x7a] !== 4 ||
+    ![0, 8].includes(n[0x5e]!) ||
+    ![8, 0x88].includes(n[0x60]!) ||
+    n[0x61] !== 0 ||
+    n[0x78] !== 0 ||
+    n[0x76] === null ||
+    [0x4f, 0x52, 0x57, 0x5d].some((at) => n[at] !== 0) ||
+    w(n, 0x6a) <= 5
+  )
+    throw new Error(
+      "Neutral self-water damage requires the unported lethal/action/reference branch",
+    );
+  const percent = 50 + Math.trunc((50 * n[0x76]!) / 100),
+    damage = Math.max(1, 5 - Math.trunc((6 * percent) / 100));
+  resetAction(n);
+  put(n, 0x6c, 0);
+  put(n, 0x6a, w(n, 0x6a) - damage);
+  return damage;
+}
+function enterDeath(mule: EcologyMule, events: MuleEvent[]) {
+  const n = mule.native;
+  if (n[0x60]! & 2)
+    throw new Error(
+      "Mule mortality requires target/task/attachment cleanup before numeric death",
+    );
+  n[0x5e] = 24;
+  resetAction(n);
+  put(n, 0x15, w(n, 0x15) & 0xf7df & 0x3fdf);
+  put(n, 0x6c, 32767);
+  n[0x54] = 0;
+  put(n, 0x3f, -1);
+  n[0x78] = 0;
+  put(n, 0x49, w(n, 0x49) & 0x3bef);
+  n[0x60] = n[0x60]! & 0xef;
+  put(n, 0x66, 0);
+  events.push({ kind: "mule-died", id: mule.id });
+  if (w(n, 0x6a) <= 0)
+    events.push({ kind: "mule-audio", id: mule.id, channel: 0x1f });
+}
+function nativeAnimation(n: Native): AnimationState {
+  return {
+    action: n[0x19]!,
+    hold: n[0x1a]!,
+    frame: n[0x1b]!,
+    direction: (n[0x1c]! << 24) >> 24,
+    delay: (n[0x1d]! << 24) >> 24,
+    counter: (n[0x1e]! << 24) >> 24,
+  };
+}
+function mortalityProfile(
+  action: number,
+  state: number,
+  c: MuleContext,
+): AnimationProfile {
+  if (state >= 26) {
+    if (!c.bonesProfile)
+      throw new Error("Original BONES animation metadata/binding is required");
+    return c.bonesProfile(action);
+  }
+  return c.profile(action, state);
+}
+function mortality(
+  state: EcologyState,
+  mule: EcologyMule,
+  phase: number,
+  c: MuleContext,
+  events: MuleEvent[],
+  entering = false,
+) {
+  const n = mule.native;
+  if (
+    !entering &&
+    n[0x5e] === 24 &&
+    animationFinished(nativeAnimation(n), c.profile(n[0x19]!, 24))
+  )
+    put(n, 0x6c, 0);
+  if (phase & 1) {
+    if (!entering && n[0x5e] === 24 && w(n, 0x6c) <= 0) {
+      n[0x5e] = 25;
+      put(n, 0x68, Math.max(signed(w(n, 0x68) * 2), w(n, 0x62) >> 2));
+      put(n, 0x6c, 32767);
+    }
+    if (n[0x5e] === 25 && (w(n, 0x6c) & 31) === 0) {
+      const reserve = Math.max(0, w(n, 0x68) - 1);
+      put(n, 0x68, reserve);
+      put(n, 0x6c, 32767);
+      if (reserve <= w(n, 0x62) >> 1) {
+        mortalityProfile(4, 26, c);
+        n[0x5e] = 26;
+        n[0x19] = 4;
+        n[0x1b] = 0;
+        n[0x1c] = 0;
+      }
+    } else if (n[0x5e] === 26 && (w(n, 0x6c) & 31) === 0) {
+      const reserve = Math.max(0, w(n, 0x68) - 1);
+      put(n, 0x68, reserve);
+      put(n, 0x6c, 32767);
+      if (reserve <= w(n, 0x62) >> 2) {
+        n[0x5e] = 27;
+        n[0x1b] = 1;
+      }
+    } else if (n[0x5e] === 27 && (w(n, 0x6c) & 15) === 0) {
+      const reserve = Math.max(0, w(n, 0x68) - 1);
+      put(n, 0x68, reserve);
+      put(n, 0x6c, 32767);
+      if (!reserve) {
+        for (const other of state.mules) {
+          const r = other.native;
+          if (r[6] !== 1) continue;
+          for (const at of [0x4d, 0x50, 0x55, 0x58, 0x5b]) {
+            if (r[at + 2] !== 1 || w(r, at) !== mule.index) continue;
+            r[at + 2] = 0;
+            if (at === 0x5b) r[0x60] = r[0x60]! & 0xfd;
+          }
+        }
+        n[6] = 0;
+        events.push({
+          kind: "mule-retired",
+          id: mule.id,
+          retirement: {
+            cleanupTarget: { index: mule.index, kind: 1 },
+            countDelta: -1,
+            displayPhase: 11,
+            portraitRefresh: true,
+            moduleCleanup: true,
+          },
+        });
+      }
+    }
+    if (w(n, 0x6c) > 0) put(n, 0x6c, w(n, 0x6c) - 1);
+  }
+  const action = n[0x5e] === 24 ? 17 : n[0x5e] === 25 ? 18 : 4;
+  if (n[0x19] !== action) {
+    n[0x19] = action;
+    n[0x1a] = n[0x1b] = n[0x1d] = n[0x1e] = 0;
+    n[0x1c] = action === 17 ? 1 : 0;
+  }
+  const out = advanceAnimation(
+    nativeAnimation(n),
+    mortalityProfile(action, n[0x5e]!, c),
+  );
+  n[0x1a] = out.hold;
+  n[0x1b] = out.frame;
+  n[0x1c] = out.direction & 255;
+  n[0x1d] = out.delay & 255;
+  n[0x1e] = out.counter & 255;
+}
+/**5C730 for species4: audited original1D/1E/1F food coefficients are100.
+ * Nutrition uses signed-word wrapping, strict greater-than-full and the
+ * original growth/lifetime tradeoff. No source table defaults are inferred. */
+function nutrition(mule: EcologyMule, amount: number): boolean {
+  const n = mule.native,
+    gain = Math.trunc((amount * 200) / 100),
+    reserve = signed(w(n, 0x68) + gain);
+  put(n, 0x68, reserve);
+  if (n[0x77] !== 255) put(n, 0x66, w(n, 0x66) - gain * 2);
+  if (reserve <= w(n, 0x62)) return false;
+  put(n, 0x68, w(n, 0x62));
+  n[0x61] = n[0x61]! & 0xbf;
+  return true;
+}
+function acquireFood(
+  state: EcologyState,
+  mule: EcologyMule,
+  food: MuleFoodTarget,
+  c: MuleContext,
+  events: MuleEvent[],
+) {
+  const n = mule.native;
+  n[0x61] = n[0x61]! | 0x40;
+  releaseAction(state, mule);
+  put(n, 0x55, food.index);
+  n[0x57] = food.kind;
+  if (n[0x78] !== 0) {
+    put(n, 0x58, food.index);
+    n[0x5a] = food.kind;
+  }
+  const at =
+    food.kind === 2
+      ? state.plants[food.index]?.position
+      : point(state.mules.find((m) => m.index === food.index)!.native);
+  if (!at)
+    throw new Error("Mule food query returned a missing source identity");
+  if (food.kind === 2) {
+    put(n, 11, at[0]);
+    put(n, 13, at[1]);
+  }
+  n[0x16] = n[0x16]! & 0x3f;
+  put(n, 0x49, (w(n, 0x49) | 0x14) & 0xeffc);
+  n[0x54] = 20;
+  n[0x4f] = n[0x52] = 0;
+  if (food.kind === 1) {
+    put(n, 0x50, food.index);
+    n[0x52] = 1;
+  }
+  put(n, 0x3f, muleRequestedSpeed(mule, c.rules));
+  put(n, 0x6c, 32767);
+  n[0x60] = n[0x60]! | 0xc0;
+  n[0x5e] = 1;
+  events.push({
+    kind: "mule-target",
+    id: mule.id,
+    target: food.index,
+    targetKind: food.kind,
+    position: [...at],
+  });
+}
+/**679CE Bones and667EE corpse consumption. They share actual query/mating
+ * services; their source amounts, completion delays and particle differ. */
+function corpseFeeding(
+  state: EcologyState,
+  mule: EcologyMule,
+  rng: GeneRng,
+  c: MuleContext,
+  events: MuleEvent[],
+) {
+  const n = mule.native,
+    action = n[0x5e]!,
+    target =
+      n[0x57] === 1
+        ? state.mules.find((m) => m.index === w(n, 0x55))
+        : undefined;
+  if (
+    !target ||
+    target.native[6] !== 1 ||
+    distance(c.terrain, point(n), point(target.native)) > 4096
+  ) {
+    releaseAction(state, mule);
+    idleWait(state, mule, rng, c);
+    return;
+  }
+  const t = target.native;
+  if (t[0x5e]! < 24)
+    throw new Error("Mule corpse consumption has a live creature target");
+  if (action === 5 && n[0x60]! & 0x20) {
+    n[0x60] = n[0x60]! & 0xdf;
+    return;
+  }
+  if (w(n, 0x6c) & 15) return;
+  if (action === 5 && w(t, 0x68) <= w(t, 0x62) >> 1) {
+    releaseAction(state, mule);
+    idleWait(state, mule, rng, c, 20);
+    return;
+  }
+  verifyNeighborhood(state, mule, c);
+  put(t, 0x68, Math.max(0, w(t, 0x68) - (action === 4 ? 2 : 6)));
+  const full = nutrition(mule, action === 4 ? 2 : 12),
+    peer = mateTarget(state, mule, rng, c);
+  const combat = c.combat ? combatServices(state, rng, c, events) : null,
+    query = combat ? queryMuleCombat(state, mule, rng, combat.context) : null;
+  events.push(
+    { kind: "mule-fed", id: mule.id, target: target.index, targetKind: 1 },
+    {
+      kind: "mule-audio",
+      id: mule.id,
+      channel: full ? 0x1b : action === 4 ? 0x12 : 0x11,
+    },
+  );
+  nextRandom(rng);
+  nextRandom(rng);
+  if (action === 5) {
+    const speed = 4096 + 64 * (nextRandom(rng) % 128),
+      pitch = 2 * (nextRandom(rng) % 150),
+      yaw = 8 * nextRandom(rng);
+    if (query && (query.enemyCount || combat!.ports.occupied(mule))) {
+      if (!c.combatEffect)
+        throw new Error(
+          "Combat blood requires the actual staged shared effect factory",
+        );
+      c.combatEffect(state, c.terrain, rng, {
+        code: 32,
+        source: mule.id,
+        position: point(n),
+        angles: [yaw, pitch, speed],
+      });
+    } else
+      events.push({
+        kind: "mule-effect",
+        id: mule.id,
+        code: 32,
+        position: point(n),
+        height: d(n, 0x27),
+        angles: [yaw, pitch, speed],
+      });
+  }
+  if (
+    query &&
+    resolveMuleHostileQuery(
+      state,
+      mule,
+      rng,
+      combat!.context,
+      combat!.ports,
+      events,
+      query,
+    )
+  )
+    return;
+  if (peer) {
+    beginPair(state, mule, peer, c);
+    pairAction(state, mule, rng, c, events);
+  } else if (full) {
+    releaseAction(state, mule);
+    idleWait(state, mule, rng, c, action === 4 ? 20 : 10);
+  }
+}
+function selectAnimation(n: Native, c: MuleContext) {
+  const combatAction = n[0x5e] === 16 ? 23 : n[0x5e] === 20 ? 16 : null;
+  if (combatAction !== null) {
+    if (n[0x19] !== combatAction) {
+      n[0x19] = combatAction;
+      n[0x1a] = n[0x1b] = n[0x1d] = n[0x1e] = 0;
+      n[0x1c] = 1;
+    }
+  } else if (n[0x5e] === 21) {
+    if (!c.combat)
+      throw new Error("Mule attack animation requires original combat traits");
+    if (n[0x19]! < 8 || n[0x19]! > 15) {
+      n[0x19] = (((((w(n, 0x39) >> 7) + 1) >> 1) + 1) & 7) + 8;
+      n[0x1a] = n[0x1b] = n[0x1d] = n[0x1e] = 0;
+      n[0x1c] = 1;
+    }
+    const strength = Math.trunc(
+      (c.combat.attack *
+        (50 + Math.trunc((Math.min(n[0x76]!, 100) * 50) / 100))) /
+        100,
+    );
+    n[0x1d] = 1 + +(w(n, 0x68) < strength >> 1);
+  } else if (n[0x5e] === 10) {
+    if (n[0x19] !== 22) {
+      n[0x19] = 22;
+      n[0x1a] = n[0x1b] = n[0x1d] = n[0x1e] = 0;
+      n[0x1c] = 1;
+    }
+  } else if ([4, 5, 7].includes(n[0x5e]!)) {
+    if (n[0x19] !== 19) {
+      n[0x19] = 19;
+      n[0x1a] = n[0x1b] = n[0x1e] = 0;
+      n[0x1c] = 1;
+      n[0x1d] = 2;
+    }
+  } else {
+    n[0x19] = ((((w(n, 0x39) >> 7) + 1) >> 1) + 1) & 7;
+    const speed = w(n, 0x41);
+    if (!speed && n[0x5e] !== 0) {
+      n[0x1b] = 0;
+      n[0x1c] = 0;
+      n[0x1d] = 0;
+    } else {
+      n[0x1c] = 1;
+      n[0x1d] = Math.trunc((1024 - speed) / 256) & 255;
+    }
+  }
+}
+function animation(n: Native, c: MuleContext) {
+  selectAnimation(n, c);
+  const a: AnimationState = {
+    action: n[0x19]!,
+    hold: n[0x1a]!,
+    frame: n[0x1b]!,
+    direction: (n[0x1c]! << 24) >> 24,
+    delay: (n[0x1d]! << 24) >> 24,
+    counter: (n[0x1e]! << 24) >> 24,
+  };
+  const out = advanceAnimation(a, c.profile(a.action, n[0x5e]!));
+  n[0x1a] = out.hold;
+  n[0x1b] = out.frame;
+  n[0x1c] = out.direction & 255;
+  n[0x1d] = out.delay & 255;
+  n[0x1e] = out.counter & 255;
+}
+/**6E9AF ->59280 ->84B40. Reveal uses terrain distance, then invalidates all
+ * four adjacent cells and updates the actual plant/building shade consumers. */
+function reveal(
+  state: EcologyState,
+  mule: EcologyMule,
+  phase: number,
+  c: MuleContext,
+  events: MuleEvent[],
+) {
+  const n = mule.native,
+    owned = c.owned;
+  if (
+    n[24] === 4 ||
+    !(phase & 1) ||
+    !owned ||
+    !(n[0x16]! & 2) ||
+    (phase & 3) !== 3 ||
+    n[24] !== owned.selectedPlayer ||
+    (w(n, 0x3d) <= 32 && d(n, 0x27) <= d(n, 0x11))
+  )
+    return;
+  const center = point(n),
+    vertices: [number, number][] = [],
+    dirty = new Set<number>();
+  const start = center.map((v) => (signed(v - 1024) & 65535) >> 8),
+    end = center.map((v) => (((signed(v + 1024) & 65535) >> 8) + 1) & 255);
+  for (let row = 0; row < ((end[1] - start[1]) & 255); row++)
+    for (let col = 0; col < ((end[0] - start[0]) & 255); col++) {
+      const at: [number, number] = [
+          signed(((start[0] + col) & 255) << 8),
+          signed(((start[1] + row) & 255) << 8),
+        ],
+        cell = worldCell(...at),
+        old = c.terrain.bytes[cell * 14 + 12];
+      if (old >= 63) continue;
+      const squared = distance(c.terrain, center, at);
+      const factor =
+        squared < 768 * 768
+          ? 63
+          : squared < 1024 * 1024
+            ? Math.trunc(
+                ((1024 - integerSqrt(squared >>> 0)) * 64 - 64) / 256,
+              ) & 255
+            : old;
+      if (factor <= old) continue;
+      c.terrain.bytes[cell * 14 + 12] = factor;
+      vertices.push(at);
+      for (const [dx, dy] of [
+        [0, 0],
+        [-1, 0],
+        [-1, -1],
+        [0, -1],
+      ]) {
+        const adjacent =
+          (((cell >> 7) + dy) & 127) * 128 + (((cell & 127) + dx) & 127);
+        c.terrain.bytes[adjacent * 14 + 11] |= 12;
+        dirty.add(adjacent);
+        for (const p of state.plants)
+          if (
+            p.active &&
+            worldCell(...p.position) === adjacent &&
+            !(p.native[21]! & 2)
+          ) {
+            p.shade = renderShade(c.terrain, p.position);
+            p.native[23] = p.shade;
+          }
+      }
+    }
+  if (!vertices.length) return;
+  const buildingShades = owned.buildings
+    .filter(
+      (b) =>
+        b.native[6] === 4 &&
+        dirty.has(worldCell(...point(b.native))) &&
+        !(b.native[21]! & 2),
+    )
+    .map((b) => ({
+      index: b.index,
+      shade: renderShade(c.terrain, point(b.native)),
+    }));
+  c.terrain.revision++;
+  events.push({ kind: "mule-reveal", id: mule.id, vertices, buildingShades });
+}
+function verifyNeighborhood(
+  state: EcologyState,
+  mule: EcologyMule,
+  c: MuleContext,
+) {
+  const at = point(mule.native),
+    near = (to: [number, number]) => {
+      const delta = (axis: number) =>
+        (((to[axis] >> 8) - (at[axis] >> 8) + 64) & 127) - 64;
+      const dx = delta(0),
+        dy = delta(1);
+      return dx * dx + dy * dy <= 16;
+    };
+  const owner = mule.native[24]!;
+  const friendly = (other: number) =>
+    other === owner ||
+    (owner < 4 &&
+      other <= 4 &&
+      !!(c.owned!.allianceMasks[owner] & (1 << other)));
+  for (const other of state.mules) {
+    if (
+      other.id === mule.id ||
+      other.native[6] !== 1 ||
+      !near(point(other.native))
+    )
+      continue;
+    if (other.native[0x7a] !== 4)
+      throw new Error(
+        "Mule query needs the other creature's actual species scorer",
+      );
+    if (!c.combat && !friendly(other.native[24]!) && other.native[0x5e]! < 24)
+      throw new Error("Mule query selected a live hostile creature");
+  }
+  for (const other of state.otherEntities) {
+    if (!near(other.position) || other.kind === 8 || other.kind === 5) continue;
+    if (!friendly(other.owner))
+      throw new Error("Mule query selected a hostile actor or building");
+  }
+  for (let x = -4; x <= 4; x++)
+    for (let y = -4; y <= 4; y++) {
+      if (x * x + y * y > 16) continue;
+      if (
+        cellHasEffect11(
+          state,
+          worldCell(signed(at[0] + x * 256), signed(at[1] + y * 256)),
+          c,
+        )
+      )
+        throw new Error(
+          "Mule neighborhood code11 effect requires its source scorer",
+        );
+    }
+}
+type MuleFoodTarget = { kind: 1 | 2; index: number };
+function foodTarget(
+  state: EcologyState,
+  mule: EcologyMule,
+  random: GeneRng,
+  c: MuleContext,
+): MuleFoodTarget | null {
+  const n = mule.native;
+  if (
+    w(n, 0x68) > w(n, 0x62) >> (operator(mule, 0, c) ? 1 : 2) &&
+    !(n[0x61]! & 0x40)
+  )
+    return null;
+  const preview = { ...random },
+    sx = nextRandom(preview) & 1 ? -256 : 256,
+    sy = nextRandom(preview) & 1 ? -256 : 256;
+  let best: number | null = null,
+    score = -0x7fffffff,
+    corpseWinner = false;
+  const at = point(n);
+  for (let x = -4; x <= 4; x++)
+    for (let y = -4; y <= 4; y++) {
+      const squared = Math.imul(x * sx, x * sx) + Math.imul(y * sy, y * sy);
+      if (squared > 1024 * 1024) continue;
+      const cell = worldCell(signed(at[0] + x * sx), signed(at[1] + y * sy)),
+        value = 1024 - integerSqrt(squared);
+      const candidates =
+        state.plantOrder?.[String(cell)] ??
+        state.plants
+          .filter(
+            (plant) => plant.active && worldCell(...plant.position) === cell,
+          )
+          .map((plant) => plant.index);
+      if (!state.plantOrder && candidates.length > 1)
+        throw new Error("Food winner requires source linked plant order");
+      const corpses = state.mules.filter(
+        (m) =>
+          m.native[6] === 1 &&
+          m.native[0x7a] === 4 &&
+          [24, 25].includes(m.native[0x5e]!) &&
+          worldCell(...point(m.native)) === cell,
+      );
+      let foods = [
+        ...candidates.flatMap((index) => {
+          const p = state.plants[index];
+          return p.active &&
+            p.owner === 4 &&
+            p.growth > 0 &&
+            !(p.plantFlags & 9)
+            ? [{ id: p.id as string, index, value, corpse: false }]
+            : [];
+        }),
+        ...corpses.map((m) => ({
+          id: m.id as string,
+          index: m.index,
+          value: value * (m.native[0x60]! & 1 ? 1 : 2),
+          corpse: true,
+        })),
+      ];
+      if (corpses.length && foods.length > 1) {
+        if (!c.cellOrder)
+          throw new Error(
+            "Mixed corpse/plant food tie requires actual shared-cell ordering",
+          );
+        const ids = c.cellOrder(cell);
+        if (foods.some((food) => !ids.includes(food.id)))
+          throw new Error("Food query lacks a live shared-cell entry");
+        foods = foods.sort((a, b) => ids.indexOf(a.id) - ids.indexOf(b.id));
+      }
+      for (const food of foods) {
+        if (food.value > score) {
+          score = food.value;
+          best = food.index;
+          corpseWinner = food.corpse;
+        }
+      }
+    }
+  return best === null ? null : { kind: corpseWinner ? 1 : 2, index: best };
+}
+function resetAction(n: Native) {
+  n[0x15] = n[0x15]! & 0xdf;
+  n.fill(0, 0x33, 0x37);
+  put(n, 0x60, w(n, 0x60) & 0xd71a);
+  n[0x5d] = 0;
+  n[0x57] = 0;
+}
+/**5CC60's ordinary task cleanup. Reference effects belong to this same
+ * transaction; logical resource pointers are never synthesized. */
+function releaseAction(state: EcologyState, mule: EcologyMule) {
+  const n = mule.native,
+    kind = n[0x57],
+    target = w(n, 0x55),
+    action = n[0x5e];
+  if (n[0x60]! & 2)
+    throw new Error(
+      "Mule attachment cleanup requires the actual carrier binding",
+    );
+  if (kind === 2 && [1, 7, 11].includes(action!)) {
+    const p = state.plants[target];
+    if (!p) throw new Error("Mule action has a missing plant binding");
+    p.plantFlags &= action === 7 ? 0xfe : 0xfb;
+    p.native[46] = p.plantFlags;
+  } else if (kind === 1 && [3, 5, 10].includes(action!)) {
+    const peer = state.mules.find((m) => m.index === target);
+    if (!peer) throw new Error("Mule action has a missing creature binding");
+    if (action === 5) peer.native[0x60] = peer.native[0x60]! & 0xfe;
+    else peer.native[0x57] = 0;
+  }
+  resetAction(n);
+  put(n, 0x6c, 0);
+}
+export interface OwnedMuleMoveContext {
+  callerOwner: number;
+  callerIsSelected: boolean;
+  selectedPanelRefresh: boolean;
+}
+export interface OwnedMuleMoveResult extends MuleStepResult {
+  outcome: "installed" | "ignored" | "rejected";
+  panelRefreshRequested: boolean;
+}
+/** Ordinary81C60 opcode11 ->5DF50 move. No RNG, path preview or teleport. */
+export function requestOwnedMuleMove(
+  state: EcologyState,
+  index: number,
+  target: [number, number],
+  context: OwnedMuleMoveContext,
+): OwnedMuleMoveResult {
+  const staged = cloneEcologyState(state);
+  try {
+    const mule = staged.mules.find((m) => m.index === index);
+    if (
+      !mule ||
+      mule.native[6] !== 1 ||
+      mule.native[0x7a] !== 4 ||
+      mule.native[24]! >= 4 ||
+      w(mule.native, 15) !== index
+    )
+      throw new Error("Owned Mule move requires an actual live pool identity");
+    const n = mule.native;
+    if (n[24] !== context.callerOwner)
+      throw new Error("Mule move caller does not own the creature");
+    if (target.some((v) => !Number.isInteger(v) || v < -32768 || v > 32767))
+      throw new Error("Mule move target is not a source coordinate");
+    if ([15, 18].includes(n[0x5e]!) || n[0x5e]! >= 24 || n[0x61]! & 1)
+      return {
+        committed: true,
+        reason: null,
+        events: [],
+        outcome: "ignored",
+        panelRefreshRequested: false,
+      };
+    releaseAction(staged, mule);
+    n[0x5e] = 0;
+    for (const at of [0x6e, 0x72]) {
+      put(n, at, target[0]);
+      put(n, at + 2, target[1]);
+    }
+    n[0x60] = n[0x60]! | 0x18;
+    n[0x61] = (n[0x61]! | 0x80) & 0xbf;
+    n[0x78] = 7;
+    n[0x5f] = 0;
+    Object.assign(state, staged);
+    return {
+      committed: true,
+      reason: null,
+      events: context.callerIsSelected
+        ? [{ kind: "mule-command-feedback", id: mule.id }]
+        : [],
+      outcome: "installed",
+      panelRefreshRequested: context.selectedPanelRefresh,
+    };
+  } catch (e) {
+    return {
+      committed: false,
+      reason: e instanceof Error ? e.message : String(e),
+      events: [],
+      outcome: "rejected",
+      panelRefreshRequested: false,
+    };
+  }
+}
+/**5D700. Neutral creatures inherently qualify; human creatures require a
+ * real category3 roster entry whose control mode and range match. */
+function operator(state: EcologyMule, mode: number, c: MuleContext): boolean {
+  const n = state.native;
+  if (n[24] === 4) return true;
+  if (!c.owned)
+    throw new Error("Owned Mule decision requires its actual operator roster");
+  return c.owned.operators.some(
+    (a) =>
+      a.owner === n[24] &&
+      a.enabled !== 0 &&
+      a.commandState === 0 &&
+      !!(a.flags70 & 0x80) &&
+      (a.mode === mode || a.mode === 0) &&
+      (() => {
+        const dx = torusDelta(a.position[0], w(n, 7)),
+          dy = torusDelta(a.position[1], w(n, 9));
+        return (
+          (Math.imul(dx, dx) + Math.imul(dy, dy)) >>> 0 <=
+          Math.imul(a.range, a.range) >>> 0
+        );
+      })(),
+  );
+}
+function installTarget(
+  mule: EcologyMule,
+  target: [number, number],
+  c: MuleContext,
+  speed = muleRequestedSpeed(mule, c.rules),
+) {
+  const n = mule.native;
+  put(n, 11, target[0]);
+  put(n, 13, target[1]);
+  n[0x16] = n[0x16]! & 0x3f;
+  put(n, 0x49, (w(n, 0x49) | 0x14) & 0xeffc);
+  n[0x54] = 20;
+  n[0x4f] = n[0x52] = 0;
+  put(n, 0x3f, speed);
+  put(n, 0x6c, 32767);
+  n[0x60] = n[0x60]! | 0x80;
+}
+/**64CD7 common choice, including all16 candidate attempts and the74A50
+ * backward repair of the retained anchor. Query-order draws occur outside. */
+function commonChoice(
+  state: EcologyState,
+  mule: EcologyMule,
+  rng: GeneRng,
+  c: MuleContext,
+  events: MuleEvent[],
+) {
+  const n = mule.native,
+    accept = (at: [number, number]) => accepted(state, mule, at, c);
+  if (n[0x61]! & 0x80) {
+    const target: [number, number] = [w(n, 0x6e), w(n, 0x70)];
+    if (accept(target)) {
+      installTarget(mule, target, c);
+      events.push({ kind: "mule-target", id: mule.id, position: target });
+      return;
+    }
+    n[0x49] = n[0x49]! | 0x40;
+  }
+  if (!(n[0x60]! & 8)) {
+    n.splice(0x72, 4, ...n.slice(7, 11));
+    n[0x60] = n[0x60]! | 8;
+  }
+  if (
+    !(w(n, 0x49) & 0x100) &&
+    !cellEntryPredicate(state, mule, worldCell(...point(n)), c) &&
+    nextRandom(rng) % 10 < 4
+  ) {
+    put(n, 0x6c, 20);
+    return;
+  }
+  for (let attempt = 0; attempt < 16; attempt++) {
+    const angle = nextRandom(rng) * 8,
+      radius =
+        ((n[24] === 4 || w(n, 0x68) <= 0 ? 2048 : 512) * nextRandom(rng)) >> 8,
+      at = (angle + 1536) & 2047;
+    const target: [number, number] = [0, 1].map(
+      (axis) =>
+        (signed(
+          signed(w(n, 0x72 + axis * 2) * 2) +
+            signed(
+              ((axis ? c.tables.sine[at] : c.tables.cosine[at]) * radius * 2) >>
+                16,
+            ),
+        ) >>
+          1) &
+        32767,
+    ) as [number, number];
+    if (accept(target)) {
+      installTarget(mule, target, c);
+      events.push({ kind: "mule-target", id: mule.id, position: target });
+      return;
+    }
+    n[0x49] = n[0x49]! | 0x40;
+  }
+  const anchor = resolveMovementTarget(
+    point(n),
+    [w(n, 0x72), w(n, 0x74)],
+    c.tables,
+    accept,
+  );
+  put(n, 0x72, anchor[0]);
+  put(n, 0x74, anchor[1]);
+  n[0x60] = n[0x60]! | 8;
+  put(n, 0x6c, 10 + (nextRandom(rng) % 20));
+}
+function randomPoint(
+  anchor: [number, number],
+  radius: number,
+  rng: GeneRng,
+  c: MuleContext,
+): [number, number] {
+  const angle = nextRandom(rng) * 8,
+    length = (radius * nextRandom(rng)) >> 8,
+    at = (angle + 1536) & 2047;
+  return [0, 1].map(
+    (axis) =>
+      (signed(
+        signed(anchor[axis] * 2) +
+          signed(
+            ((axis ? c.tables.sine[at] : c.tables.cosine[at]) * length * 2) >>
+              16,
+          ),
+      ) >>
+        1) &
+      32767,
+  ) as [number, number];
+}
+function idleWait(
+  state: EcologyState,
+  mule: EcologyMule,
+  rng: GeneRng,
+  c: MuleContext,
+  base = 10,
+) {
+  const delay = base + (nextRandom(rng) % 20);
+  mule.native[0x5e] = 8;
+  if (cellEntryPredicate(state, mule, worldCell(...point(mule.native)), c))
+    installTarget(mule, randomPoint(point(mule.native), 256, rng, c), c);
+  else put(mule.native, 0x6c, delay);
+}
+/** Randomized8D930 cell order and6B700 same-Mule score. The peer's stage is
+ * deliberately unrestricted; source only gates its full-growth byte77. */
+function mateTarget(
+  state: EcologyState,
+  mule: EcologyMule,
+  rng: GeneRng,
+  c: MuleContext,
+): EcologyMule | null {
+  const n = mule.native;
+  if (
+    n[0x77] !== 255 ||
+    (n[0x79]! << 24) >> 24 <= 0 ||
+    w(n, 0x68) <= w(n, 0x62) >> 1 ||
+    !operator(mule, 2, c)
+  )
+    return null;
+  const preview = { ...rng },
+    sx = nextRandom(preview) & 1 ? -256 : 256,
+    sy = nextRandom(preview) & 1 ? -256 : 256,
+    at = point(n);
+  let best: EcologyMule | null = null,
+    bestScore = -0xfffffff;
+  for (let x = -4; x <= 4; x++)
+    for (let y = -4; y <= 4; y++) {
+      const squared = (x * x + y * y) * 65536;
+      if (squared > 1048576) continue;
+      const cell = worldCell(signed(at[0] + x * sx), signed(at[1] + y * sy));
+      let candidates = state.mules.filter(
+        (m) =>
+          m.id !== mule.id &&
+          m.native[6] === 1 &&
+          worldCell(...point(m.native)) === cell,
+      );
+      if (candidates.length > 1) {
+        if (!c.cellOrder)
+          throw new Error("Mule mate tie requires actual shared-cell ordering");
+        const order = c.cellOrder(cell);
+        candidates = [...candidates].sort(
+          (a, b) => order.indexOf(a.id) - order.indexOf(b.id),
+        );
+        if (candidates.some((m) => !order.includes(m.id)))
+          throw new Error("Mule mate list lacks an actual peer");
+      }
+      for (const peer of candidates) {
+        const p = peer.native;
+        if (
+          p[24] !== n[24] ||
+          p[0x7a] !== 4 ||
+          p[0x5e]! >= 24 ||
+          [3, 10, 15].includes(p[0x5e]!) ||
+          p[0x77] !== 255 ||
+          w(p, 0x49) & 0x400
+        )
+          continue;
+        const score = w(p, 0x68) + 1024 - integerSqrt(squared);
+        if (score > bestScore) {
+          bestScore = score;
+          best = peer;
+        }
+      }
+    }
+  return best;
+}
+function beginPair(
+  state: EcologyState,
+  mule: EcologyMule,
+  peer: EcologyMule,
+  c: MuleContext,
+) {
+  const speed = muleRequestedSpeed(mule, c.rules);
+  releaseAction(state, mule);
+  releaseAction(state, peer);
+  for (const [self, other] of [
+    [mule, peer],
+    [peer, mule],
+  ]) {
+    const n = self.native;
+    n[0x5e] = 3;
+    put(n, 0x55, other.index);
+    n[0x57] = 1;
+    n[0x16] = n[0x16]! & 0x3f;
+    put(n, 0x49, (w(n, 0x49) | 0x14) & 0xeffc);
+    n[0x54] = 20;
+    n[0x4f] = 0;
+    put(n, 0x50, other.index);
+    n[0x52] = 1;
+    put(n, 0x3f, speed);
+    put(n, 0x6c, 32767);
+    n[0x60] = n[0x60]! | 0x80;
+  }
+}
+function physicalDistance(a: Native, b: Native): number {
+  const dx = torusDelta(w(a, 7), w(b, 7)),
+    dy = torusDelta(w(a, 9), w(b, 9)),
+    dz = ((d(a, 0x27) - d(b, 0x27)) | 0) >> 3;
+  return (Math.imul(dx, dx) + Math.imul(dy, dy) + Math.imul(dz, dz)) | 0;
+}
+/** Complete same-species rendezvous/center/countdown/birth continuation. */
+function pairAction(
+  state: EcologyState,
+  mule: EcologyMule,
+  rng: GeneRng,
+  c: MuleContext,
+  events: MuleEvent[],
+) {
+  const n = mule.native,
+    peer =
+      n[0x57] === 1
+        ? state.mules.find((m) => m.index === w(n, 0x55))
+        : undefined,
+    p = peer?.native;
+  if (
+    !peer ||
+    !p ||
+    p[6] !== 1 ||
+    p[0x5e]! >= 24 ||
+    p[0x57] !== 1 ||
+    w(p, 0x55) !== mule.index
+  ) {
+    releaseAction(state, mule);
+    idleWait(state, mule, rng, c);
+    return;
+  }
+  const phase = (c.frame + w(n, 15)) >>> 0,
+    cell = worldCell(...point(n));
+  if (n[0x5e] === 3) {
+    if (!(n[0x61]! & 0x20)) {
+      if (worldCell(...point(p)) !== cell) {
+        if ((phase & 3) === 3) {
+          put(n, 11, w(p, 7));
+          put(n, 13, w(p, 9));
+          n[0x49] = n[0x49]! | 4;
+        }
+        return;
+      }
+      const x = w(n, 7) & 0xff00,
+        y = w(n, 9) & 0xff00;
+      n[0x61] = n[0x61]! | 0x20;
+      p[0x61] = p[0x61]! | 0x20;
+      installTarget(
+        mule,
+        [x + 64, y + 192],
+        c,
+        muleRequestedSpeed(mule, c.rules) >> 1,
+      );
+      installTarget(
+        peer,
+        [x + 192, y + 64],
+        c,
+        muleRequestedSpeed(peer, c.rules) >> 1,
+      );
+      return;
+    }
+    if ((w(n, 0x60) & w(p, 0x60) & 0x2004) === 0x2000) {
+      if (w(n, 0x49) & 0x200) n[0x60] = n[0x60]! | 4;
+      if ((w(n, 0x60) & w(p, 0x60) & 0x2004) === 0x2004) {
+        const center: [number, number] = [
+            (w(n, 7) & 0xff00) | 127,
+            (w(n, 9) & 0xff00) | 127,
+          ],
+          speed = muleRequestedSpeed(mule, c.rules) >> 1;
+        installTarget(mule, center, c, speed);
+        installTarget(peer, center, c, speed);
+      }
+    } else if (physicalDistance(n, p) <= 16384) {
+      for (const m of [mule, peer]) {
+        const r = m.native;
+        put(r, 0x3f, 0);
+        put(r, 0x49, w(r, 0x49) & 0xefe8);
+        r[0x54] = 0;
+        r[0x16] = r[0x16]! & 0x3f;
+        r[0x5e] = 10;
+        put(r, 0x6c, 32);
+      }
+    }
+    return;
+  }
+  if (w(n, 0x6c) > 0) {
+    if ((phase & 3) === 3 && physicalDistance(n, p) > 16384) {
+      releaseAction(state, mule);
+      idleWait(state, mule, rng, c);
+    }
+    return;
+  }
+  const dx = torusDelta(w(n, 7), w(p, 7)),
+    dy = torusDelta(w(n, 9), w(p, 9));
+  if ((Math.imul(dx, dx) + Math.imul(dy, dy)) >>> 0 > 16384) {
+    releaseAction(state, mule);
+    idleWait(state, mule, rng, c);
+    return;
+  }
+  for (const r of [n, p]) {
+    put(r, 0x68, Math.max(0, w(r, 0x68) - (w(r, 0x62) >> 1)));
+    r[0x79] = -r[0x79]! & 255;
+  }
+  const eligible = (r: Native) => {
+    if (r[24] === 4) return r[0x76]! > 90;
+    if (r[0x61]! & 4) return true;
+    const player = c.owned?.players?.[r[24]!];
+    if (!player || player.length !== 1805)
+      throw new Error(
+        "Owned Mule trait inheritance requires the actual player research flags",
+      );
+    return player[0x6cb] !== 0;
+  };
+  let inherit: boolean;
+  if (nextRandom(rng) % 100 < 50)
+    inherit =
+      nextRandom(rng) % 100 < 50 * (Number(eligible(n)) + Number(eligible(p)));
+  else {
+    const first = nextRandom(rng) % 6,
+      forbidden = first < 2 ? 3 : first === 2 ? 4 : first < 5 ? 24 : 32;
+    let guard = 0;
+    while (forbidden & (1 << nextRandom(rng) % 6))
+      if (++guard > 65536) throw new Error("Mule gene selection RNG cycle");
+    inherit = eligible(first >= 3 ? p : n);
+  }
+  const quality =
+    Math.min(n[0x76]!, p[0x76]!) +
+    (nextRandom(rng) % (Math.abs(n[0x76]! - p[0x76]!) + 1));
+  if (!c.creaturePriors || c.creaturePriors.length !== 300)
+    throw new Error(
+      "Natural Mule birth requires all300 actual retained native priors",
+    );
+  const priors = c.creaturePriors.map(
+    (prior, index) =>
+      state.mules.find((m) => m.index === index)?.native ?? prior,
+  );
+  const slot = priors.findIndex((prior) => prior[6] === 0);
+  if (slot !== -1) {
+    const made = initializeMuleNative(
+      priors[slot],
+      rng,
+      { slot, owner: n[24]!, position: point(n), quality, parent: n },
+      c,
+    );
+    if (!made.ok) throw new Error(made.reason);
+    const born = made.value.native;
+    if (inherit) born[0x61] = born[0x61]! | 4;
+    const id = `source:0:${slot}` as EcologyMule["id"],
+      old = state.mules.findIndex((m) => m.index === slot),
+      newborn = { id, index: slot, native: born, pending: [] };
+    if (old === -1) state.mules.push(newborn);
+    else state.mules[old] = newborn;
+    Object.assign(rng, made.value.rng);
+    const order = c.cellOrder;
+    c.cellOrder = (query) =>
+      query === cell
+        ? [id, ...(order?.(query) ?? []).filter((value) => value !== id)]
+        : (order?.(query) ?? []);
+    events.push(
+      {
+        kind: "mule-born",
+        id,
+        position: point(born),
+        newborn: {
+          index: slot,
+          native: born.slice(),
+          owner: born[24]!,
+          bornCounterIncrement: born[24] === 4 ? 0 : 1,
+        },
+      },
+      { kind: "mule-audio", id, channel: 0x44 },
+    );
+  }
+  //62270: peer then current, retaining paired references. Both5B100 queries
+  //use the saved current AI cell even if the peer has moved to another cell.
+  for (const self of [peer, mule]) {
+    const delay = 10 + (nextRandom(rng) % 20);
+    self.native[0x5e] = 8;
+    if (cellEntryPredicate(state, self, cell, c))
+      installTarget(self, randomPoint(point(self.native), 256, rng, c), c);
+    else put(self.native, 0x6c, delay);
+  }
+}
+function combatServices(
+  state: EcologyState,
+  random: GeneRng,
+  c: MuleContext,
+  events: MuleEvent[],
+): { context: MuleCombatContext; ports: MuleCombatPorts } {
+  if (!c.combat)
+    throw new Error("Mule hostile interaction requires original combat traits");
+  return {
+    context: {
+      terrain: c.terrain,
+      tables: c.tables,
+      frame: c.frame,
+      traits: c.combat,
+      allianceMasks: c.owned?.allianceMasks,
+      players: c.owned?.players,
+      cellOrder: c.cellOrder,
+      effect: c.combatEffect,
+    },
+    ports: {
+      release: (m) => releaseAction(state, m),
+      speed: (m) => muleRequestedSpeed(m, c.rules),
+      occupied: (m) =>
+        cellEntryPredicate(state, m, worldCell(...point(m.native)), c),
+      escape: (m) =>
+        installTarget(m, randomPoint(point(m.native), 256, random, c), c),
+      selectAnimation: (m) => selectAnimation(m.native, c),
+      attackBonus: (m) => {
+        if (m.native[24] === 4) return 0;
+        if (!c.owned)
+          throw new Error("Mule attack requires the actual operator roster");
+        const a = c.owned.operators.find((a) => {
+          const dx = torusDelta(a.position[0], w(m.native, 7)),
+            dy = torusDelta(a.position[1], w(m.native, 9));
+          return (
+            a.owner === m.native[24] &&
+            a.enabled !== 0 &&
+            a.commandState === 0 &&
+            !!(a.flags70 & 128) &&
+            (a.mode === 0 || a.mode === 1) &&
+            (Math.imul(dx, dx) + Math.imul(dy, dy)) >>> 0 <=
+              Math.imul(a.range, a.range) >>> 0
+          );
+        });
+        if (!a) return 0;
+        if (
+          !Number.isInteger(a.attackBonus) ||
+          a.attackBonus! < -128 ||
+          a.attackBonus! > 127
+        )
+          throw new Error(
+            "Mule attack requires its operator's original blueprint byte17",
+          );
+        return a.attackBonus!;
+      },
+      death: (m, attackerOwner) => {
+        enterDeath(m, events);
+        events.push({
+          kind: "mule-combat-kill",
+          id: m.id,
+          index: m.index,
+          attackerOwner,
+          victimOwner: m.native[24]!,
+        });
+      },
+    },
+  };
+}
+function combatChoice(
+  state: EcologyState,
+  mule: EcologyMule,
+  random: GeneRng,
+  c: MuleContext,
+  events: MuleEvent[],
+): boolean {
+  if (!c.combat) return false;
+  const { context, ports } = combatServices(state, random, c, events);
+  return chooseMuleHostile(state, mule, random, context, ports, events);
+}
+function action(
+  state: EcologyState,
+  mule: EcologyMule,
+  random: GeneRng,
+  c: MuleContext,
+  events: MuleEvent[],
+) {
+  const n = mule.native;
+  if (n[0x5e] === 21) {
+    if (w(n, 0x6c) > 0) return;
+    const { context, ports } = combatServices(state, random, c, events);
+    completeMuleAttack(state, mule, random, context, ports, events);
+    if ([1, 4, 5].includes(n[0x5e]!)) action(state, mule, random, c, events);
+    return;
+  }
+  if ([16, 20].includes(n[0x5e]!)) {
+    if (w(n, 0x6c) > 0) return;
+    const { context, ports } = combatServices(state, random, c, events);
+    if (w(n, 0x6a) <= 0) {
+      ports.death(mule, 4);
+      return;
+    }
+    if (n[0x78] !== 0) {
+      if ((w(n, 0x49) & 3) !== 3) {
+        if (n[0x78] !== 7)
+          throw new Error(
+            "Mule hit resume requires its actual retained task command",
+          );
+        const target: [number, number] = [w(n, 0x72), w(n, 0x74)];
+        releaseAction(state, mule);
+        n[0x5e] = 0;
+        for (const at of [0x6e, 0x72]) {
+          put(n, at, target[0]);
+          put(n, at + 2, target[1]);
+        }
+        n[0x60] = n[0x60]! | 0x18;
+        n[0x61] = (n[0x61]! | 0x80) & 0xbf;
+        n[0x78] = 7;
+        n[0x5f] = 0;
+      }
+      n[0x5e] = 8;
+      if (ports.occupied(mule)) ports.escape(mule);
+      else put(n, 0x6c, 0);
+      return;
+    }
+    if (chooseMuleHostile(state, mule, random, context, ports, events)) {
+      if (n[0x5e] === 1) action(state, mule, random, c, events);
+      return;
+    }
+    // No enemy: reuse the same query for ordinary food/mate scorers before
+    // falling back to the retained attacker reference (5F4C4..60291).
+    const food = foodTarget(state, mule, random, c),
+      peer = food === null ? mateTarget(state, mule, random, c) : null;
+    nextRandom(random);
+    nextRandom(random);
+    if (food !== null) {
+      acquireFood(state, mule, food, c, events);
+      action(state, mule, random, c, events);
+      return;
+    }
+    if (peer) {
+      beginPair(state, mule, peer, c);
+      pairAction(state, mule, random, c, events);
+      return;
+    }
+    const previous =
+      n[0x57] === 1
+        ? state.mules.find((m) => m.index === w(n, 0x55) && m.native[6] === 1)
+        : undefined;
+    if (previous) {
+      acquireMuleHostile(mule, previous, ports, events);
+      action(state, mule, random, c, events);
+    } else {
+      n[0x5e] = 8;
+      const delay = 20 + (nextRandom(random) % 20);
+      if (ports.occupied(mule)) ports.escape(mule);
+      else put(n, 0x6c, delay);
+    }
+    return;
+  }
+  if ([3, 10].includes(n[0x5e]!)) {
+    pairAction(state, mule, random, c, events);
+    return;
+  }
+  if ([4, 5].includes(n[0x5e]!)) {
+    corpseFeeding(state, mule, random, c, events);
+    return;
+  }
+  if (n[0x5e] === 7) {
+    verifyNeighborhood(state, mule, c);
+    const target = w(n, 0x55),
+      plant = state.plants[target];
+    if (
+      n[0x57] !== 2 ||
+      !plant?.active ||
+      plant.growth <= 0 ||
+      !(n[0x61]! & 0x40) ||
+      n[0x60]! & 2 ||
+      w(n, 0x6c) & 15
+    )
+      throw new Error(
+        "Mule feeding target/state is outside the original admitted branch",
+      );
+    const amount = c.rules.plants[plant.selector].nutrition,
+      retired = plant.growth <= 3;
+    const full = nutrition(mule, amount);
+    const damaged = damagePlant(state, c.terrain, c.rules, target, 3);
+    if (!damaged.committed) throw new Error(damaged.reason!);
+    // damagePlant is a plant transaction and replaces state's cloned arrays.
+    const current = state.mules.find((candidate) => candidate.id === mule.id)!;
+    current.native = n;
+    if (combatChoice(state, current, random, c, events)) {
+      events.push(
+        { kind: "mule-fed", id: mule.id, target },
+        { kind: "mule-audio", id: mule.id, channel: 0x12 },
+      );
+      return;
+    }
+    const peer = mateTarget(state, current, random, c);
+    nextRandom(random);
+    nextRandom(random);
+    if (peer) {
+      beginPair(state, current, peer, c);
+      pairAction(state, current, random, c, events);
+      events.push(
+        { kind: "mule-fed", id: mule.id, target },
+        { kind: "mule-audio", id: mule.id, channel: 0x12 },
+      );
+      return;
+    }
+    if (retired || full) {
+      state.plants[target].plantFlags &= 0xfe;
+      state.plants[target].native[46] = state.plants[target].plantFlags;
+      resetAction(n);
+      idleWait(state, current, random, c);
+    }
+    events.push(
+      { kind: "mule-fed", id: mule.id, target },
+      { kind: "mule-audio", id: mule.id, channel: full ? 0x1b : 0x12 },
+    );
+    return;
+  }
+  if (n[0x5e] === 1) {
+    if (n[0x57] === 1) {
+      const corpse = state.mules.find((m) => m.index === w(n, 0x55));
+      if (!corpse || corpse.native[6] === 0) {
+        releaseAction(state, mule);
+        idleWait(state, mule, random, c);
+        return;
+      }
+      if (corpse.native[0x5e]! < 24) {
+        const { context, ports } = combatServices(state, random, c, events),
+          elapsed = 32767 - w(n, 0x6c);
+        if (
+          ((w(n, 15) + c.frame) & 3) === 3 &&
+          elapsed > 256 &&
+          nextRandom(random) % 150 <= elapsed - 256
+        ) {
+          releaseAction(state, mule);
+          idleWait(state, mule, random, c);
+          return;
+        }
+        contactMuleHostile(mule, corpse, random, context, events);
+        return;
+      }
+      if (!(w(n, 0x49) & 0x200) || n[0x60]! & 0x80) return;
+      n[0x5e] = corpse.native[0x5e]! >= 26 ? 4 : 5;
+      corpse.native[0x60] = corpse.native[0x60]! | 1;
+      put(n, 0x3f, muleRequestedSpeed(mule, c.rules));
+      put(n, 0x6c, 32767);
+      n.splice(0x72, 4, ...n.slice(7, 11));
+      n[0x60] = (n[0x60]! | 8) & 0xbf;
+      return;
+    }
+    const target = w(n, 0x55),
+      plant = state.plants[target];
+    if (
+      n[0x57] === 0 ||
+      !plant?.active ||
+      plant.growth <= 0 ||
+      plant.plantFlags & 8
+    ) {
+      releaseAction(state, mule);
+      idleWait(state, mule, random, c);
+      return;
+    }
+    if (n[0x57] !== 2)
+      throw new Error("Mule approach needs its creature-food/hostile action");
+    if (!(w(n, 0x49) & 0x200) || n[0x60]! & 0x80) return;
+    put(n, 0x3f, muleRequestedSpeed(mule, c.rules));
+    n[0x5e] = 7;
+    put(n, 0x6c, 32767);
+    n.splice(0x72, 4, ...n.slice(7, 11));
+    n[0x60] = (n[0x60]! | 8) & 0xbf;
+    plant.plantFlags |= 1;
+    plant.native[46] = plant.plantFlags;
+    return;
+  }
+  if (n[0x5e] === 0) n[0x5e] = 8;
+  if (n[0x5e] !== 8)
+    throw new Error("Mule action state requires an unported original callback");
+  verifyNeighborhood(state, mule, c);
+  if (combatChoice(state, mule, random, c, events)) {
+    if (Number(n[0x5e]) === 1) action(state, mule, random, c, events);
+    return;
+  }
+  const target = foodTarget(state, mule, random, c);
+  if (target === null) {
+    const peer = mateTarget(state, mule, random, c);
+    nextRandom(random);
+    nextRandom(random);
+    if (peer) {
+      beginPair(state, mule, peer, c);
+      pairAction(state, mule, random, c, events);
+      return;
+    }
+    if (n[24]! < 4 && n[0x78] === 0 && !(n[0x60]! & 0x42) && n[0x61] === 0) {
+      if (!c.owned)
+        throw new Error(
+          "Owned Mule idle requires actual player building/operator context",
+        );
+      if (
+        c.owned.buildings.some(
+          (b) =>
+            b.index >= n[24]! * 64 &&
+            b.index < (n[24]! + 1) * 64 &&
+            b.native[6] === 4 &&
+            (b.native[24] === n[24] ||
+              !!(c.owned!.allianceMasks[n[24]!] & (1 << b.native[24]!))) &&
+            [2, 4].includes(b.native[0x2d]!) &&
+            (w(b.native, 0x31) & 0x141) === 1,
+        )
+      )
+        throw new Error("Owned Mule selected a processing building action");
+      if (!cellEntryPredicate(state, mule, worldCell(...point(n)), c))
+        put(n, 0x6c, 10 + (nextRandom(random) % 20));
+    }
+    commonChoice(state, mule, random, c, events);
+    return;
+  }
+  if (n[0x60]! & 2)
+    throw new Error("Mule food acquisition requires prior action cleanup");
+  nextRandom(random);
+  nextRandom(random);
+  acquireFood(state, mule, target, c, events);
+}
+
+/** Whole bounded neutral owner4 selector4 wander/plant-feeding callback.
+ * Spatial relinking is reported; unsupported branches roll back data and RNG. */
+function stepMule(
+  state: EcologyState,
+  index: number,
+  rng: GeneRng,
+  context: MuleContext,
+  owned: boolean,
+): MuleStepResult {
+  const staged = cloneEcologyState(state),
+    random = { ...rng },
+    terrain = {
+      bytes: context.terrain.bytes.slice(),
+      revision: context.terrain.revision,
+    },
+    c = { ...context, terrain },
+    events: MuleEvent[] = [];
+  try {
+    const found = staged.mules.find((candidate) => candidate.index === index);
+    if (!found) throw new Error("Mule slot is absent");
+    let mule: EcologyMule = found,
+      n = mule.native;
+    if (n[6] === 0) return { committed: true, reason: null, events: [] };
+    const dead = n[0x5e]! >= 24;
+    if (
+      n[6] !== 1 ||
+      (owned ? n[24]! >= 4 : n[24] !== 4) ||
+      n[0x7a] !== 4 ||
+      n[0x76] === null ||
+      ![0, 1, 3, 4, 5, 7, 8, 10, 16, 20, 21, 24, 25, 26, 27].includes(
+        n[0x5e]!,
+      ) ||
+      (!dead && w(n, 0x6a) <= 0)
+    )
+      throw new Error("Mule callback owner/species/state is not admitted");
+    if (owned && !c.owned)
+      throw new Error(
+        "Owned Mule callback requires actual selected-player, alliance, building and operator context",
+      );
+    const phase = (c.frame + w(n, 15)) >>> 0,
+      oldState = n[0x5e];
+    if (n[0x16]! & 0x48 || w(n, 0x49) & 0x400)
+      throw new Error("Mule attached movement prefix is required");
+    const route = routePrefix(staged, mule, random, c, phase),
+      goal = route.working;
+    const yaw = w(n, 0x39),
+      wanted = w(n, 0x4b);
+    if (yaw !== wanted && d(n, 0x27) <= d(n, 0x11)) {
+      let delta = wanted - yaw;
+      const alternative = delta < 0 ? 2048 + delta : -2048 + delta;
+      if (Math.abs(delta) > Math.abs(alternative)) delta = alternative;
+      n[0x4a] = Math.abs(delta) >= 256 ? n[0x4a]! | 0x20 : n[0x4a]! & 0xdf;
+      const step = 2 * (w(n, 0x2b) & 65535);
+      put(
+        n,
+        0x39,
+        Math.abs(delta) <= step
+          ? wanted
+          : (yaw + Math.sign(delta) * step) & 2047,
+      );
+      setVelocity(n, c.tables);
+    } else if (yaw === wanted) n[0x4a] = n[0x4a]! & 0xdf;
+    physics(staged, mule, c, events, random);
+    reveal(staged, mule, phase, c, events);
+    if (dead) {
+      mortality(staged, mule, phase, c, events);
+      Object.assign(state, staged);
+      Object.assign(rng, random);
+      Object.assign(context.terrain, terrain);
+      return { committed: true, reason: null, events };
+    }
+    if (route.savedSpeed !== null) put(n, 0x3f, route.savedSpeed);
+    else if (n[0x49]! & 3) {
+      if (n[0x54]! > 20) {
+        if (
+          w(n, 0x3d) <= 256 &&
+          d(n, 0x27) <= d(n, 0x11) &&
+          distance(terrain, point(n), goal) <= 1024
+        )
+          n[0x49] = n[0x49]! | 3;
+      } else if (distance(terrain, point(n), goal) <= 4096)
+        n[0x49] = n[0x49]! | 8;
+    } else if (
+      n[0x49]! & 0x10 &&
+      w(n, 0x3d) <= 256 &&
+      d(n, 0x27) <= d(n, 0x11) &&
+      distance(terrain, point(n), goal) <= 1024
+    ) {
+      put(n, 7, goal[0] & 32767);
+      put(n, 9, goal[1] & 32767);
+      put32(n, 0x11, groundHeight(terrain, ...point(n)));
+      n[0x17] = renderShade(terrain, point(n));
+      n[0x43] = n[0x44] = 0;
+      put(n, 0x41, 0);
+      n.fill(0, 0x2d, 0x33);
+      put(n, 0x3d, 0);
+      put(n, 0x3f, 0);
+      n[0x54] = 0;
+      put(n, 0x49, (w(n, 0x49) & 0xfdcf) | 0x220);
+      n[0x16] = n[0x16]! & 0x3f;
+    }
+    if (phase & 1) {
+      put(n, 0x66, w(n, 0x66) - 1);
+      if (w(n, 0x66) <= 0) {
+        enterDeath(mule, events);
+        mortality(staged, mule, phase, c, events, true);
+        Object.assign(state, staged);
+        Object.assign(rng, random);
+        Object.assign(context.terrain, terrain);
+        return { committed: true, reason: null, events };
+      }
+      const reserve = w(n, 0x68),
+        health = w(n, 0x6a),
+        maximum = w(n, 0x64);
+      if (
+        reserve > 0 &&
+        health < maximum &&
+        phase % c.rules.mule.healthRecoveryPeriod <= 1
+      ) {
+        put(n, 0x6a, health + Math.min(maximum - health, 2));
+        put(n, 0x68, reserve < 3 ? 0 : reserve - 3);
+      } else if (reserve <= 0 && (phase & 31) <= 1) {
+        if (health <= 1) {
+          put(n, 0x6a, 0);
+          enterDeath(mule, events);
+          mortality(staged, mule, phase, c, events, true);
+          Object.assign(state, staged);
+          Object.assign(rng, random);
+          Object.assign(context.terrain, terrain);
+          return { committed: true, reason: null, events };
+        }
+        put(n, 0x6a, health - 1);
+      }
+      if (n[0x60]! & 0x80) {
+        const mask = [2, 5].includes(ecologyTerrainClass(terrain, point(n)))
+          ? 63
+          : 127;
+        if ((w(n, 0x6c) & mask) === 0)
+          put(n, 0x68, Math.max(0, w(n, 0x68) - 1));
+      }
+      if (
+        (phase & 15) <= 1 &&
+        signed(
+          c.climate +
+            signed(
+              terrain.bytes[worldCell(...point(n)) * 14 + 9] |
+                (terrain.bytes[worldCell(...point(n)) * 14 + 10] << 8),
+            ),
+        ) <= c.rules.mule.warmThreshold
+      )
+        throw new Error(
+          "Mule temperature damage requires its original callback",
+        );
+      if (w(n, 0x49) & 0x200)
+        n[0x60] = n[0x60]! & (n[0x5e] === 0 ? 0xcf : 0xef);
+      if (n[0x60]! & 0x80 && w(n, 0x49) & 0x300) {
+        n[0x60] = n[0x60]! & 0x7f;
+        if (
+          n[0x61]! & 0x80 &&
+          w(n, 0x6e) === w(n, 11) &&
+          w(n, 0x70) === w(n, 13)
+        )
+          n[0x61] = n[0x61]! & 0x7f;
+        put(n, 0x6c, 0);
+      }
+      if (
+        [16, 20, 21].includes(n[0x5e]!) &&
+        animationFinished(nativeAnimation(n), c.profile(n[0x19]!, n[0x5e]!))
+      )
+        put(n, 0x6c, 0);
+      if (
+        ([0, 8].includes(n[0x5e]!) && w(n, 0x6c) === 0) ||
+        [1, 3, 4, 5, 10].includes(n[0x5e]!) ||
+        ([16, 20, 21].includes(n[0x5e]!) && w(n, 0x6c) <= 0) ||
+        (oldState === 7 && (w(n, 0x6c) & 15) === 0) ||
+        (n[0x5e] === 1 && (w(n, 0x49) & 0x200) !== 0 && !(n[0x60]! & 0x80))
+      )
+        action(staged, mule, random, c, events);
+      mule = staged.mules.find((candidate) => candidate.id === mule.id)!;
+      n = mule.native;
+      n[0x4a] = n[0x4a]! & 0xfc;
+      muleLifecycleTail(mule, c.rules);
+      if (w(n, 0x6c) > 0) put(n, 0x6c, w(n, 0x6c) - 1);
+    } else {
+      if (w(n, 0x49) & 0x200)
+        n[0x60] = n[0x60]! & (n[0x5e] === 0 ? 0xcf : 0xef);
+      if (n[0x60]! & 0x80 && w(n, 0x49) & 0x300) {
+        n[0x60] = n[0x60]! & 0x7f;
+        if (
+          n[0x61]! & 0x80 &&
+          w(n, 0x6e) === w(n, 11) &&
+          w(n, 0x70) === w(n, 13)
+        )
+          n[0x61] = n[0x61]! & 0x7f;
+        put(n, 0x6c, 0);
+      }
+    }
+    animation(n, c);
+    Object.assign(state, staged);
+    Object.assign(rng, random);
+    Object.assign(context.terrain, terrain);
+    return { committed: true, reason: null, events };
+  } catch (error) {
+    return {
+      committed: false,
+      events: [],
+      reason: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+/** Neutral and owned callbacks share the numeric movement/lifecycle body. */
+export function stepNeutralMule(
+  state: EcologyState,
+  index: number,
+  rng: GeneRng,
+  context: MuleContext,
+): MuleStepResult {
+  return stepMule(state, index, rng, context, false);
+}
+export function stepOwnedMule(
+  state: EcologyState,
+  index: number,
+  rng: GeneRng,
+  context: MuleContext,
+): MuleStepResult {
+  return stepMule(state, index, rng, context, true);
+}

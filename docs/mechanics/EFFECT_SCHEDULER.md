@@ -1,0 +1,21 @@
+# Shared original effect scheduling
+
+`stepEffectScheduler(world,pack,options)` implements the source `4E950` family-4 callback phase over the actual 200 shared slots. It dispatches established selector/host bindings: landing `0x31`, smoke `6`, trail `0x1A`, departure/zone trail `0x2F`, power `0x21`, rising bubble `0x15`, bubble child `0x16`, stationary wake `0x30`, construction appearance `0x2C`, zone score `0x3C`, production failure `0x20` and reward `0x3B`. Unknown native selectors or missing runtime hosts reject the complete pass.
+
+The primary scan rechecks the live slot immediately before dispatch, in ascending source index order, skipping inactive and newborn-bit records. A prior callback can retire a slot or create a marked child before its index is reached. Actual successful source-marked factories contribute to the newborn count. A second ascending scan clears each marked bit before its one callback; returned factory counts are ignored in this second scan, as in source. The final queue candidates are ascending active slots except selector `0x46`.
+
+This preserves capacity and slot-reuse order across families. A packet at slot 0 can expire before the landing at slot 1 creates smoke into the newly freed slot 0; that child runs once in the second pass. A bubble creates its child before retiring itself, allowing a later landing callback to reuse the bubble's freed lower slot. Family-specific whole-pool passes cannot reproduce those interactions.
+
+The callback options are explicit:
+
+- `gravity`, actual live `obstacleAt(point)`, and synchronous `cleanupReferences(stagedWorld,logicalId)` supply established environment/retirement ports.
+- `onLandingEvent(stagedWorld,landing,event,landingContext)` performs specialist activation, player landing-reference/counter changes and presentation requests in their callback. Activation and main retirement require a host event port. The scheduler owns effect spatial unlinking and reference cleanup; the event handler must not unlink again.
+- Optional `stageHost(original,staged)` and `commitHost(target,staged)` cover additional host-owned serializable roots.
+
+Default staging copies terrain with `bytes.slice()`, common spatial lists, shared numeric priors, power/economy, landing/water objects, RNG, Mule native state, and imported runtime native overlays. It leaves immutable original source buffers in place. Actors, builders, players, notices and audio are cloned together, preserving shared actor/builder motion references. An unsupported later callback rolls back earlier factories, RNG, host activation changes and cleanup. No callable function is persisted in the world.
+
+The receipt reports ordered `{phase,slot,code}` callbacks, landing events, water and power receipts, created newborn count, retired logical IDs, cleanup count and queue candidates. Final numeric afterimages remain available for source-compatible reuse. Main landing phase 4 is a normalized host state; its native retired phase byte remains source phase 3.
+
+Reward callbacks also report their ordered numeric/contact/event receipts. Their ten feedback26 factories are unmarked and their smoke6 factory is marked, preserving source primary/newborn order even at capacity. The shared raw parent link bytes are rebound after inline child factories, before publishing its own callback afterimage. Source reward target/AI/presentation ports are described in `REWARD_EFFECT.md`.
+
+The independently expressed protocol follows read-only preserved `actor_world/effect_updates.rs`, `landing_effect_lifecycle.rs`, and the established landing/power/water callback contracts. Synthetic tests exercise mixed callback order, full-capacity lower-slot reuse, newborn once-only updates, independent per-slot packet movement/decay, exact landing retirement phase, actor/builder alias preservation, and a late unknown selector rolling back prior RNG, factories, audio, player/actor changes and notices. Original executable execution and old frame-frontier continuation are not used.

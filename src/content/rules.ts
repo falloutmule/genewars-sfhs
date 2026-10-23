@@ -20,6 +20,7 @@ export const OriginalRulesSchema = z.object({
       buildingHealth: integers(42, -32768, 32767),
       buildingProgressThresholds: integers(42, 0, 255),
       buildingFootprints: integers(14, 0, 255),
+      buildingNameIndices: integers(14, 0, 255).optional(),
       buildingPrerequisites: integers(14, 0, 255),
     })
     .passthrough(),

@@ -105,6 +105,40 @@ export const PackSchema = z
     rules: OriginalRulesSchema.optional(),
     economyRules: EconomyRulesSchema.optional(),
     ecologyRules: EcologyRulesSchema.optional(),
+    geneticistRules: z
+      .object({
+        schemaVersion: z.literal(1),
+        projectiles: z
+          .array(
+            z.object({
+              speedWord: z.number().int().min(-32768).max(32767),
+              rangeFactor: z.number().int().min(-32768).max(32767),
+              cooldown: z.number().int().min(-32768).max(32767),
+              effectCode: z.number().int().min(0).max(255),
+            }),
+          )
+          .length(3),
+        provenance: z
+          .object({
+            executableSha256: z.string().length(64),
+            originalExecution: z.literal(false),
+          })
+          .passthrough(),
+      })
+      .optional(),
+    craterRules: z
+      .object({
+        schemaVersion: z.literal(1),
+        largeTextures: z.array(z.number().int().min(0).max(255)).length(9),
+        largeFlags: z.array(z.number().int().min(0).max(255)).length(9),
+        provenance: z
+          .object({
+            executableSha256: z.string().length(64),
+            originalExecution: z.literal(false),
+          })
+          .passthrough(),
+      })
+      .optional(),
     audioProfile: AudioProfileSchema.optional(),
     zoneRules: ZoneRulesSchema.optional(),
     etherealRules: EtherealRulesSchema.optional(),

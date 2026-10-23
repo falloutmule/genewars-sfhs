@@ -264,6 +264,9 @@ input[type="search"] {
 .hidden {
   display: none !important;
 }
+.campaign-tabs {
+  display: none;
+}
 @media (max-width: 760px) {
   :root {
     font-size: 15px;
@@ -324,6 +327,37 @@ input[type="search"] {
   }
   .overlay-label {
     font-size: 12px;
+  }
+  .campaign-game .sidebar {
+    display: block;
+    padding: 0 10px 10px;
+  }
+  .campaign-game .sidebar section {
+    min-width: 0;
+    max-width: none;
+    width: 100%;
+    padding-top: 10px;
+  }
+  .campaign-game .sidebar section:not(.active) {
+    display: none;
+  }
+  .campaign-tabs {
+    display: flex;
+    position: sticky;
+    top: 0;
+    background: #19241d;
+    gap: 4px;
+    z-index: 1;
+    overflow-x: auto;
+    padding: 5px 0;
+  }
+  .campaign-tabs button {
+    width: auto;
+    flex: 1;
+    white-space: nowrap;
+    padding: 6px 9px;
+    text-align: center;
+    font-size: 13px;
   }
 }
 @media (prefers-reduced-motion: reduce) {

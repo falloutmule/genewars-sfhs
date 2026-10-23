@@ -9,6 +9,8 @@ RANGES = (
     ('spreadDirections', 0x4564, 36, '8aa88c050cdb4229467f43347efcd9a8d88e5651cf2684e92666dcfe886515b6'),
     ('plantResources', 0x3B78, 528, '86eef7810196a55ee8b601a908a4c94ab1dd91493590ea4264e9e96b03e2403e'),
     ('corpseFriction', 0x4520, 16, 'd56e59eae4da3dcb6d5cd9451d25e0ca49259a3a3004f43a40b47c40ae63a707'),
+    ('speciesTraits', 0x45FC, 1125, '9cb13776195def5c4c875533fac9615356ffb8a65d4b059637f56c7e290a1707'),
+    ('attackChannels', 0x60A0, 5, '5a5eaa0c7ccc5f4ffca0fd4f06c1847eead18eb5321dd301bb618ee4d720a96e'),
 )
 
 
@@ -62,6 +64,17 @@ def import_ecology_rules(executable_bytes):
             result[name] = [list(struct.unpack_from('<hh', raw, i * 4)) for i in range(9)]
         elif name == 'corpseFriction':
             result[name] = list(struct.unpack('<8h', raw))
+        elif name == 'speciesTraits':
+            result[name] = [list(raw[i*45:(i+1)*45]) for i in range(25)]
+            row = raw[4*45:5*45]
+            result['muleCombat'] = {'queryRadius': struct.unpack_from('<i',row)[0],
+                'attack': row[4], 'defense': row[5], 'disposition': row[0x24],
+                'foodWeights': list(row[0x1D:0x20])}
+            for key, offset in (('baseSpeed',6),('lifetimeScale',10),('healthScale',14),('reserveScale',18),('healthRecoveryPeriod',22)):
+                result['mule'][key] = struct.unpack_from('<i',row,offset)[0]
+        elif name == 'attackChannels':
+            result[name] = list(struct.unpack('<5b',raw))
+            result['muleCombat']['attackChannel'] = result[name][4]
         else:
             for slot in range(12):
                 descriptor = raw[slot * 44:(slot + 1) * 44]

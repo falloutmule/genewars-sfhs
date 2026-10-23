@@ -36,6 +36,8 @@ TABLES = (
      'f6eabc9426aaddab4771fa55ed3addd23954384524eb6c0771f16271a0af7345'),
     ('buildingFootprints', 3, 0x4DE0, 'B', 14,
      'e692c7083a76eb15e192f34897d136461f9337e3c2e8a705f31ef7905749eee7'),
+    ('buildingNameIndices', 3, 0x4D74, 'B', 14,
+     '8e1676afcef52f169d26f920a8eac151a0f28469db0b218717428609fa7d8f39'),
     ('buildingPrerequisites', 3, 0x4E74, 'B', 14,
      '40499f51499774b89b384ec5513df5293e2cc43307208ef22b7c0fdd138564f7'),
 )

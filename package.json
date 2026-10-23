@@ -1,6 +1,6 @@
 {
   "name": "genewars-sfhs",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "license": "Apache-2.0",
@@ -13,6 +13,7 @@
     "inspect:pack": "python -B tools/inspect-pack/inspect_pack.py",
     "build:sfhs": "node tools/build-sfhs/build.mjs",
     "test:browser": "node tests/browser/smoke.mjs",
+    "test:campaign:browser": "node tests/browser/campaign.mjs",
     "leak:check": "python -B tools/asset-leak-check/check.py",
     "check": "npm run typecheck && npm test && npm run test:importer && npm run leak:check",
     "verify": "node tools/verify.mjs",

@@ -33,7 +33,7 @@ if (!synthetic) {
     gunzipSync(packBytes, { maxOutputLength: 256 * 1024 * 1024 }),
   );
   if (
-    pack.schemaVersion !== 1 ||
+    ![1, 2].includes(pack.schemaVersion) ||
     pack.kind !== "original-private" ||
     pack.missions.length !== 24
   )
@@ -112,7 +112,6 @@ if (
 )
   throw new Error("External runtime reference or inline event handler");
 await mkdir(dirname(output), { recursive: true });
-await writeFile(output, html);
 let commit = null,
   dirty = true;
 try {
@@ -130,11 +129,20 @@ try {
     encoding: "utf8",
   }).trim();
 } catch {}
+html = html.replace(
+  "</body>",
+  () =>
+    `<script type="application/json" id="gw-build-meta">${JSON.stringify({ commit, dirty, engineVersion: "0.2.0-campaign-development", acceptedMissions: 0 })}</script></body>`,
+);
+await writeFile(output, html);
 const receipt = {
   schemaVersion: 1,
   sourceCommit: commit,
   sourceDirty: dirty,
-  buildVersion: "0.1.0-workbench",
+  buildVersion: "0.2.0-campaign-development",
+  contentSchemaVersion: pack?.schemaVersion || 1,
+  acceptedMissionCount: 0,
+  physicalDeviceAcceptance: "not-run",
   upstreamBattleDrones: "39d6f587f98a82f5c0426e8bd476cef49fd19ef0",
   importerVersion: pack?.importerVersion || null,
   variant: pack?.source.variant || "synthetic",

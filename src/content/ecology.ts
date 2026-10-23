@@ -21,6 +21,21 @@ export const EcologyRulesSchema = z.object({
     .length(12),
   spreadDirections: z.array(z.tuple([word, word])).length(9),
   corpseFriction: z.array(word).length(8).optional(),
+  speciesTraits: z.array(z.array(byte).length(45)).length(25).optional(),
+  attackChannels: z
+    .array(z.number().int().min(-128).max(127))
+    .length(5)
+    .optional(),
+  muleCombat: z
+    .object({
+      queryRadius: z.number().int().min(-0x80000000).max(0x7fffffff),
+      attack: byte,
+      defense: byte,
+      disposition: byte,
+      attackChannel: z.number().int().min(-128).max(127),
+      foodWeights: z.tuple([byte, byte, byte]),
+    })
+    .optional(),
   plantResources: z
     .array(z.object({ selector: byte, path: z.string(), assetKey: z.string() }))
     .length(12),

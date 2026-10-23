@@ -1,8 +1,17 @@
 import type { Stage } from "../render/stage";
-import type { World } from "../sim/schema";
+export interface PickEntity {
+  id: number;
+  x: number;
+  y: number;
+  hitOffset?: number;
+}
+export interface PickWorld {
+  specialists: readonly PickEntity[];
+  buildings: readonly PickEntity[];
+}
 export function connectInput(
   stage: Stage,
-  getWorld: () => World | null,
+  getWorld: () => PickWorld | null,
   select: (ids: number[]) => void,
   command: (x: number, y: number, queued: boolean) => void,
   isPlacing: () => boolean = () => false,
@@ -79,7 +88,10 @@ export function connectInput(
           select(
             world.specialists
               .filter((a) => {
-                const s = stage.project(a.x + 0.5, a.y + 0.5);
+                const s = stage.project(
+                  a.x + (a.hitOffset ?? 0.5),
+                  a.y + (a.hitOffset ?? 0.5),
+                );
                 return (
                   s.x >= Math.min(p.startX, e.clientX) &&
                   s.x <= Math.max(p.startX, e.clientX) &&
@@ -93,7 +105,10 @@ export function connectInput(
           const entities = [...world.specialists, ...world.buildings];
           const hits = entities
             .filter((a) => {
-              const s = stage.project(a.x + 0.5, a.y + 0.5);
+              const s = stage.project(
+                a.x + (a.hitOffset ?? 0.5),
+                a.y + (a.hitOffset ?? 0.5),
+              );
               return Math.hypot(s.x - e.clientX, s.y - e.clientY) < 30;
             })
             .map((a) => a.id)

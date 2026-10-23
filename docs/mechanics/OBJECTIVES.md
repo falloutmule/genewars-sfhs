@@ -1,0 +1,33 @@
+# Campaign objective scanner
+
+`src/sim/mechanics/mission-objectives.ts` independently expresses the complete recovered source72ED0 numeric objective scan and ordinary terminal classification. Its rules depend on actual player progress and configured fields; it contains no mission-number objective list. The evidence is the audited CD `mission_outcome.rs`, `actor_world/mission_outcome.rs`, `research/variants/mission-outcome.md`, its640-case literal-source review and `research/ghidra/mission-tail-contract.json`. The later acceptance004 establishes a bounded preservation path, not acceptance of this conversion. Canonical conversion mission acceptance remains0/24.
+
+`readMissionObjectiveContext(currentPrefix, runtime)` reads complete current context from actual backing bytes. `runtime` supplies flags, mode, active count, selected player and frame. The prefix is exactly0x355E bytes; imported startup fields are not substitutes for updated runtime backing when their values change.
+
+| Context | Backing source |
+| --- | --- |
+| `missionCounter` | unsigned dword1EC2 |
+| `targetCount` | unsigned word1EA6 |
+| `missionLimit` | unsigned word1C7C |
+| `missionTimer` | unsigned word355C |
+| `terrainCount`, `field34b9` | bytes34B8,34B9 |
+| `terrainLimit` | signed dword1EAA |
+
+`scanMissionObjectives(players, context, capability)` returns copied four-player records, winner, survivor count/last survivor and ordered capability-query IDs. Its capability callback returns a fallible boolean for source805E0 and receives the selected record only if that branch is reached. `evaluateMissionObjectives` adds flags and `running`/`won`/`lost` classification plus the ordinary victory-module request. A failed capability lookup, deferred landing or unsupported presentation branch returns an atomic reason-bearing failure; it never fabricates a loss or partially commits player elimination.
+
+The scanner preserves these ordered rules:
+
+- Active players are visited in source order and scanning stops when a winner is found. Player+49D must be nonzero for direct objective/empty-player processing. The exact type/count/deferred-state branch determines whether an empty player sets elimination+6E3. An already eliminated flag does not independently suppress direct objective checks.
+- Under campaign flag20, the selected progress0 player wins at unsigned completed-Photon byte606>=3. Selected progress14/20 instead requires ordinary mode, signed approval+11>=unsigned mission limit, and mission timer0. Other progress values acquire no invented special predicate.
+- If the selected campaign player has no winner and no deferred mission counter, source805E0 may mark it eliminated. The generic GOOP/terrain checks still follow this call in the same callback, even when capability just set elimination.
+- A type0 player reaches a positive unsigned target count through signed GOOP+4A7. Nonzero terrain count enables signed score+D>=signed terrain limit independently from type and campaign flag.
+- With no direct winner and all terrain objects counted complete, noneliminated players compete by positive score. Strictly greater comparisons retain the first tie; the source's running best is a16-bit word despite32-bit player scores, so truncation remains observable.
+- Last-survivor victory requires target count0, more than one active player, exactly one survivor and either alternate mode or no terrain objects. Survival counting follows elimination bytes, including records outside direct activation eligibility.
+
+Flag40 is an already-terminal early-return boundary: this scan cannot reconstruct the previous winner. A selected ordinary winner sets40 and requests source185DFC; another winner or selected elimination sets80. Existing80 latches loss unless a new winner takes the earlier branch. Mode1 terminal formatting/reveal/terrain/UI effects remain explicit unsupported boundaries. A nonzero mission counter exactly equal to the frame requires deferred7F3B0; it is not skipped or treated as gameplay failure.
+
+`outcome.ts::stepCampaignResult` composes this scanner with the existing serializable notification, victory-entry and continuation stages. Running generic evaluation requires the four additional actual context fields `missionLimit`, `missionTimer`, `terrainLimit` and `field34b9`; absence rejects. Progress changes only at victory-view entry. `stepExcelandResult` remains a compatibility adapter restricted to mission1/progress0 with absent generic targets, and supplies zero only for fields proven unobserved in that restricted path. Campaign carry and ending-sequence boundaries remain separate.
+
+`describeMissionObjectives(players, context, currentPrefix?)` returns a display ledger derived from the same configured predicates. It distinguishes displayed thresholds from direct eligibility, elimination, deferred landing and possible capability queries. A reached display threshold is not a completed mission: the full ordered scan still controls the result. Unknown progress without a configured generic/special predicate reports `none-configured`. For terrain goals, actual supplied prefix bytes yield up to four zone centers, radii, selectors and initial/remaining quotas from2FF8+19*index. Missing prefix and unsupported zone counts remain explicit. The descriptor does not guess a creature count or assign zone scoring mechanics from a briefing. This lets the host show a later mission's loaded score target and real marked zone instead of reusing an Exceland construction checklist. The host must update scores, quota/exhaustion fields and the mission timer through their actual gameplay families.
+
+Sixteen synthetic tests exercise all256 progress-byte possibilities, signed/unsigned gates, empty-player branches, lazy query order, atomic errors, threshold ordering, terrain word truncation, survivor gates, source context/zone reads, later result progression and JSON restoration. An ignored private comparison also matches all640 existing literal-source fixtures over4,628,480 bytes, including player afterimages, flags, winner, capability order and result-request classification; expected and TypeScript output SHA-256 are `f7d1dbbee0d30994c34b3b31662a478665f9df63bdc6eb93835d732dd8b7b31a`. That comparison supplies the source review's explicit805E0 boolean/error port; the live capability adapter has its own tests. The work ran no original executable and committed no proprietary fixtures. Numeric predicate conformance does not claim later mission gameplay or full host mechanics.

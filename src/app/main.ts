@@ -8,6 +8,16 @@
 import "../ui/style.css";
 import { PackSchema, type Pack, type Mission } from "../content/types";
 import { syntheticPack } from "../content/synthetic";
+import { openCampaign, type CampaignController } from "./campaign";
+import {
+  recoverCampaign,
+  loadCampaign,
+  saveCampaign,
+  replayCampaign,
+  type CampaignReplay,
+  type CampaignSave,
+} from "../sim/campaign/persistence";
+import { CampaignDatabase } from "../platform/campaign-storage";
 import { FixedClock } from "../platform/clock";
 import { connectInput } from "../platform/input";
 import { Stage } from "../render/stage";
@@ -38,6 +48,7 @@ let pack: Pack,
   stage: Stage | null = null,
   world: World | null = null,
   mission: Mission;
+let campaign: CampaignController | null = null;
 let clock = new FixedClock(),
   selection = new Set<number>(),
   placing: Selector | null = null,
@@ -70,6 +81,8 @@ function status(message: string): void {
   text("#notice", message);
 }
 function teardown(): void {
+  campaign?.stop();
+  campaign = null;
   cancelAnimationFrame(raf);
   releaseInput?.();
   releaseInput = null;
@@ -147,7 +160,7 @@ function menu(): void {
   world = null;
   selection.clear();
   app.innerHTML =
-    '<div class="landing"><div class="landing-inner"><p class="eyebrow">1996 → Browser · Direct conversion</p><h1>GENEWARS</h1><p class="badge">Development build · campaign not yet playable</p><p>Original worlds, original artwork. A modern conversion built from your locally owned files.</p><p id="variant" class="muted"></p><div class="actions" id="menu-actions"></div><p id="coverage"></p><p class="help">The construction workbench tests the established Exceland build sequence. Movement, construction timing and specialist setup are provisional. Economy, power, creatures, AI, Ethereals and campaign outcomes still require integration.</p><p id="notice" role="status"></p></div></div>';
+    '<div class="landing"><div class="landing-inner"><p class="eyebrow">1996 → Browser · Direct conversion</p><h1>GENEWARS</h1><p class="badge">Campaign development ·0/24 missions accepted</p><p>Original worlds, original artwork. A modern conversion built from your locally owned files.</p><p id="variant" class="muted"></p><div class="actions" id="menu-actions"></div><p id="coverage"></p><p class="help">The original campaign path initializes from mission data. This development build is still being verified. The separate construction workbench remains available as a developer tool.</p><p id="notice" role="status"></p></div></div>';
   if (pack.assets.TITLESCR)
     $(".landing").style.setProperty(
       "--title-art",
@@ -159,7 +172,69 @@ function menu(): void {
     `${pack.missions.length} maps · ${Object.keys(pack.assets).length} visual resources · ${Object.keys(pack.sounds).length} audio records`,
   );
   const actions = $("#menu-actions");
+  const campaignButton = button(
+    "Start original campaign",
+    () => void startCampaign(),
+    actions,
+  );
+  campaignButton.disabled =
+    pack.schemaVersion !== 2 || !pack.missions[0].startup;
+  button(
+    "Resume campaign recovery",
+    () => {
+      void (async () => {
+        for (const text of await new CampaignDatabase().recovery())
+          if (text)
+            try {
+              await startCampaign(loadCampaign(text, contentHash));
+              return;
+            } catch {}
+        const old = recoverCampaign(localStorage, contentHash);
+        if (old) {
+          await startCampaign(old);
+          return;
+        }
+        throw new Error("No compatible campaign recovery save");
+      })().catch(showError);
+    },
+    actions,
+  );
   button("Campaign atlas", campaignAtlas, actions);
+  button(
+    "Import campaign save",
+    () =>
+      upload((text) => {
+        try {
+          void startCampaign(loadCampaign(text, contentHash));
+        } catch (e) {
+          showError(e);
+        }
+      }),
+    actions,
+  );
+  button(
+    "Import campaign replay",
+    () =>
+      upload((text) => {
+        try {
+          const replay = JSON.parse(text) as CampaignReplay;
+          const replayed = replayCampaign(replay, pack, contentHash);
+          void startCampaign(
+            loadCampaign(
+              saveCampaign(replayed, {
+                paused: true,
+                speed: 1,
+                accumulator: 0,
+              }),
+              contentHash,
+            ),
+          );
+        } catch (e) {
+          showError(e);
+        }
+      }),
+    actions,
+  );
   button(
     "Exceland construction workbench",
     () => void start(pack.missions[0], true),
@@ -204,6 +279,16 @@ function menu(): void {
       }),
     actions,
   );
+}
+async function startCampaign(restored?: CampaignSave): Promise<void> {
+  teardown();
+  world = null;
+  try {
+    campaign = await openCampaign(app, pack, contentHash, menu, restored);
+  } catch (e) {
+    menu();
+    showError(e);
+  }
 }
 function campaignAtlas(): void {
   const d = dialog("Original campaign atlas"),
@@ -729,7 +814,7 @@ window.addEventListener("pagehide", () => {
 // SECTION HARNESS — temporary state only; no localStorage writes
 const CR = {
   project(x: number, y: number) {
-    return stage?.project(x, y) || null;
+    return campaign?.project(x, y) || stage?.project(x, y) || null;
   },
   runFullSelfCheck() {
     const w = createWorld(syntheticPack().missions[0], "selfcheck", true),
@@ -761,6 +846,7 @@ const CR = {
   inspect() {
     return {
       world: world ? structuredClone(world) : null,
+      campaign: campaign?.inspect() ?? null,
       contentHash,
       packKind: pack.kind,
       missionCount: pack.missions.length,
@@ -777,10 +863,14 @@ const CR = {
     };
   },
   renderPurity() {
+    if (campaign) return campaign.renderPurity();
     if (!world || !stage) return true;
     const before = checksum(world);
     stage.render();
     return before === checksum(world);
+  },
+  advanceCampaign(ticks: number) {
+    campaign?.advance(ticks);
   },
 };
 declare global {
