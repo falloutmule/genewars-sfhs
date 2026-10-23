@@ -1,5 +1,6 @@
 import type { Pack, Mission } from "../content/types";
 import { Stage, type SceneEntity } from "../render/stage";
+import { campaignBuildingAsset } from "../sim/campaign/building-startup-adapter";
 import { connectInput, type PickWorld } from "../platform/input";
 import { CampaignDatabase } from "../platform/campaign-storage";
 import { CampaignAudio } from "../platform/campaign-audio";
@@ -37,15 +38,9 @@ const NAMES: Record<number, string> = {
   0: "Genepod",
   1: "Turret",
   3: "First Stage Distributor",
+  4: "Recycling Plant",
   6: "Photon Processor",
   11: "Extractor",
-};
-const ART: Record<number, string> = {
-  0: "BGENE",
-  1: "BTURR",
-  3: "BPOWE",
-  6: "BSOLA",
-  11: "BMINE",
 };
 // Presentation policy:60 source callbacks/second at1x. The original wall-clock
 // cadence remains unresolved; simulation/replay never depends on render FPS.
@@ -836,13 +831,12 @@ export async function openCampaign(
       });
     }
     for (const b of w.buildings) {
-      const art = ART[b.selector],
+      const art = campaignBuildingAsset(pack, b.selector),
         asset = pack.assets[art];
       if (!asset) continue;
-      const source = w.economy.buildings.find((e) => e.id === b.id),
-        profile = animationProfile(asset, b.complete ? 1 : 0),
-        frame =
-          source?.extractor?.frame ?? source?.producer?.animation.frame ?? 0;
+      const native = w.buildingNative[b.slot],
+        profile = animationProfile(asset, native[25]!),
+        frame = native[27]!;
       entities.push({
         id: `source:3:${b.slot}`,
         x: b.x / 256,

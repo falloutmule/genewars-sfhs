@@ -1,7 +1,14 @@
 import { z } from "zod";
 import type { Pack } from "../../content/types";
+import { stepCampaignEconomyBuildings } from "./economy-adapter";
+import {
+  initializeCampaignBuildings,
+  campaignBuildingAsset,
+  type CampaignBuilding,
+} from "./building-startup-adapter";
 import {
   bootstrapCampaign,
+  campaignPlayerInitialLanding,
   synchronizePlayer,
   type CampaignBootstrap,
   type CampaignActor,
@@ -36,6 +43,7 @@ import {
   type EcologyState,
 } from "../mechanics/ecology";
 import { nextRandom } from "../mechanics/random";
+import { assertOpponentStrategyImplemented } from "../mechanics/opponent-startup";
 import {
   findRoute,
   moveGoal,
@@ -50,12 +58,7 @@ import {
 } from "../mechanics/mule";
 import {
   synchronizePowerAdapter,
-  applyPowerBuildingEvents,
-  createExtractorContactSmoke,
-  extractorNeedsContact,
-  advancePowerProducerRng,
   initializePowerAdapter,
-  planExtractorContactQueries,
 } from "./power-adapter";
 import {
   groundHeight,
@@ -76,7 +79,6 @@ import {
   type ConstructionRules,
 } from "../mechanics/construction";
 import {
-  stepEconomyBuildings,
   stepEconomyPackets,
   type EconomyState,
   type EconomyBuilding,
@@ -202,13 +204,6 @@ import {
 type CampaignCarry = NonNullable<Parameters<typeof bootstrapCampaign>[3]> & {
   specialistOrigin?: [number, number];
 };
-const BUILDING_ART: Record<number, string> = {
-  0: "BGENE",
-  1: "BTURR",
-  3: "BPOWE",
-  6: "BSOLA",
-  11: "BMINE",
-};
 
 const point = z.tuple([
   z.number().int().min(0).max(32767),
@@ -306,7 +301,7 @@ export interface CampaignWorld extends CampaignBootstrap {
   ecology: EcologyState;
   landings: LandingState[];
   builders: ConstructionActor[];
-  buildings: ConstructionBuilding[];
+  buildings: CampaignBuilding[];
   buildingNative: BuildingNative[];
   creatureNative: (number | null)[][];
   muleQueues: Record<string, [number, number][]>;
@@ -384,10 +379,7 @@ export function createCampaign(
       });
     }
   }
-  if (s.pools[3].activeCount)
-    throw new Error(
-      "Existing source building runtime initialization requires admission",
-    );
+  const initialBuildings = initializeCampaignBuildings(b.source, pack);
   const w: CampaignWorld = {
     ...b,
     specialists,
@@ -436,8 +428,8 @@ export function createCampaign(
           task: null,
         };
       }),
-    buildings: [],
-    buildingNative: initializeNativePool(b.source, 3),
+    buildings: initialBuildings.buildings,
+    buildingNative: initialBuildings.records,
     creatureNative: initializeNativePool(b.source, 0),
     muleQueues: {},
     jobs: [],
@@ -450,12 +442,12 @@ export function createCampaign(
         { length: 16384 },
         (_, i) => b.terrain.bytes[i * 14 + 13],
       ),
-      buildings: [],
+      buildings: initialBuildings.economyBuildings,
       players: b.players.map((p) => ({
         id: p.id,
         goop: p.goop,
-        capacity: 0,
-        maxOperationalHQGrade: 0,
+        capacity: u32(p.raw, 0x5e6),
+        maxOperationalHQGrade: p.raw[0x6e1],
         generatedEnergy: 0,
         noPowerWarningTicks: 0,
         unusedGoopWarningTicks: 0,
@@ -543,7 +535,9 @@ export function enterCampaign(w: CampaignWorld, pack?: Pack): void {
     .filter((e) => e.family === 4)
     .map((e) => e.index);
   for (const p of w.players.filter(
-    (p) => p.id < w.source.source.context.activePlayerCount,
+    (p) =>
+      p.id < w.source.source.context.activePlayerCount &&
+      campaignPlayerInitialLanding(p.raw, w.flags, w.missionPrefix),
   )) {
     let slot = 0;
     while (occupied.includes(slot)) slot++;
@@ -652,6 +646,14 @@ function tables(pack: Pack): ConstructionRules {
   };
 }
 function projection(w: CampaignWorld): ConstructionState {
+  if (
+    w.buildings.some(
+      (b) => ![0, 1, 3, 6, 11].includes(b.selector) || b.grade !== 0,
+    )
+  )
+    throw Error(
+      "Legacy construction projection cannot represent the current building pool",
+    );
   return {
     frame: w.frame,
     terrain: w.terrain,
@@ -668,7 +670,7 @@ function projection(w: CampaignWorld): ConstructionState {
       completed: p.completed,
       ownedMask: p.owned,
     })),
-    buildings: w.buildings,
+    buildings: w.buildings as ConstructionBuilding[],
     jobs: w.jobs,
     nextJobId: w.nextJobId,
     terrainLastFrame: w.terrainLastFrame,
@@ -727,7 +729,7 @@ function applyConstruction(
       const native = createNativeBuilding(w.buildingNative[b.slot], {
         slot: b.slot,
         owner: b.owner,
-        selector: b.selector,
+        selector: e.request.selector,
         position: [b.x, b.y],
         ground: groundHeight(w.terrain, b.x, b.y),
         shade: effectTerrainShade(w.terrain, b.x, b.y),
@@ -859,7 +861,7 @@ function buildingObstacle(
   for (let i = 0; i < offsets.length; i++) {
     const cell = worldCell(p[0] + offsets[i][0], p[1] + offsets[i][1]);
     let id = w.spatial.heads[cell];
-    let found: ConstructionBuilding | undefined;
+    let found: CampaignBuilding | undefined;
     while (id) {
       const n = w.spatial.nodes[id];
       if (n.family === 3) {
@@ -1815,6 +1817,14 @@ function syncNativeBindings(w: CampaignWorld): void {
 export function stepCampaign(w: CampaignWorld, pack: Pack): void {
   if (w.phase !== "active") return;
   try {
+    assertOpponentStrategyImplemented(
+      w.players.map((p) => p.raw),
+      {
+        flags: w.flags,
+        runtimeMode: w.runtimeMode,
+        activePlayerCount: w.source.source.context.activePlayerCount,
+      },
+    );
     syncNativeBindings(w);
     stepCampaignZones(w, pack, {
       gravity: context(w, pack).gravity,
@@ -1867,71 +1877,44 @@ export function stepCampaign(w: CampaignWorld, pack: Pack): void {
       }
     }
     syncEconomy(w);
-    const contacts = w.economy.buildings.filter((b) => {
-      const p = w.economy.players[b.owner];
-      return extractorNeedsContact(b, p.goop, p.capacity, pack.economyRules!);
-    });
-    for (const b of [...w.economy.buildings].sort(
-      (a, b) => a.owner - b.owner || a.slot - b.slot,
-    )) {
-      if (!b.complete) {
-        const slot = b.owner * 64 + b.slot;
-        const result = stepIncompleteNativeBuilding(
-          w.buildingNative[slot],
-          animationProfile(pack.assets[BUILDING_ART[b.selector]], 0),
-        );
-        if (!result.ok) throw new Error(result.reason);
-        w.buildingNative[slot] = result.value.native;
-        b.energy = i16(result.value.native as number[], 61);
-        if (result.value.stopAudio23) emitAudio(w, `source:3:${slot}`, 0x23, 4);
-        if (result.value.stopAudio2f) emitAudio(w, `source:3:${slot}`, 0x2f, 4);
-      }
-      if (b.complete && b.selector === 0) stepCampaignGenepod(w, b, pack);
-      if (b.complete && !b.disabled && (b.selector === 3 || b.selector === 6)) {
-        const request = advancePowerProducerRng(w, b, pack);
-        for (const a of request.audio)
-          emitAudio(
-            w,
-            `source:3:${b.slot}`,
-            a.channel,
-            a.type === "stop" ? 4 : a.mode,
-            a.type === "stop" ? 0 : a.parameter,
-            a.type === "stop" ? null : a.range,
-          );
-      }
-      if (contacts.some((c) => c.id === b.id)) {
-        const queries = planExtractorContactQueries(
-          w.spatial,
-          b,
-          w.players[b.owner].raw[0x6e5],
-          (index) => {
-            const n = w.ecology.mules.find((m) => m.index === index)?.native;
-            return n && n[24] !== null && n[0x5e] !== null
-              ? { owner: n[24]!, state: n[0x5e]! }
-              : null;
-          },
-        );
-        if (queries.queries.some((q) => q.virtual34Required))
-          throw new Error(
-            "Extractor contact with a living creature requires its damage callback",
-          );
-        createExtractorContactSmoke(w, b, pack);
-      }
-    }
-    const econ = stepEconomyBuildings(
-      w.economy,
+    const economyReceipt = stepCampaignEconomyBuildings(
+      w,
+      pack,
+      specialistServices(pack),
       {
-        frame: w.frame,
-        solarGeneration: w.source.source.terrain.solarGeneration,
-        packetSamples: [],
-        contactResolvedBuildingIds: contacts.map((b) => b.id),
+        dispatchBuilding(staged, building) {
+          const slot = building.owner * 64 + building.slot;
+          if (!building.complete) {
+            const result = stepIncompleteNativeBuilding(
+              staged.buildingNative[slot],
+              animationProfile(
+                pack.assets[campaignBuildingAsset(pack, building.selector)],
+                0,
+              ),
+            );
+            if (!result.ok) throw new Error(result.reason);
+            staged.buildingNative[slot] = result.value.native;
+            building.energy = i16(result.value.native as number[], 61);
+            if (result.value.stopAudio23)
+              emitAudio(staged, `source:3:${slot}`, 0x23, 4);
+            if (result.value.stopAudio2f)
+              emitAudio(staged, `source:3:${slot}`, 0x2f, 4);
+            return true;
+          }
+          if (building.selector === 0) {
+            stepCampaignGenepod(staged, building, pack);
+            return true;
+          }
+          if (![3, 6, 11].includes(building.selector))
+            throw new Error(
+              `Original completed building callback ${building.selector} is not implemented`,
+            );
+          return false;
+        },
       },
-      pack.economyRules!,
     );
-    if (!econ.ok) throw new Error(econ.reason);
-    applyPowerBuildingEvents(w, econ.receipt, pack);
     syncNativeBindings(w);
-    for (const e of econ.receipt.events)
+    for (const e of economyReceipt.events)
       if (e.type === "audio") {
         const cue = {
           "work-start": 0x2f,
@@ -2539,11 +2522,6 @@ export function continueCampaign(w: CampaignWorld, pack: Pack): CampaignWorld {
     null,
   );
   if (!plan.ok) throw new Error(plan.reason);
-  for (const id of plan.value.retiredActorIds) {
-    const a = w.actors.find((a) => a.id === id)!;
-    if (w.spatial.nodes[a.sourceId])
-      unlinkSpatial(w.spatial, w.terrain, a.sourceId as `source:2:${number}`);
-  }
   const players = w.players.map((p, i) => ({
     ...structuredClone(p),
     raw: plan.value.players[i],
@@ -2571,6 +2549,13 @@ export function continueCampaign(w: CampaignWorld, pack: Pack): CampaignWorld {
     provenance: auxiliary.value.provenance,
   };
   next.tick = w.tick + 1;
+  // A missing next-mission family must leave the valid result save intact.
+  // Retirement of the old map is committed only after the next startup exists.
+  for (const id of plan.value.retiredActorIds) {
+    const a = w.actors.find((a) => a.id === id)!;
+    if (w.spatial.nodes[a.sourceId])
+      unlinkSpatial(w.spatial, w.terrain, a.sourceId as `source:2:${number}`);
+  }
   return next;
 }
 export function validateCampaignWorld(w: CampaignWorld, hash: string): void {

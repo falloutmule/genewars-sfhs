@@ -17,6 +17,11 @@ import {
   type SourcePoolRegistry,
 } from "./source-pools";
 import { decodeBytes, i16, u32, put16, put32 } from "./bytes";
+import {
+  loadOpponentStartupAI,
+  prepareOpponentStartup,
+  type OpponentStartupAI,
+} from "../mechanics/opponent-startup";
 
 export interface CampaignPlayer {
   id: number;
@@ -71,6 +76,19 @@ export interface CampaignBootstrap {
   limitations: string[];
 }
 export const CAMPAIGN_ENGINE = "0.2.0-campaign-development";
+/**7D600..7D613 calls801C0/80830 for this exact human campaign entry.
+ * A zero selected roster does not suppress the original landing request. */
+export function campaignPlayerInitialLanding(
+  raw: readonly number[],
+  flags: number,
+  missionPrefix: readonly number[],
+): boolean {
+  return (
+    raw[2] === 0 &&
+    !!(flags & 0x20) &&
+    ((raw[0x6e7] << 24) >> 24 < 4 || u32(missionPrefix, 0x1ec2) !== 0)
+  );
+}
 /** Explicit normalized replacement for native pointers and uninitialized scratch.
  * Scratch18/1B stay null: callback consumers must establish their own admission.
  */
@@ -157,9 +175,14 @@ export function bootstrapCampaign(
   };
   const players: CampaignPlayer[] = [],
     actors: CampaignActor[] = [];
+  const prefix = decodeBytes(s.missionPrefixBase64);
+  let opponentAI: OpponentStartupAI | undefined;
+  const selectedProgress = retained
+    ? (retained.players[selected].raw[0x6e7] << 24) >> 24
+    : 0;
   for (let id = 0; id < 4; id++) {
-    const raw = decodeBytes(s.players[id].recordBase64),
-      target = s.targets[id] as [number, number];
+    let raw = decodeBytes(s.players[id].recordBase64);
+    const target = s.targets[id] as [number, number];
     const prior = retained?.players[id];
     if (id === selected) {
       const keep = prior?.raw ?? freshCampaignPlayer(id, target, "Player 1");
@@ -169,9 +192,36 @@ export function bootstrapCampaign(
       ])
         raw.splice(a, b - a, ...keep.slice(a, b));
     }
-    const progress = (raw[0x6e7] << 24) >> 24;
+    let progress = (raw[0x6e7] << 24) >> 24;
+    if (id < s.context.activePlayerCount) {
+      raw[1] = id;
+      raw[0x6e3] = 0;
+      put16(raw, 9, target[0]);
+      put16(raw, 11, target[1]);
+    }
     let blueprints: Blueprint[] =
       prior && id === selected ? structuredClone(prior.blueprints) : [];
+    if (id < s.context.activePlayerCount && raw[2] !== 0) {
+      opponentAI ??= loadOpponentStartupAI(decodeBytes(s.extensionBase64));
+      const prepared = prepareOpponentStartup(raw, {
+        player: id,
+        selectedPlayer: selected,
+        selectedProgress,
+        activePlayerCount: s.context.activePlayerCount,
+        target,
+        flags: 0x3e,
+        runtimeMode: 0,
+        aiRecord: opponentAI.records[id],
+        names: pack.texts.slice(0, 128),
+        blueprintRules: s.blueprintRules,
+        rng,
+        blueprintScratch: { byte18: null, byte1b: null },
+      });
+      raw = prepared.raw;
+      progress = prepared.progress;
+      blueprints = prepared.blueprints;
+      Object.assign(rng, prepared.rng);
+    }
     if (
       id < s.context.activePlayerCount &&
       raw[2] === 0 &&
@@ -203,11 +253,10 @@ export function bootstrapCampaign(
       completed: raw.slice(0x600, 0x60e),
       owned: raw[0x60e] | (raw[0x60f] << 8),
     };
-    if (id < s.context.activePlayerCount) {
-      if (raw[2] !== 0)
-        throw new Error(
-          `Player ${id} opponent initialization is not implemented`,
-        );
+    if (
+      id < s.context.activePlayerCount &&
+      campaignPlayerInitialLanding(raw, 0x3e, prefix)
+    ) {
       const chosen = selectMissionBlueprints(
         blueprints,
         s.context.actorMask,
@@ -254,7 +303,6 @@ export function bootstrapCampaign(
     synchronizePlayer(p);
     players.push(p);
   }
-  const prefix = decodeBytes(s.missionPrefixBase64);
   if (retained) {
     if (retained.world.length !== 150)
       throw new Error("Campaign world carry requires150 retained bytes");

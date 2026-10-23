@@ -637,4 +637,118 @@ describe("source-backed Extractor GOOP production and storage", () => {
       reason: "invalid-economy-building",
     });
   });
+
+  it("runs lazy host callbacks and allocation in owner/slot order without removing consumers from recipient state", () => {
+    const s = state([
+      building(1, 4),
+      building(0, 3),
+      building(2, 4, { owner: 1, slot: 0 }),
+    ]);
+    s.players.push({ ...s.players[0], id: 1 });
+    const trace: string[] = [];
+    const result = stepEconomyBuildings(
+      s,
+      context({
+        services: {
+          beforeBuilding(_s, b) {
+            trace.push(`before:${b.owner}:${b.slot}`);
+          },
+          buildingCallback(current, b, p) {
+            if (b.selector !== 4) return false;
+            expect(current.buildings).toHaveLength(3);
+            p.goop += 2;
+            return true;
+          },
+          afterBuilding(_s, b) {
+            trace.push(`after:${b.owner}:${b.slot}`);
+          },
+          allocateOwner(_s, p) {
+            trace.push(`allocate:${p.id}:${p.goop}`);
+            return true;
+          },
+          afterOwner(_s, p) {
+            trace.push(`end:${p.id}`);
+          },
+        },
+      }),
+      rules(),
+    );
+    expect(result.ok).toBe(true);
+    expect(trace).toEqual([
+      "before:0:0",
+      "after:0:0",
+      "before:0:1",
+      "after:0:1",
+      "allocate:0:2",
+      "end:0",
+      "before:1:0",
+      "after:1:0",
+      "allocate:1:2",
+      "end:1",
+    ]);
+    expect(s.players[0].goop).toBe(0);
+    expect(
+      result.ok &&
+        result.receipt.events.some(
+          (e) => e.type === "packet-launched" && e.packet.targetId === 1,
+        ),
+    ).toBe(true);
+  });
+
+  it("does not suppress the storage guard when an optional service declines allocation", () => {
+    const s = state([building(0, 4)]);
+    s.players[0].goop = 2;
+    expect(
+      stepEconomyBuildings(
+        s,
+        context({ services: { allocateOwner: () => false } }),
+        rules(),
+      ),
+    ).toEqual({ ok: false, reason: "additional-storage-allocation-required" });
+  });
+
+  it("rolls back an earlier host afterimage when a later ordered service throws", () => {
+    const s = state([building(0, 4), building(1, 4)]),
+      before = structuredClone(s);
+    expect(
+      stepEconomyBuildings(
+        s,
+        context({
+          services: {
+            buildingCallback(_s, b, p) {
+              if (b.id === 1) throw Error("late source service");
+              b.energy = 1;
+              p.goop = 5;
+              return true;
+            },
+          },
+        }),
+        rules(),
+      ),
+    ).toEqual({ ok: false, reason: "late source service" });
+    expect(s).toEqual(before);
+  });
+
+  it("accepts a contact resolved at its actual lazy callback position", () => {
+    const s = state([harvesting(0)]);
+    s.resources[9] = 8;
+    let resolved = false;
+    const result = stepEconomyBuildings(
+      s,
+      context({
+        services: {
+          beforeBuilding() {
+            resolved = true;
+          },
+          contactResolved: () => resolved,
+        },
+      }),
+      rules(),
+    );
+    expect(result.ok).toBe(true);
+    expect(
+      result.ok &&
+        result.receipt.events.some((e) => e.type === "goop-harvested"),
+    ).toBe(true);
+  });
 });

@@ -162,7 +162,8 @@ export function createStagedBotanistPlant(
   insertSpatial(w.spatial, w.terrain, p.id, worldCell(...p.position));
   synchronizeCampaignLinks(w);
   w.ecology.plantCount++;
-  w.ecology.ownerPlantCounts[request.owner]++;
+  w.ecology.ownerPlantCounts[request.owner] =
+    (w.ecology.ownerPlantCounts[request.owner] + 1) & 65535;
   synchronizeCampaignPlantCounts(w);
   const cell = worldCell(...p.position);
   if (w.ecology.plantOrder)

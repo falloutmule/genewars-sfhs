@@ -1,6 +1,7 @@
 /** Independently expressed Exceland economy. Original numeric profiles are inputs,
  * never defaults. See docs/mechanics/ECONOMY.md for evidence and host obligations. */
 import type { AnimationState } from "./animation";
+import type { RecyclingEvent } from "./building-startup";
 export type Grade = 0 | 1 | 2;
 export type GradeValues = readonly [number, number, number];
 export interface EconomyRules {
@@ -165,6 +166,37 @@ export interface EconomyContext {
   /** Contact queries/damage are host work. Every harvesting callback must have
    * its ordered contact pass resolved before this family can commit. */
   contactResolvedBuildingIds: readonly number[];
+  /** Already-isolated host services. They receive this callback's mutable
+   * economy afterimage; they must not publish it before the family succeeds. */
+  services?: EconomyPhaseServices;
+}
+export interface EconomyPhaseServices {
+  contactResolved?(state: EconomyState, building: EconomyBuilding): boolean;
+  beforeBuilding?(
+    state: EconomyState,
+    building: EconomyBuilding,
+    player: EconomyPlayer,
+  ): void;
+  /** True means the entire native callback, including its common tail, ran. */
+  buildingCallback?(
+    state: EconomyState,
+    building: EconomyBuilding,
+    player: EconomyPlayer,
+    events: EconomyEvent[],
+  ): boolean;
+  afterBuilding?(
+    state: EconomyState,
+    building: EconomyBuilding,
+    player: EconomyPlayer,
+    events: readonly EconomyEvent[],
+  ): void;
+  /** True replaces bounded generic storage with the actual owner437A0 pass. */
+  allocateOwner?(
+    state: EconomyState,
+    player: EconomyPlayer,
+    events: EconomyEvent[],
+  ): boolean;
+  afterOwner?(state: EconomyState, player: EconomyPlayer): void;
 }
 export type EconomyReason =
   | "under-construction"
@@ -178,6 +210,7 @@ export type EconomyReason =
   | "harvesting"
   | "capacity-full"
   | "resource-exhausted"
+  | "host-consumer-callback-complete"
   | "host-consumer-callback-required";
 export type EconomyEvent =
   | { type: "power-generated"; buildingId: number; amount: number }
@@ -202,6 +235,7 @@ export type EconomyEvent =
   | { type: "extractor-empty"; buildingId: number }
   | { type: "goop-discarded"; playerId: number; amount: number }
   | { type: "notice"; playerId: number; cause: "no-power" | "unused-goop" }
+  | { type: "recycling"; buildingId: number; event: RecyclingEvent }
   | {
       type: "audio";
       buildingId: number;
@@ -428,7 +462,7 @@ function invalidInput(
  * then owner/slot-ordered buildings, then player storage/history maintenance.
  * New packets await a later host physics observation. All errors are atomic:
  * neither the supplied state nor any nested input/profile object is mutated. */
-function stepEconomyPhase(
+function runEconomyPhase(
   before: EconomyState,
   context: EconomyContext,
   rules: EconomyRules,
@@ -523,250 +557,273 @@ function stepEconomyPhase(
     b: EconomyBuilding,
     name: Extract<EconomyEvent, { type: "audio" }>["cue"],
   ) => events.push({ type: "audio", buildingId: b.id, cue: name });
-  for (const building of buildings) {
-    const player = players.get(building.owner)!;
-    let reason: EconomyReason;
-    if (!building.complete) reason = "under-construction";
-    else if (building.selector === 3 || building.selector === 6) {
-      if (building.disabled) reason = "disabled";
-      else {
-        const distributor = building.selector === 3;
-        const generated = distributor
-          ? rules.power.distributorGeneration[building.grade]
-          : i16(context.solarGeneration + building.grade);
-        building.energy = i16(
-          i16(building.energy - building.extraDrain) + generated,
-        );
-        building.powered = true;
-        player.generatedEnergy = i16(player.generatedEnergy + generated);
-        events.push({
-          type: "power-generated",
-          buildingId: building.id,
-          amount: generated,
-        });
-        if (distributor)
-          building.energy = Math.min(
-            building.energy,
-            rules.power.distributorCapacity,
+  for (const player of [...state.players].sort((a, b) => a.id - b.id)) {
+    for (const building of buildings.filter((b) => b.owner === player.id)) {
+      const eventStart = events.length;
+      context.services?.beforeBuilding?.(state, building, player);
+      let reason: EconomyReason;
+      if (context.services?.buildingCallback?.(state, building, player, events))
+        reason = "host-consumer-callback-complete";
+      else if (!building.complete) reason = "under-construction";
+      else if (building.selector === 3 || building.selector === 6) {
+        if (building.disabled) reason = "disabled";
+        else {
+          const distributor = building.selector === 3;
+          const generated = distributor
+            ? rules.power.distributorGeneration[building.grade]
+            : i16(context.solarGeneration + building.grade);
+          building.energy = i16(
+            i16(building.energy - building.extraDrain) + generated,
           );
-        const pulse = distributor
-          ? context.frame % rules.power.distributorPulsePeriod ===
-              rules.power.distributorPulsePhase[building.grade] ||
-            building.energy === rules.power.distributorCapacity
-          : building.energy > rules.power.photonReleaseThreshold;
-        reason = "pulse-wait";
-        if (pulse) {
-          const targets = buildings.filter(
-            (target) =>
-              target.owner === building.owner &&
-              target.complete &&
-              (distributor
-                ? !target.disabled && ![3, 6, 8, 9].includes(target.selector)
-                : target.selector === 3) &&
-              distanceSquared(building, target, state, rules) <=
-                rules.power.distributorRange[
-                  distributor ? building.grade : target.grade
-                ] **
-                  2,
-          );
-          reason = targets.length ? "power-dispatched" : "no-recipients";
-          if (targets.length) {
-            const share = distributor
-              ? u16(Math.trunc(building.energy / targets.length))
-              : Math.trunc(rules.power.photonReleaseAmount / targets.length);
-            if (!distributor || share !== 0)
-              for (const target of targets) {
-                const packet = {
-                  id: state.nextPacketId++,
-                  sourceId: building.id,
-                  targetId: target.id,
-                  payload: Math.min(share, rules.power.packetPayloadCap),
-                  x: building.x,
-                  y: building.y,
-                };
-                state.packets.push(packet);
-                events.push({ type: "packet-launched", packet: { ...packet } });
-              }
-            building.energy = 0;
-          } else if (!distributor) building.energy = 0;
-        }
-        if (building.extraDrain > 0) building.extraDrain--;
-      }
-    } else if (building.selector === 11) {
-      const animation = building.extractor!;
-      let energy = i16(
-        building.energy - rules.extractor.upkeep - building.extraDrain,
-      );
-      if (energy <= 0) {
-        energy = 0;
-        if (!building.disabled) {
-          building.powered = false;
-          if (player.noPowerWarningTicks === 0)
-            player.noPowerWarningTicks = rules.power.noPowerWarningTicks;
-        }
-      }
-      let advancing = animation.frame !== 0;
-      if (!advancing && animation.workAudioActive) {
-        cue(building, "work-stop");
-        cue(building, "work-finish");
-      }
-      if (animation.frame === rules.extractor.resetFrame) {
-        animation.frame = 0;
-        advancing = false;
-      }
-      reason = building.disabled
-        ? "disabled"
-        : energy === 0
-          ? "unpowered"
-          : "cycle-wait";
-      if (energy !== 0 && !building.disabled) {
-        const previousCycle = animation.cycle;
-        animation.cycle = u8(previousCycle + 1);
-        if (previousCycle >= rules.extractor.cycleLength) {
-          animation.cycle = 0;
-          if (player.goop >>> 0 < player.capacity) {
-            animation.frame = rules.extractor.startFrame;
-            animation.stepDelay = rules.extractor.workDelay;
-            cue(building, "work-start");
-          } else reason = "capacity-full";
-        }
-        if (rules.extractor.harvestFrames.includes(animation.frame)) {
-          if (!contactResolved.has(building.id))
-            return {
-              ok: false,
-              reason: "extractor-contact-pass-required",
-              buildingId: building.id,
-            };
-          building.extraDrain = rules.extractor.harvestExtraDrain;
-          if (player.goop >>> 0 >= player.capacity) reason = "capacity-full";
-          else {
-            let chosen = -1;
-            let richest = 0;
-            const centerX = Math.floor(building.x / rules.cellSize);
-            const centerY = Math.floor(building.y / rules.cellSize);
-            for (
-              let dy = -rules.extractor.harvestRadius;
-              dy <= rules.extractor.harvestRadius;
-              dy++
-            )
-              for (
-                let dx = -rules.extractor.harvestRadius;
-                dx <= rules.extractor.harvestRadius;
-                dx++
-              ) {
-                const cell =
-                  mod(centerY + dy, state.height) * state.width +
-                  mod(centerX + dx, state.width);
-                if (state.resources[cell] > richest) {
-                  chosen = cell;
-                  richest = state.resources[cell];
+          building.powered = true;
+          player.generatedEnergy = i16(player.generatedEnergy + generated);
+          events.push({
+            type: "power-generated",
+            buildingId: building.id,
+            amount: generated,
+          });
+          if (distributor)
+            building.energy = Math.min(
+              building.energy,
+              rules.power.distributorCapacity,
+            );
+          const pulse = distributor
+            ? context.frame % rules.power.distributorPulsePeriod ===
+                rules.power.distributorPulsePhase[building.grade] ||
+              building.energy === rules.power.distributorCapacity
+            : building.energy > rules.power.photonReleaseThreshold;
+          reason = "pulse-wait";
+          if (pulse) {
+            const targets = buildings.filter(
+              (target) =>
+                target.owner === building.owner &&
+                target.complete &&
+                (distributor
+                  ? !target.disabled && ![3, 6, 8, 9].includes(target.selector)
+                  : target.selector === 3) &&
+                distanceSquared(building, target, state, rules) <=
+                  rules.power.distributorRange[
+                    distributor ? building.grade : target.grade
+                  ] **
+                    2,
+            );
+            reason = targets.length ? "power-dispatched" : "no-recipients";
+            if (targets.length) {
+              const share = distributor
+                ? u16(Math.trunc(building.energy / targets.length))
+                : Math.trunc(rules.power.photonReleaseAmount / targets.length);
+              if (!distributor || share !== 0)
+                for (const target of targets) {
+                  const packet = {
+                    id: state.nextPacketId++,
+                    sourceId: building.id,
+                    targetId: target.id,
+                    payload: Math.min(share, rules.power.packetPayloadCap),
+                    x: building.x,
+                    y: building.y,
+                  };
+                  state.packets.push(packet);
+                  events.push({
+                    type: "packet-launched",
+                    packet: { ...packet },
+                  });
                 }
-              }
-            if (chosen < 0) {
-              building.disabled = true;
-              building.depleted = true;
-              building.hqUpgradeSuppressed = true;
-              reason = "resource-exhausted";
-              events.push({ type: "extractor-empty", buildingId: building.id });
-              cue(building, "empty");
-            } else {
-              const consumed = Math.min(
-                richest,
-                rules.extractor.harvestUnits[building.grade],
-              );
-              state.resources[chosen] -= consumed;
-              const previous = player.goop;
-              player.goop = Math.min(
-                (player.goop + consumed * rules.extractor.goopPerResource) >>>
-                  0,
-                player.capacity,
-              );
-              reason = "harvesting";
-              events.push({
-                type: "goop-harvested",
+              building.energy = 0;
+            } else if (!distributor) building.energy = 0;
+          }
+          if (building.extraDrain > 0) building.extraDrain--;
+        }
+      } else if (building.selector === 11) {
+        const animation = building.extractor!;
+        let energy = i16(
+          building.energy - rules.extractor.upkeep - building.extraDrain,
+        );
+        if (energy <= 0) {
+          energy = 0;
+          if (!building.disabled) {
+            building.powered = false;
+            if (player.noPowerWarningTicks === 0)
+              player.noPowerWarningTicks = rules.power.noPowerWarningTicks;
+          }
+        }
+        let advancing = animation.frame !== 0;
+        if (!advancing && animation.workAudioActive) {
+          cue(building, "work-stop");
+          cue(building, "work-finish");
+        }
+        if (animation.frame === rules.extractor.resetFrame) {
+          animation.frame = 0;
+          advancing = false;
+        }
+        reason = building.disabled
+          ? "disabled"
+          : energy === 0
+            ? "unpowered"
+            : "cycle-wait";
+        if (energy !== 0 && !building.disabled) {
+          const previousCycle = animation.cycle;
+          animation.cycle = u8(previousCycle + 1);
+          if (previousCycle >= rules.extractor.cycleLength) {
+            animation.cycle = 0;
+            if (player.goop >>> 0 < player.capacity) {
+              animation.frame = rules.extractor.startFrame;
+              animation.stepDelay = rules.extractor.workDelay;
+              cue(building, "work-start");
+            } else reason = "capacity-full";
+          }
+          if (rules.extractor.harvestFrames.includes(animation.frame)) {
+            if (
+              !contactResolved.has(building.id) &&
+              !context.services?.contactResolved?.(state, building)
+            )
+              return {
+                ok: false,
+                reason: "extractor-contact-pass-required",
                 buildingId: building.id,
-                cell: chosen,
-                consumed,
-                credited: player.goop - previous,
-              });
-              if (state.resources[chosen] === 0)
+              };
+            building.extraDrain = rules.extractor.harvestExtraDrain;
+            if (player.goop >>> 0 >= player.capacity) reason = "capacity-full";
+            else {
+              let chosen = -1;
+              let richest = 0;
+              const centerX = Math.floor(building.x / rules.cellSize);
+              const centerY = Math.floor(building.y / rules.cellSize);
+              for (
+                let dy = -rules.extractor.harvestRadius;
+                dy <= rules.extractor.harvestRadius;
+                dy++
+              )
+                for (
+                  let dx = -rules.extractor.harvestRadius;
+                  dx <= rules.extractor.harvestRadius;
+                  dx++
+                ) {
+                  const cell =
+                    mod(centerY + dy, state.height) * state.width +
+                    mod(centerX + dx, state.width);
+                  if (state.resources[cell] > richest) {
+                    chosen = cell;
+                    richest = state.resources[cell];
+                  }
+                }
+              if (chosen < 0) {
+                building.disabled = true;
+                building.depleted = true;
+                building.hqUpgradeSuppressed = true;
+                reason = "resource-exhausted";
                 events.push({
-                  type: "terrain-depleted",
+                  type: "extractor-empty",
+                  buildingId: building.id,
+                });
+                cue(building, "empty");
+              } else {
+                const consumed = Math.min(
+                  richest,
+                  rules.extractor.harvestUnits[building.grade],
+                );
+                state.resources[chosen] -= consumed;
+                const previous = player.goop;
+                player.goop = Math.min(
+                  (player.goop + consumed * rules.extractor.goopPerResource) >>>
+                    0,
+                  player.capacity,
+                );
+                reason = "harvesting";
+                events.push({
+                  type: "goop-harvested",
                   buildingId: building.id,
                   cell: chosen,
+                  consumed,
+                  credited: player.goop - previous,
                 });
+                if (state.resources[chosen] === 0)
+                  events.push({
+                    type: "terrain-depleted",
+                    buildingId: building.id,
+                    cell: chosen,
+                  });
+              }
             }
+            if (animation.frame === rules.extractor.harvestFrames[0]) {
+              cue(building, "work-stop");
+              cue(building, "harvest");
+            }
+            if (animation.frame === rules.extractor.harvestFrames.at(-1))
+              cue(building, "work-start");
           }
-          if (animation.frame === rules.extractor.harvestFrames[0]) {
-            cue(building, "work-stop");
-            cue(building, "harvest");
+        } else building.powered = false;
+        energy = Math.min(energy, rules.power.consumerCapacity);
+        if (building.extraDrain > 0) building.extraDrain--;
+        if (building.disabled) {
+          if (energy > 0) energy--;
+          cue(building, "work-stop");
+        }
+        building.energy = energy;
+        const holds = rules.extractor.frameHolds[building.grade];
+        animation.frame = Math.min(animation.frame, holds.length - 1);
+        animation.delay = Math.min(animation.delay, animation.stepDelay);
+        const delay = animation.delay;
+        animation.delay = i8(animation.delay - 1);
+        if (delay <= 0) {
+          animation.delay = animation.stepDelay;
+          animation.hold = Math.min(animation.hold, holds[animation.frame]);
+          const hold = animation.hold;
+          animation.hold = u8(hold - 1);
+          if (hold === 0) {
+            animation.frame =
+              (animation.frame + Number(advancing)) % holds.length;
+            animation.hold = holds[animation.frame];
           }
-          if (animation.frame === rules.extractor.harvestFrames.at(-1))
-            cue(building, "work-start");
         }
-      } else building.powered = false;
-      energy = Math.min(energy, rules.power.consumerCapacity);
-      if (building.extraDrain > 0) building.extraDrain--;
-      if (building.disabled) {
-        if (energy > 0) energy--;
-        cue(building, "work-stop");
-      }
-      building.energy = energy;
-      const holds = rules.extractor.frameHolds[building.grade];
-      animation.frame = Math.min(animation.frame, holds.length - 1);
-      animation.delay = Math.min(animation.delay, animation.stepDelay);
-      const delay = animation.delay;
-      animation.delay = i8(animation.delay - 1);
-      if (delay <= 0) {
-        animation.delay = animation.stepDelay;
-        animation.hold = Math.min(animation.hold, holds[animation.frame]);
-        const hold = animation.hold;
-        animation.hold = u8(hold - 1);
-        if (hold === 0) {
-          animation.frame =
-            (animation.frame + Number(advancing)) % holds.length;
-          animation.hold = holds[animation.frame];
-        }
-      }
-    } else reason = "host-consumer-callback-required";
-    reasons.push({ buildingId: building.id, reason });
-  }
-  for (const player of state.players) {
-    // Bounded437A0: only Extractor allocation is recovered. Do not pretend the
-    // distinct store4/13 allocation callbacks have been established by capacity.
-    if (
-      player.goop > 0 &&
-      buildings.some(
-        (b) => b.owner === player.id && [4, 13].includes(b.selector),
-      )
-    )
-      return { ok: false, reason: "additional-storage-allocation-required" };
-    let remaining = player.goop;
-    if (remaining > 0)
-      for (const b of buildings) {
-        if (remaining <= 0) break;
-        if (b.owner === player.id && b.selector === 11) {
-          b.storedGoop = Math.min(remaining, rules.capacity.extractor);
-          remaining -= b.storedGoop;
-        }
-      }
-    if (remaining > 0) {
-      player.goop -= remaining;
-      if (player.unusedGoopWarningTicks === 0)
-        player.unusedGoopWarningTicks = rules.capacity.unusedGoopWarningTicks;
-      events.push({
-        type: "goop-discarded",
-        playerId: player.id,
-        amount: remaining,
-      });
+      } else reason = "host-consumer-callback-required";
+      reasons.push({ buildingId: building.id, reason });
+      context.services?.afterBuilding?.(
+        state,
+        building,
+        player,
+        events.slice(eventStart),
+      );
+    }
+    const allocatedByHost =
+      context.services?.allocateOwner?.(state, player, events) ?? false;
+    if (!allocatedByHost) {
+      // Bounded437A0: only Extractor allocation is recovered. Do not pretend the
+      // distinct store4/13 allocation callbacks have been established by capacity.
       if (
-        player.unusedGoopWarningTicks === rules.capacity.unusedGoopWarningTicks
+        player.goop > 0 &&
+        buildings.some(
+          (b) => b.owner === player.id && [4, 13].includes(b.selector),
+        )
       )
+        return { ok: false, reason: "additional-storage-allocation-required" };
+      let remaining = player.goop;
+      if (remaining > 0)
+        for (const b of buildings) {
+          if (remaining <= 0) break;
+          if (b.owner === player.id && b.selector === 11) {
+            b.storedGoop = Math.min(remaining, rules.capacity.extractor);
+            remaining -= b.storedGoop;
+          }
+        }
+      if (remaining > 0) {
+        player.goop -= remaining;
+        if (player.unusedGoopWarningTicks === 0)
+          player.unusedGoopWarningTicks = rules.capacity.unusedGoopWarningTicks;
         events.push({
-          type: "notice",
+          type: "goop-discarded",
           playerId: player.id,
-          cause: "unused-goop",
+          amount: remaining,
         });
+        if (
+          player.unusedGoopWarningTicks ===
+          rules.capacity.unusedGoopWarningTicks
+        )
+          events.push({
+            type: "notice",
+            playerId: player.id,
+            cause: "unused-goop",
+          });
+      }
     }
     if (
       player.noPowerWarningTicks === rules.power.noPowerWarningTicks &&
@@ -777,6 +834,7 @@ function stepEconomyPhase(
     }
     if (player.noPowerWarningTicks > 0) player.noPowerWarningTicks--;
     if (player.unusedGoopWarningTicks > 0) player.unusedGoopWarningTicks--;
+    context.services?.afterOwner?.(state, player);
   }
   for (const b of state.buildings) {
     const was = before.buildings.find((prior) => prior.id === b.id)!.powered;
@@ -809,6 +867,23 @@ function stepEconomyPhase(
       });
   }
   return { ok: true, receipt: { state, events, reasons, powerSamples } };
+}
+
+function stepEconomyPhase(
+  before: EconomyState,
+  context: EconomyContext,
+  rules: EconomyRules,
+  phase: "compatibility" | "buildings" | "packets",
+): EconomyResult {
+  try {
+    return runEconomyPhase(before, context, rules, phase);
+  } catch (error) {
+    return {
+      ok: false,
+      reason:
+        error instanceof Error ? error.message : "economy-host-service-failed",
+    };
+  }
 }
 
 /** Source47F80 building/player phase; packets are preserved without delivery

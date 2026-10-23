@@ -269,9 +269,9 @@ export function campaignFixture(): Pack {
         frameHolds: [Array(8).fill(0), [], []],
       },
       capacity: {
-        extractor: 1000,
-        store4: [2000, 3000, 4000],
-        store13: [1000, 2000, 3000],
+        extractor: 600,
+        store4: [400, 800, 1200],
+        store13: [500, 1000, 1500],
         unusedGoopWarningTicks: 100,
       },
     },

@@ -1,6 +1,8 @@
 import { z } from "zod";
 import { StartupSchema } from "./startup";
 import { OriginalRulesSchema } from "./rules";
+import { BuildingRulesSchema } from "./building-rules";
+import { StrategicAIRulesSchema } from "./strategic-ai";
 import { EconomyRulesSchema } from "./economy";
 import { EcologyRulesSchema } from "./ecology";
 import { AudioProfileSchema } from "./audio";
@@ -104,6 +106,8 @@ export const PackSchema = z
     sounds: z.record(z.string().startsWith("data:audio/wav;base64,")),
     texts: z.array(z.string()),
     rules: OriginalRulesSchema.optional(),
+    buildingRules: BuildingRulesSchema.optional(),
+    strategicAIRules: StrategicAIRulesSchema.optional(),
     economyRules: EconomyRulesSchema.optional(),
     ecologyRules: EcologyRulesSchema.optional(),
     effectRules: z

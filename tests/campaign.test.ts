@@ -7,6 +7,7 @@ import {
   stepCampaign,
   queueCampaign,
   validateCampaignWorld,
+  continueCampaign,
 } from "../src/sim/campaign/world";
 import {
   loadCampaign,
@@ -17,6 +18,20 @@ import {
 } from "../src/sim/campaign/persistence";
 import { checksum } from "../src/sim/checksum";
 describe("campaign host, separate from the workbench", () => {
+  it("preserves the valid result when the next startup rejects a missing family", () => {
+    const p = campaignFixture(),
+      w = createCampaign(p, "fixture");
+    enterCampaign(w);
+    for (let i = 0; i < 200; i++) stepCampaign(w, p);
+    w.phase = "result";
+    w.result.phase = "campaign-view-queued";
+    p.missions[1].startup!.context.specialActivation = 1;
+    const before = checksum(w);
+    expect(() => continueCampaign(w, p)).toThrow(
+      /Immediate mission activation/,
+    );
+    expect(checksum(w)).toBe(before);
+  });
   it("validates normalized content and initializes real blueprint selection/RNG", () => {
     const p = PackSchema.parse(campaignFixture()),
       w = createCampaign(p, "fixture");

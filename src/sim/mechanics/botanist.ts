@@ -193,13 +193,13 @@ export function emitBotanistEconomyBurst(
 ): number {
   const kind = byte(native, 6);
   if (
-    ![2, 3].includes(kind) ||
+    ![2, 3, 4].includes(kind) ||
     ![60, 61].includes(burst.code) ||
     !Number.isInteger(burst.count) ||
     burst.count < 0 ||
     burst.count > 255
   )
-    throw Error("Actual plant/specialist economy burst source required");
+    throw Error("Actual plant/specialist/building economy burst source required");
   const height = dword(native, kind === 3 ? 39 : 17),
     relative = kind === 3 ? (height - dword(native, 17)) | 0 : 0;
   let created = 0;

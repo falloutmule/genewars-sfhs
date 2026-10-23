@@ -416,7 +416,7 @@ describe("isolated campaign building damage adapter", () => {
             completed: p.completed,
             ownedMask: p.owned,
           })),
-          buildings: w.buildings,
+          buildings: w.buildings as ConstructionState["buildings"],
           jobs: w.jobs,
           nextJobId: w.nextJobId,
           terrainLastFrame: w.terrainLastFrame,
