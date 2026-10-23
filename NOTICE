@@ -1,0 +1,11 @@
+GeneWars SFHS conversion code, 2026.
+Platform patterns adapted from Battle Drones by Simon Willison and contributors,
+https://github.com/simonw/battledrones
+Pinned revision: 39d6f587f98a82f5c0426e8bd476cef49fd19ef0
+Licensed under the Apache License, Version 2.0; see LICENSE.
+Modifications and component audit are recorded in docs/UPSTREAM_BATTLE_DRONES.md.
+
+GeneWars and its original graphics, text, sound, music, maps, executables and
+other original content remain the property of their respective rights holders.
+They are NOT included in this repository or licensed by this notice.
+The local importer reads user-supplied files; its output is private.

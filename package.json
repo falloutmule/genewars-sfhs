@@ -1,0 +1,34 @@
+{
+  "name": "genewars-sfhs",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "Apache-2.0",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:importer": "python -B -m unittest discover -s tests/importer -v",
+    "import:original": "python -B tools/import-original/import_original.py",
+    "inspect:pack": "python -B tools/inspect-pack/inspect_pack.py",
+    "build:sfhs": "node tools/build-sfhs/build.mjs",
+    "test:browser": "node tests/browser/smoke.mjs",
+    "leak:check": "python -B tools/asset-leak-check/check.py",
+    "check": "npm run typecheck && npm test && npm run test:importer && npm run leak:check",
+    "verify": "node tools/verify.mjs",
+    "mission:check": "vite-node tools/mission-runner/main.ts"
+  },
+  "dependencies": {
+    "three": "0.185.1",
+    "zod": "3.24.2"
+  },
+  "devDependencies": {
+    "@types/node": "22.10.5",
+    "@types/three": "0.185.4",
+    "playwright-core": "1.61.1",
+    "prettier": "3.4.2",
+    "typescript": "5.6.3",
+    "vite": "6.4.1",
+    "vitest": "2.1.9"
+  }
+}

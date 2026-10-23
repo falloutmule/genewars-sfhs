@@ -1,0 +1,10 @@
+.private/
+dist/
+node_modules/
+test-results/
+playwright-report/
+*.gwpack
+*.tsbuildinfo
+__pycache__/
+.env*
+reports/backups/

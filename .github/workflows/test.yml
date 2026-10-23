@@ -1,0 +1,23 @@
+name: Synthetic checks
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: npm ci --ignore-scripts
+      - run: npm run check
+      - run: npm run build:sfhs -- --synthetic
+      - run: npx playwright-core install --with-deps chromium
+      - run: CHROME_PATH=$(find ~/.cache/ms-playwright -path '*/chrome-linux*/chrome' -type f | head -1) npm run test:browser
+      # No deployment or artifact upload: private packs never enter CI.
