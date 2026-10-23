@@ -2152,11 +2152,6 @@ export function stepCampaign(w: CampaignWorld, pack: Pack): void {
             });
           },
           attack: (staged, parent, target) => {
-            //The visitor callback holds a staged numeric afterimage. Publish its
-            //current pose before6D830 aims from the parent, retaining link bytes.
-            const current = staged.ethereals.records[parent.slot].native;
-            parent.native.splice(0, 6, ...current.slice(0, 6));
-            current.splice(0, current.length, ...parent.native);
             createStagedEtherealAttack(
               staged,
               parent.slot,

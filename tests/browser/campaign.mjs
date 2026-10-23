@@ -271,6 +271,31 @@ try {
     assert.equal(geneticist.task, 0);
     assert.equal(geneticist.target, 0);
     assert.deepEqual(geneticist.errors, []);
+    await page.getByRole("button", { name: /Botanist · skill/ }).click();
+    const collect = page.getByRole("button", {
+      name: "Collect plant samples nearby",
+      exact: true,
+    });
+    if (viewport.width < 1000) await collect.tap();
+    else await collect.click();
+    await page.evaluate(() => window.CR.advanceCampaign(1));
+    const botanist = await page.evaluate(() => {
+      const w = window.CR.inspect().campaign.world,
+        a = w.actors.find((a) => w.specialists.bindings[a.id]?.category === 1),
+        n = w.specialists.records[a.id];
+      return {
+        state: n[85],
+        task: n[126],
+        ordered: w.notices.some(
+          (n) => n.text === "Botanist work ordered" && n.entityId === a.id,
+        ),
+        errors: w.notices.filter((n) => n.severity === "error"),
+      };
+    });
+    assert.equal(botanist.ordered, true);
+    assert.ok([1, 8, 10].includes(botanist.state));
+    if (botanist.state === 10) assert.equal(botanist.task, 0);
+    assert.deepEqual(botanist.errors, []);
     await page.screenshot({
       path: resolve(out, `${viewport.width}-krell.png`),
     });

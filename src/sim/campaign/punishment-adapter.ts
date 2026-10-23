@@ -5,9 +5,14 @@ import type {
   PunishmentTarget,
 } from "../mechanics/ethereal-punishment";
 import type { EtherealRecord } from "../mechanics/ethereal";
-import { campaignEntity, campaignQueryEntities } from "./entity-view";
+import {
+  campaignEntity,
+  campaignQueryEntities,
+  synchronizeCampaignLinks,
+} from "./entity-view";
+import { moveSpatial } from "./spatial";
 import { i16, u32 } from "./bytes";
-import { torusDelta } from "../mechanics/terrain";
+import { torusDelta, worldCell } from "../mechanics/terrain";
 
 export interface CampaignPunishmentPorts {
   cancelWork(world: CampaignWorld, index: number): void;
@@ -30,6 +35,32 @@ export function campaignPunishmentServices(
   w: CampaignWorld,
   ports: CampaignPunishmentPorts,
 ): EtherealPunishmentServices {
+  //118E0 owns this callback afterimage. Recursive724C0 cleanup must mutate
+  //that same image, rather than a stale canonical record later overwritten by
+  //the adapter's commit. Motion has already completed before these services.
+  const publishParent = (parent: EtherealRecord) => {
+    const current = w.ethereals.records[parent.slot];
+    if (
+      !current ||
+      parent.native[6] !== 8 ||
+      current.native[6] !== 8 ||
+      i16(parent.native as number[], 15) !== parent.slot
+    )
+      throw new Error("Current punishment parent binding differs");
+    if (current.native !== parent.native)
+      parent.native.splice(0, 6, ...current.native.slice(0, 6));
+    w.ethereals.records[parent.slot] = parent;
+    moveSpatial(
+      w.spatial,
+      w.terrain,
+      `source:7:${parent.slot}`,
+      worldCell(
+        i16(parent.native as number[], 7),
+        i16(parent.native as number[], 9),
+      ),
+    );
+    synchronizeCampaignLinks(w);
+  };
   const resolve = (kind: 1 | 3 | 4, index: number): PunishmentTarget | null => {
     const e = campaignEntity(w, `source:${kind - 1}:${index}`);
     if (!e) return null;
@@ -77,13 +108,16 @@ export function campaignPunishmentServices(
       }
       return choices;
     },
-    cancelUnitWork(_parent, target) {
+    cancelUnitWork(parent, target) {
+      publishParent(parent);
       ports.cancelWork(w, target.index);
     },
-    removeUnit(_parent, target) {
+    removeUnit(parent, target) {
+      publishParent(parent);
       ports.removeSpecialist(w, target.index);
     },
     damageBuilding(parent, target, damage) {
+      publishParent(parent);
       ports.damageBuilding(w, target.index, damage, `source:7:${parent.slot}`);
     },
     attack(parent, target) {
@@ -91,6 +125,7 @@ export function campaignPunishmentServices(
         throw new Error(
           "Original Ethereal attack25 factory and callback are not implemented",
         );
+      publishParent(parent);
       ports.attack(w, parent, target);
     },
   };

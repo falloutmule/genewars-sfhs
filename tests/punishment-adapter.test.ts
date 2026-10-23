@@ -57,6 +57,8 @@ it("invokes destructive services on the same staged host and rejects an unavaila
     damageBuilding: (s, i, amount, attacker) =>
       calls.push([s === w, "damage", i, amount, attacker]),
   });
+  parent.native[6] = 8;
+  put16(parent.native as number[], 15, 0);
   const target = services.resolve(3, 0)!;
   services.cancelUnitWork(parent, target);
   services.removeUnit(parent, target);
