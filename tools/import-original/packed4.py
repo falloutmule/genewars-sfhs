@@ -146,12 +146,13 @@ def decode_database(data):
                              'consumedBytes': consumed, 'opaquePixels': sum(mask)})
         decoded.append((pixels, mask))
         digest.update(struct.pack('<IBB', index, width, height)+pixels+mask)
-    components = []
+    components, source_components = [], []
     for position in range(components_at, frames_at, 10):
         ref, x, y, flags, extra = struct.unpack_from('<IhhBB', data, position)
         if ref % 6 or ref//6 >= len(decoded):
             raise ValueError('packed4 component sprite reference out of range')
         components.append([ref//6, x >> 1, y >> 1, flags, extra])
+        source_components.append([ref//6, x, y, flags, extra])
     frames = []
     for position in range(frames_at, animations_at, 14):
         ref, width, height = struct.unpack_from('<Ihh', data, position)
@@ -159,6 +160,8 @@ def decode_database(data):
         if ref % 10 or ref//10+component_count > len(components):
             raise ValueError('packed4 frame component range out of bounds')
         frames.append({'components': components[ref//10:ref//10+component_count],
+                       'sourceComponents': source_components[ref//10:ref//10+component_count],
+                       'sourceSize': [width, height],
                        'width': width >> 1, 'height': height >> 1,
                        'rawFlags': [data[position+10], data[position+12], data[position+13]]})
     animations = []

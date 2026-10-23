@@ -210,19 +210,20 @@ def anb(data, colors, packed4=False):
                 if mask[idx]:
                     out = ((sy+y)*1024+sx+x)*4
                     rgba[out:out+4] = bytes((*colors[indices[idx]], 255))
-    components = []
+    components, source_components = [], []
     for pos in range(b, c, 10):
         ref, x, y, flags, extra = struct.unpack_from('<IhhBB', data, pos)
         if ref % 6 or ref // 6 >= len(records):
             raise ValueError('ANB component sprite reference out of range')
         components.append([ref//6, x >> 1, y >> 1, flags, extra])
+        source_components.append([ref//6, x, y, flags, extra])
     frames = []
     for pos in range(c, d, 14):
         ref, width, ht = struct.unpack_from('<Ihh', data, pos)
         n = data[pos+11]
         if ref % 10 or ref//10+n > len(components):
             raise ValueError('ANB frame component range')
-        frames.append({'components': components[ref//10:ref//10+n], 'width': width >> 1, 'height': ht >> 1,
+        frames.append({'components': components[ref//10:ref//10+n], 'sourceComponents': source_components[ref//10:ref//10+n], 'sourceSize': [width, ht], 'width': width >> 1, 'height': ht >> 1,
                        'rawFlags': [data[pos+10], data[pos+12], data[pos+13]]})
     animations = []
     for pos in range(d, len(data), 10):

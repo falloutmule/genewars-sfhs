@@ -44,6 +44,18 @@ export const AssetSchema = z.object({
         components: z.array(
           z.tuple([z.number(), z.number(), z.number(), z.number(), z.number()]),
         ),
+        sourceComponents: z
+          .array(
+            z.tuple([
+              z.number().int(),
+              z.number().int(),
+              z.number().int(),
+              z.number().int(),
+              z.number().int(),
+            ]),
+          )
+          .optional(),
+        sourceSize: z.tuple([z.number().int(), z.number().int()]).optional(),
         width: z.number(),
         height: z.number(),
         rawFlags: z.array(z.number()),

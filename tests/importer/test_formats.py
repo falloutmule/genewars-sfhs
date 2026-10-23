@@ -46,6 +46,15 @@ class Formats(unittest.TestCase):
     def test_malformed_anb_rejected(self):
         with self.assertRaises(ValueError):c.anb(bytes(18),[(0,0,0)]*256)
 
+    def test_indexed8_preserves_raw_odd_signed_component_coordinates(self):
+        payload=bytes([1,7,0]);table=18+len(payload)
+        raw=(struct.pack('<H4I',1,table,table+6,table+16,table+30)+payload
+             +struct.pack('<IBB',0,1,1)+struct.pack('<IhhBB',0,-3,-5,0,0)
+             +struct.pack('<IhhHBBBB',0,2,2,0,0,1,0,0)+struct.pack('<IIH',0,0,1))
+        frame=c.anb(raw,[(0,0,0)]*256)['frames'][0]
+        self.assertEqual(frame['components'][0],[0,-2,-3,0,0])
+        self.assertEqual(frame['sourceComponents'][0],[0,-3,-5,0,0])
+
     def test_mission_variant_and_dimensions(self):
         raw=bytearray(343958);struct.pack_into('<I',raw,0,0x55336);struct.pack_into('<I',raw,337054,0x6BE)
         header=bytearray(699);header[32:39]=b'Fixture'

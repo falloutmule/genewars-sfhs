@@ -86,7 +86,7 @@ class Packed4(unittest.TestCase):
 
     def test_metadata_preserves_signed_half_coordinates_and_all_animation_bytes(self):
         parsed = p.decode_database(fixture())
-        self.assertEqual(parsed['frames'], [{'components': [[0, -2, -3, 1, 2]], 'width': 3,
+        self.assertEqual(parsed['frames'], [{'components': [[0, -2, -3, 1, 2]], 'sourceComponents': [[0, -3, -5, 1, 2]], 'sourceSize': [6,4], 'width': 3,
                                             'height': 2, 'rawFlags': [2, 3, 4]}])
         self.assertEqual(parsed['animations'], [{'first': 0, 'last': 0, 'rawTrailingWord': 0x101}])
         self.assertEqual(parsed['descriptions'][0]['opaquePixels'], 5)
