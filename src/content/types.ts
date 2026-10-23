@@ -1,4 +1,10 @@
 import { z } from "zod";
+import { StartupSchema } from "./startup";
+import { OriginalRulesSchema } from "./rules";
+import { EconomyRulesSchema } from "./economy";
+import { EcologyRulesSchema } from "./ecology";
+import { AudioProfileSchema } from "./audio";
+import { ZoneRulesSchema, EtherealRulesSchema } from "./zones";
 export const MissionSchema = z.object({
   id: z.number().int().min(1).max(24),
   name: z.string(),
@@ -23,6 +29,7 @@ export const MissionSchema = z.object({
   unknown: z.array(z.string()),
   sourceSha256: z.string().optional(),
   headerSha256: z.string().optional(),
+  startup: StartupSchema.optional(),
 });
 export type Mission = z.infer<typeof MissionSchema>;
 export const AssetSchema = z.object({
@@ -53,11 +60,22 @@ export const AssetSchema = z.object({
     )
     .optional(),
   paletteMode: z.string().optional(),
+  paletteAtlases: z
+    .record(z.string().startsWith("data:image/png;base64,"))
+    .optional(),
+  packed4: z
+    .object({
+      indices: z.string(),
+      opacity: z.string(),
+      pixelSha256: z.string(),
+    })
+    .passthrough()
+    .optional(),
 });
 export type Asset = z.infer<typeof AssetSchema>;
 export const PackSchema = z
   .object({
-    schemaVersion: z.literal(1),
+    schemaVersion: z.union([z.literal(1), z.literal(2)]),
     importerVersion: z.string(),
     kind: z.enum(["original-private", "synthetic"]),
     source: z.object({
@@ -72,6 +90,29 @@ export const PackSchema = z
     assets: z.record(AssetSchema),
     sounds: z.record(z.string().startsWith("data:audio/wav;base64,")),
     texts: z.array(z.string()),
+    rules: OriginalRulesSchema.optional(),
+    economyRules: EconomyRulesSchema.optional(),
+    ecologyRules: EcologyRulesSchema.optional(),
+    audioProfile: AudioProfileSchema.optional(),
+    zoneRules: ZoneRulesSchema.optional(),
+    etherealRules: EtherealRulesSchema.optional(),
+    palettes: z
+      .object({
+        mainRgb8: z
+          .array(
+            z.tuple([
+              z.number().int().min(0).max(255),
+              z.number().int().min(0).max(255),
+              z.number().int().min(0).max(255),
+            ]),
+          )
+          .length(256),
+        fadeBase64: z
+          .string()
+          .refine((v) => v.length === 21848, "Expected64x256 fade bytes"),
+        fadeSha256: z.string().length(64),
+      })
+      .optional(),
     unknown: z.array(
       z.object({ path: z.string(), reason: z.string() }).passthrough(),
     ),

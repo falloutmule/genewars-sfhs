@@ -15,7 +15,7 @@ def inspect(path):
     if len(raw) > 256 * 1024 * 1024:
         raise ValueError('pack exceeds expanded limit')
     pack = json.loads(raw)
-    if pack['schemaVersion'] != 1:
+    if pack['schemaVersion'] not in (1,2):
         raise ValueError('unsupported pack version')
     for m in pack['missions']:
         if m['width'] != 128 or m['height'] != 128 or len(m['cells']) != 16384:
