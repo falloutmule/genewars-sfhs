@@ -193,6 +193,11 @@ export function campaignFixture(): Pack {
     sounds: {},
     texts: Array.from({ length: 128 }, (_, i) => `Fixture${i}`),
     unknown: [],
+    shepherdRules: {
+      schemaVersion: 1,
+      projectiles: Array.from({ length: 7 }, (_, i) => ({ speedWord: 20, rangeFactor: 64, cooldown: 20, effectCode: 37 + i })),
+      provenance: { executableSha256: sha, originalExecution: false },
+    },
     geneticistRules: {
       schemaVersion: 1,
       revealRadii: [1024, 1024, 1024, 1024],

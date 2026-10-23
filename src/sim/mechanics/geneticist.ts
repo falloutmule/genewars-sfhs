@@ -92,6 +92,9 @@ export interface GeneticistContext<W extends GeneticistWorld> {
     actor: number,
     requested: [number, number],
   ): [number, number];
+  /** Source6D390 for shared task4/5 movement. Other roles may pursue actual
+   * kind3 specialists or kind4 buildings as well as kind1 creatures. */
+  movementTarget?(world: W, actor: number, reference: { kind: 1 | 3 | 4; index: number }): readonly (number | null)[] | null;
 }
 /** Role service adapters mutate their staged world in place. Retained numeric
  * records model stable source pointers across calls; replacing them is rejected. */
@@ -101,13 +104,13 @@ function guardPort<W extends GeneticistWorld, T>(
   run: () => T,
   target?: EcologyMule,
 ): T {
-  const a = actor(w, index, [0, 1, 2]),
+  const a = actor(w, index, [0, 1, 2, 3]),
     n = a.native,
     raw = a.blueprint,
     t = target?.native;
   const result = run();
   if (
-    actor(w, index, [0, 1, 2]).native !== n ||
+    actor(w, index, [0, 1, 2, 3]).native !== n ||
     w.players[a.owner].raw !== raw ||
     (target && mule(w, target.index)?.native !== t)
   )
@@ -286,7 +289,7 @@ function distance(a: Native, b: Native, physical: boolean): number {
     dz = physical ? (dword(b, 39) - dword(a, 39)) >> 3 : 0;
   return (Math.imul(dx, dx) + Math.imul(dy, dy) + Math.imul(dz, dz)) >>> 0;
 }
-function angle(a: Native, b: Native, t: MotionTables): number {
+function angle(a: readonly (number | null)[], b: readonly (number | null)[], t: MotionTables): number {
   return originalAngle(
     wrap16((word(b, 7) - word(a, 7)) * 2),
     wrap16((word(b, 9) - word(a, 9)) * 2),
@@ -339,7 +342,7 @@ function query<W extends GeneticistWorld>(
   kind: Query,
   c: GeneticistContext<W>,
 ): EcologyMule | null {
-  const a = actor(w, index, [0, 1, 2]),
+  const a = actor(w, index, [0, 1, 2, 3]),
     n = a.native,
     at = point(n),
     sx = nextRandom(w.rng) % 2 ? -256 : 256,
@@ -591,7 +594,7 @@ export function writeGeneticistMotion(
   put(n, 73, m.turnBraking ? word(n, 73) | 0x2000 : word(n, 73) & ~0x2000);
 }
 function resetIdle<W extends GeneticistWorld>(w: W, index: number): void {
-  const n = actor(w, index, [0, 1, 2]).native;
+  const n = actor(w, index, [0, 1, 2, 3]).native;
   n[85] = 1;
   put32(n, 104, 0);
   n[25] = 8;
@@ -605,7 +608,7 @@ function idleTail<W extends GeneticistWorld>(
   index: number,
   c: Omit<GeneticistCallbackContext<W>, "rules">,
 ): void {
-  const n = actor(w, index, [0, 1, 2]).native,
+  const n = actor(w, index, [0, 1, 2, 3]).native,
     override = c.runtimeMode & 1 ? 0 : c.override180d80;
   if (c.runtimeCount11c2bc !== 0 && override === 0) {
     n[25] = 8;
@@ -1155,9 +1158,9 @@ function continueMovement<W extends GeneticistWorld>(
   w: W,
   index: number,
   mode: 0 | 1,
-  c: Pick<GeneticistContext<W>, "tables" | "escapeRay">,
+  c: Pick<GeneticistContext<W>, "tables" | "escapeRay" | "movementTarget">,
 ): boolean {
-  const a = actor(w, index, [0, 1, 2]),
+  const a = actor(w, index, [0, 1, 2, 3]),
     n = a.native;
   if (byte(n, 112) & 32) return false;
   if (a.style === 3 && (w.frame + index) & 1 && byte(n, 115) > 0)
@@ -1181,35 +1184,48 @@ export function continueSpecialistMovement<W extends GeneticistWorld>(
   w: W,
   index: number,
   mode: 0 | 1,
-  c: Pick<GeneticistContext<W>, "tables" | "escapeRay">,
+  c: Pick<GeneticistContext<W>, "tables" | "escapeRay" | "movementTarget">,
 ): boolean {
   return continueMovement(w, index, mode, c);
 }
 function issueMovement<W extends GeneticistWorld>(
   w: W,
   index: number,
-  c: Pick<GeneticistContext<W>, "tables" | "escapeRay">,
+  c: Pick<GeneticistContext<W>, "tables" | "escapeRay" | "movementTarget">,
 ): void {
-  const a = actor(w, index, [0, 1, 2]),
+  const a = actor(w, index, [0, 1, 2, 3]),
     n = a.native,
     task = byte(n, 90);
+  const resolve = (): readonly (number | null)[] | null => {
+    const kind = byte(n, 129), targetIndex = word(n, 127);
+    if (kind === 0) return null;
+    if (![1, 3, 4].includes(kind)) throw Error("Unsupported source movement target kind");
+    if (!c.movementTarget) {
+      if (kind !== 1) throw Error("Specialist movement requires actual6D390 target resolver");
+      return mule(w, targetIndex)?.native ?? null;
+    }
+    const target = guardPort(w, index, () => c.movementTarget!(w, index, { kind: kind as 1 | 3 | 4, index: targetIndex }));
+    if (target && (byte(target, 6) !== kind || word(target, 15) !== targetIndex))
+      throw Error("Specialist movement target identity differs");
+    return target;
+  };
   if (task === 4) {
-    const target = byte(n, 129) === 1 ? mule(w, word(n, 127)) : null;
+    const target = resolve();
     if (target) {
       n[84] = 20;
       put(n, 73, (word(n, 73) | 20) & 0xeffc);
       n[22] = byte(n, 22) & 63;
       n[79] = 0;
-      put(n, 80, word(target.native, 15));
-      n[82] = 1;
+      put(n, 80, word(target, 15));
+      n[82] = byte(target, 6);
     }
   } else if (task === 5) {
-    const target = byte(n, 129) === 1 ? mule(w, word(n, 127)) : null;
+    const target = resolve();
     if (!target) throw Error("Geneticist escape target is missing");
-    const p = point(target.native);
+    const p = point(target);
     put(n, 11, p[0]);
     put(n, 13, p[1]);
-    put(n, 75, (angle(n, target.native, c.tables) + 1024) & 2047);
+    put(n, 75, (angle(n, target, c.tables) + 1024) & 2047);
     if (!(word(n, 73) & 16)) put(n, 57, word(n, 75));
     const escapeDistance = 384 + (nextRandom(w.rng) % 256);
     if (!c.escapeRay)
@@ -1218,8 +1234,8 @@ function issueMovement<W extends GeneticistWorld>(
       w,
       index,
       () => c.escapeRay!(w, index, word(n, 75), escapeDistance),
-      target,
     );
+    if (resolve() !== target) throw Error("Specialist escape service replaced its held target");
   } else if (task === 0 || task === 1) {
     const goal = task === 0 ? 92 : 96;
     put(n, 11, word(n, goal));

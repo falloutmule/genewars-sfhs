@@ -26,7 +26,7 @@ import {
   type EffectNativePrior,
 } from "./power-motion";
 import type { SourceEntityId } from "../campaign/source-pools";
-export type DestructionCode = 2 | 3 | 5 | 27 | 28 | 29 | 30 | 31 | 46;
+export type DestructionCode = 0 | 1 | 2 | 3 | 5 | 27 | 28 | 29 | 30 | 31 | 46;
 export interface DestructionRequest {
   code: DestructionCode;
   owner: number;
@@ -61,6 +61,8 @@ const byte = effectPriorByte,
 const delta = (a: number, b: number) =>
   wrap16(wrap16(b * 2) - wrap16(a * 2)) >> 1;
 const counts: Record<DestructionCode, number> = {
+  0: 10,
+  1: 10,
   2: 10,
   3: 9,
   5: 14,
@@ -295,7 +297,7 @@ export function runBlastArea(
   c: BlastAreaContext,
 ): { visits: BlastVisit[]; countdownBefore: number; countdownAfter: number } {
   const code = byte(n, 69);
-  if (n[6] !== 5 || ![2, 3, 5].includes(code) || c.directions.length !== 9)
+  if (n[6] !== 5 || ![0, 1, 2, 3, 5].includes(code) || c.directions.length !== 9)
     throw Error("Original blast area identity/directions required");
   const before = c.readCountdown();
   if (!Number.isInteger(before) || before < 0 || before > 65535)
@@ -474,7 +476,7 @@ export function stepDestructionEffect(
     };
   if (
     n[6] !== 5 ||
-    ![2, 3, 5, 27, 28, 29, 30, 31, 46].includes(code) ||
+    ![0, 1, 2, 3, 5, 27, 28, 29, 30, 31, 46].includes(code) ||
     flags !== (debris ? 0x180 : code === 46 ? 0x820 : 0x20) ||
     word(n, 63) !== -1 ||
     [51, 53, 55].some((at) => word(n, at) !== 0)

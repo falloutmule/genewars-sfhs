@@ -1,5 +1,7 @@
 import { z } from "zod";
 import type { Pack } from "../../content/types";
+import { campaignEntity } from "./entity-view";
+import type { SourceEntityId } from "./source-pools";
 import { stepCampaignEconomyBuildings } from "./economy-adapter";
 import {
   initializeCampaignBuildings,
@@ -156,6 +158,8 @@ import {
   type SpecialistPool,
 } from "../mechanics/specialist-native";
 import { readGeneticistMotion } from "../mechanics/geneticist";
+import { readShepherdOperators } from "../mechanics/shepherd";
+import { stepCampaignShepherd, requestCampaignShepherdControl, requestCampaignShepherdInteraction, moveCampaignShepherd, stopCampaignShepherd } from "./shepherd-adapter";
 import { campaignBlastAreaContext, damageCampaignPlant } from "./blast-adapter";
 import { damageCampaignBuilding } from "./building-damage-adapter";
 import {
@@ -165,6 +169,7 @@ import {
   damageCampaignMule,
 } from "./mule-damage-adapter";
 import { stepCampaignGeneticistEffect } from "./geneticist-effect-adapter";
+import { stepCampaignShepherdEffect } from "./shepherd-effect-adapter";
 import {
   createStagedEtherealAttack,
   stepCampaignEtherealAttackEffect,
@@ -210,6 +215,18 @@ const point = z.tuple([
   z.number().int().min(0).max(32767),
 ]);
 export const CampaignCommandSchema = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("shepherd-interact"),
+    actorId: z.number().int().min(0).max(19),
+    task: z.union([z.literal(1), z.literal(2)]),
+    target: z.object({ kind: z.union([z.literal(1), z.literal(3), z.literal(4)]), index: z.number().int().min(0).max(299) }),
+  }),
+  z.object({
+    type: z.literal("shepherd-control"),
+    actorId: z.number().int().min(0).max(19),
+    point,
+    mode: z.union([z.literal(0), z.literal(1), z.literal(2)]),
+  }),
   z.object({
     type: z.literal("botanist-work"),
     actorId: z.number().int().min(0).max(19),
@@ -998,6 +1015,14 @@ export function queueCampaign(
     if (w.specialists.records[a.id][85] === 3)
       return { ok: false, reason: "This specialist is being abducted" };
     const category = w.players[a.owner].blueprints[a.blueprintIndex].category;
+    if ((command.type === "shepherd-control" || command.type === "shepherd-interact") && category !== 3)
+      return { ok: false, reason: "Select a landed Shepherd" };
+    if (command.type === "shepherd-interact") {
+      const target = command.target;
+      if ((target.kind === 3 && target.index > 19) || (target.kind === 4 && target.index > 255) ||
+          !campaignEntity(w, `source:${target.kind - 1}:${target.index}` as SourceEntityId))
+        return { ok: false, reason: "Shepherd target is no longer available" };
+    }
     if (command.type === "construct" && category !== 0)
       return { ok: false, reason: "Select a landed Engineer" };
     if (command.type === "botanist-work") {
@@ -1094,6 +1119,20 @@ function issue(w: CampaignWorld, c: CampaignCommand, pack: Pack): void {
   }
   const a = w.actors.find((a) => a.id === c.actorId)!;
   const category = w.players[a.owner].blueprints[a.blueprintIndex].category;
+  if (c.type === "shepherd-interact") {
+    requestCampaignShepherdInteraction(w, a.id, c.task, c.target, pack, specialistServices(pack));
+    const current = w.actors.find(p => p.id === a.id)!;
+    current.orders = []; current.goal = null; current.route = [];
+    notice(w, c.task === 1 ? "Shepherd attack ordered" : "Shepherd stun ordered", "info", a.id);
+    return;
+  }
+  if (c.type === "shepherd-control") {
+    requestCampaignShepherdControl(w, a.id, c.point, c.mode);
+    const current = w.actors.find(p => p.id === a.id)!;
+    current.orders = []; current.goal = null; current.route = [];
+    notice(w, "Shepherd control ordered", "info", a.id);
+    return;
+  }
   if (c.type === "botanist-work") {
     requestCampaignBotanist(
       w,
@@ -1180,6 +1219,22 @@ function issue(w: CampaignWorld, c: CampaignCommand, pack: Pack): void {
       current.orders = [];
       current.goal = null;
       current.route = [];
+    }
+    return;
+  }
+  if (category === 3) {
+    if (c.type === "cancel") {
+      stopCampaignShepherd(w, a.id);
+      const current = w.actors.find(p => p.id === a.id)!;
+      current.orders = []; current.goal = null; current.route = []; current.reason = "Stopped";
+    } else {
+      if (c.type !== "move") throw Error("Shepherd does not perform construction");
+      if (c.queued) a.orders.push({ type: "move", point: c.point });
+      else {
+        moveCampaignShepherd(w, a.id, c.point, pack, specialistServices(pack));
+        const current = w.actors.find(p => p.id === a.id)!;
+        current.orders = []; current.goal = null; current.route = [];
+      }
     }
     return;
   }
@@ -1448,6 +1503,16 @@ function actorStep(w: CampaignWorld, a: CampaignActor, pack: Pack): void {
     stepCampaignGeneticist(w, a.id, pack, specialistServices(pack));
     return;
   }
+  if (category === 3) {
+    const n = w.specialists.records[a.id];
+    if (a.orders.length && n[85] === 1 && n[130] === 0 && !(n[87]! & 3)) {
+      const order = a.orders.shift()!;
+      if (order.type !== "move") throw Error("Unsupported Shepherd queued order");
+      moveCampaignShepherd(w, a.id, order.point, pack, specialistServices(pack));
+    }
+    stepCampaignShepherd(w, a.id, pack, specialistServices(pack));
+    return;
+  }
   if (a.egressBuildingId !== null) {
     const completed = w.buildings.find((b) => b.id === a.egressBuildingId);
     const extent = completed
@@ -1656,6 +1721,8 @@ function rewardFactoryOptions(
         rewardFactoryOptions(staged, pack),
         out,
       ),
+    shepherdEffect: (staged, slot, out) =>
+      stepCampaignShepherdEffect(staged, slot, pack, rewardFactoryOptions(staged, pack), out),
     etherealAttackEffect: (staged, slot, out) =>
       stepCampaignEtherealAttackEffect(
         staged,
@@ -1971,15 +2038,6 @@ export function stepCampaign(w: CampaignWorld, pack: Pack): void {
         (original) =>
           cloneEffectHost(original, rewardFactoryOptions(original, pack)),
       );
-      const shepherds = w.actors.filter(
-        (a) =>
-          a.ready &&
-          w.players[a.owner].blueprints[a.blueprintIndex].category === 3,
-      );
-      if (mule.native[24] !== 4 && shepherds.length)
-        throw new Error(
-          "Shepherd control records require their source role adapter",
-        );
       const r = callback(w.ecology, mule.index, w.rng, {
         terrain: w.terrain,
         tables: pack.rules!.tables,
@@ -2095,7 +2153,7 @@ export function stepCampaign(w: CampaignWorld, pack: Pack): void {
             index,
             native,
           })),
-          operators: [],
+          operators: readShepherdOperators(w),
         },
         airborneObstacle: (p, height) =>
           campaignAirborneBuilding(

@@ -131,7 +131,8 @@ function descriptor(d: GeneticistEffectDescriptor, code: number) {
     d.completion !== (code === 20 ? 0 : 4) ||
     d.gravity ||
     d.priority !== (code === 20 ? 12 : code === 25 ? 7 : 9) ||
-    d.childCode !== (code === 20 ? null : code === 25 ? 5 : 20) ||
+    d.childCode !==
+      (code === 20 ? null : code === 25 ? 5 : code < 41 ? code - 37 : 20) ||
     !d.obstacle ||
     !d.water
   )
@@ -560,12 +561,12 @@ export interface GeneticistProjectileStep {
   samples: [number, number][];
   query: GeneticistProjectileQuery | null;
 }
-/** The same4B9AC collision callback is shared by25 and41..43. Capture-only
+/** The same4B9AC collision callback is shared by25 and37..43. Capture-only
  * immediate services are absent here; the concrete factory binds its child. */
 export type ImpactProjectileChildRequest = Omit<
   GeneticistEffectChildRequest,
   "code"
-> & { code: 5 | 20 | 21 | 48 };
+> & { code: 0 | 1 | 2 | 3 | 5 | 20 | 21 | 48 };
 export interface ImpactProjectileStepContext
   extends Omit<
     GeneticistProjectileStepContext,
@@ -589,14 +590,18 @@ export function stepGeneticistProjectileRecord(
   return stepImpactProjectileRecord(before, rng, {
     ...c,
     child(request, current, parent) {
-      if (request.code === 5)
-        throw Error("Geneticist projectile cannot create a blast5 child");
-      return c.child({ ...request, code: request.code }, current, parent);
+      if (![20, 21, 48].includes(request.code))
+        throw Error("Geneticist projectile cannot create a blast child");
+      return c.child(
+        { ...request, code: request.code as 20 | 21 | 48 },
+        current,
+        parent,
+      );
     },
   });
 }
 /** Complete source free-altitude6DF30/4B630 implementation shared by the
- * established mode4 impact projectiles25/41/42/43 and capture20 lifetime. */
+ * established mode4 impact projectiles25/37..43 and capture20 lifetime. */
 export function stepImpactProjectileRecord(
   before: Native,
   rng: GeneRng,
@@ -621,7 +626,7 @@ export function stepImpactProjectileRecord(
   descriptor(c.descriptor, code);
   profile(c.profile, code);
   if (
-    ![20, 25, 41, 42, 43].includes(code) ||
+    ![20, 25, 37, 38, 39, 40, 41, 42, 43].includes(code) ||
     byte(before, 6) !== 5 ||
     (word(before, 21) & ~1) !== 32 ||
     word(before, 63) !== -1 ||
@@ -751,7 +756,8 @@ export function stepImpactProjectileRecord(
       if (
         c.child(
           {
-            code: code === 25 ? 5 : 20,
+            code:
+              code === 25 ? 5 : code < 41 ? ((code - 37) as 0 | 1 | 2 | 3) : 20,
             owner: 0,
             position: point(n),
             height: dword(n, 39),

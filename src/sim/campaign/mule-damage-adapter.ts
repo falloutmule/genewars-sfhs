@@ -19,6 +19,7 @@ import { cleanupCampaignReferences } from "./cleanup";
 import { copySpatialLinks, unlinkSpatial } from "./spatial";
 import { i16, put16, put32, u16, u32 } from "./bytes";
 import type { SourceEntityId } from "./source-pools";
+import { readShepherdOperators } from "../mechanics/shepherd";
 
 /** Current virtual0/68 and combat-only building reach. These are distinct
  * from74270 collision extents and from the construction footprint in cells. */
@@ -131,14 +132,6 @@ export function campaignMuleDamageContext(
 ): MuleContext {
   if (!pack.rules || !pack.ecologyRules)
     throw new Error("Original Mule damage rules missing");
-  if (
-    w.actors.some(
-      (a) =>
-        a.ready &&
-        w.players[a.owner].blueprints[a.blueprintIndex].category === 3,
-    )
-  )
-    throw new Error("Mule damage requires the actual Shepherd control adapter");
   return {
     terrain: w.terrain,
     tables: pack.rules.tables,
@@ -176,7 +169,7 @@ export function campaignMuleDamageContext(
       allianceMasks: w.players.map((p) => p.raw[0x6e5]),
       players: w.players.map((p) => p.raw),
       buildings: w.buildingNative.map((native, index) => ({ index, native })),
-      operators: [],
+      operators: readShepherdOperators(w),
     },
     combatEffect(state, terrain, rng, request) {
       if (state !== w.ecology || terrain !== w.terrain || rng !== w.rng)

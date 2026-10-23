@@ -152,6 +152,12 @@ export interface EffectSchedulerOptions<
     slot: number,
     receipt: EffectSchedulerReceipt,
   ) => GeneticistProjectileStep;
+  /** Concrete37..40 callback with real inline blast0..3 and water children. */
+  shepherdEffect?: (
+    world: W,
+    slot: number,
+    receipt: EffectSchedulerReceipt,
+  ) => GeneticistProjectileStep;
   /** Concrete25/0x19 callback, including real explosion5 and water factories. */
   etherealAttackEffect?: (
     world: W,
@@ -167,6 +173,7 @@ export interface EffectSchedulerReceipt {
   rewards: { slot: number; update: RewardEffectUpdate }[];
   geneticist: { slot: number; update: GeneticistProjectileStep }[];
   attacks?: { slot: number; update: GeneticistProjectileStep }[];
+  shepherd?: { slot: number; update: GeneticistProjectileStep }[];
   createdNewborns: number;
   retired: SourceEntityId[];
   cleanedReferenceBytes: number;
@@ -907,14 +914,14 @@ export function stepEffectScheduler<W extends EffectSchedulerWorld>(
       publishStagedSharedEffect(s, slot, result.native);
       if (result.retirementRequired)
         retireStagedSharedEffect(s, slot, options, out);
-    } else if (code === 25 || [20, 41, 42, 43].includes(code)) {
+    } else if (code === 25 || [20, 37, 38, 39, 40, 41, 42, 43].includes(code)) {
       const provider =
-        code === 25 ? options.etherealAttackEffect : options.geneticistEffect;
+        code === 25 ? options.etherealAttackEffect : code >= 37 && code <= 40 ? options.shepherdEffect : options.geneticistEffect;
       if (!provider)
         throw Error(
           code === 25
             ? "Original Ethereal attack callback service is required"
-            : "Original Geneticist effect callback service is required",
+            : code >= 37 && code <= 40 ? "Original Shepherd effect callback service is required" : "Original Geneticist effect callback service is required",
         );
       const result = provider(s, slot, out);
       if (
@@ -930,11 +937,12 @@ export function stepEffectScheduler<W extends EffectSchedulerWorld>(
         throw Error("Original Geneticist effect callback receipt is invalid");
       publishStagedSharedEffect(s, slot, result.native);
       if (code === 25) (out.attacks ??= []).push({ slot, update: result });
+      else if (code >= 37 && code <= 40) (out.shepherd ??= []).push({ slot, update: result });
       else out.geneticist.push({ slot, update: result });
       created = result.newborns;
       if (result.retirementRequired)
         retireStagedSharedEffect(s, slot, options, out);
-    } else if ([2, 3, 5, 27, 28, 29, 30, 31, 46].includes(code)) {
+    } else if ([0, 1, 2, 3, 5, 27, 28, 29, 30, 31, 46].includes(code)) {
       if (!pack.ecologyRules)
         throw Error("Original destruction ecology motion tables are required");
       const result = stepDestructionEffect(n, s.rng, {

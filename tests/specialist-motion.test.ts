@@ -168,10 +168,10 @@ describe("source category2 specialist6FB60 motion", () => {
       }
     },
   );
-  it("admits the same established common numeric path for ordinary category0/1 idle/move only", () => {
+  it("admits the established common numeric path for ordinary category0/1/3 idle/move", () => {
     const expected = fixture();
     stepSpecialistMotion(expected.s, 0, expected.c);
-    for (const category of [0, 1]) {
+    for (const category of [0, 1, 3]) {
       const f = fixture();
       f.s.specialists.bindings[0]!.category = category;
       f.s.players[0].raw[44] = category;
@@ -179,7 +179,7 @@ describe("source category2 specialist6FB60 motion", () => {
       f.n()[88] = 0;
       stepSpecialistMotion(f.s, 0, f.c);
       expect(f.n().slice(7, 85)).toEqual(expected.n().slice(7, 85));
-      // Role states are admitted only for their actual category:0/9 and1/10.
+      // Role states are admitted only for their actual category.
       f.n()[85] = category === 0 ? 10 : 9;
       const before = structuredClone(f.s);
       expect(() => stepSpecialistMotion(f.s, 0, f.c)).toThrow(

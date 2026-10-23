@@ -3,6 +3,7 @@ import { StartupSchema } from "./startup";
 import { OriginalRulesSchema } from "./rules";
 import { BuildingRulesSchema } from "./building-rules";
 import { StrategicAIRulesSchema } from "./strategic-ai";
+import { ShepherdRulesSchema } from "./shepherd";
 import { EconomyRulesSchema } from "./economy";
 import { EcologyRulesSchema } from "./ecology";
 import { AudioProfileSchema } from "./audio";
@@ -108,6 +109,7 @@ export const PackSchema = z
     rules: OriginalRulesSchema.optional(),
     buildingRules: BuildingRulesSchema.optional(),
     strategicAIRules: StrategicAIRulesSchema.optional(),
+    shepherdRules: ShepherdRulesSchema.optional(),
     economyRules: EconomyRulesSchema.optional(),
     ecologyRules: EcologyRulesSchema.optional(),
     effectRules: z

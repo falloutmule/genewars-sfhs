@@ -16,6 +16,8 @@ import { terrainFromBytes } from "../src/sim/mechanics/terrain";
 import { nextRandom } from "../src/sim/mechanics/random";
 import type { SourceEntityId } from "../src/sim/campaign/source-pools";
 const counts: Record<DestructionCode, number> = {
+    0: 10,
+    1: 10,
     2: 10,
     3: 9,
     5: 14,

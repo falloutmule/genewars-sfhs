@@ -75,6 +75,7 @@ export async function openCampaign(
     lastHud = -1,
     placing: number | null = null,
     geneticistMuleTarget: number | null = null,
+    shepherdTarget: string | null = null,
     botanistPlantType: number | null = null,
     resultShown = "";
   let recording: CampaignReplay | null = null;
@@ -599,6 +600,48 @@ export async function openCampaign(
       )
     ) {
       role.replaceChildren();
+      if (a && p.blueprints[a.blueprintIndex].category === 3) {
+        const help = document.createElement("p");
+        help.textContent = "Control your creatures within this Shepherd's range. Stop or move to end control.";
+        role.append(help);
+        for (const [mode, label] of [[0, "Control nearby herd"], [1, "Support herd combat"], [2, "Encourage nearby mating"]] as const) {
+          const control = button(role, label, () => {
+            const current = w.actors.find(p => p.id === a.id)!,
+              command: CampaignCommand = { type: "shepherd-control", actorId: a.id,
+                point: [current.motion.x & 32767, current.motion.y & 32767], mode },
+              result = queueCampaign(w, command);
+            if (result.ok) {
+              recording?.commands.push({ tick: w.tick, type: "command", command });
+              say("Shepherd control queued");
+            } else say(result.reason ?? "Shepherd order rejected");
+          });
+          control.disabled = !a.ready || w.phase !== "active";
+        }
+        const label = document.createElement("label"), target = document.createElement("select");
+        label.textContent = "Shepherd target "; target.setAttribute("aria-label", "Shepherd target");
+        const choices = [
+          ...w.ecology.mules.filter(m => m.native[6] === 1).map(m => ({ kind: 1 as const, index: m.index, label: `Creature ${m.index + 1}` })),
+          ...w.actors.filter(actor => actor.ready && w.specialists.records[actor.id][6] === 3 && actor.id !== a.id).map(actor => ({ kind: 3 as const, index: actor.id, label: w.players[actor.owner].blueprints[actor.blueprintIndex].name })),
+          ...w.buildings.filter(b => w.buildingNative[b.slot][6] === 4).map(b => ({ kind: 4 as const, index: b.slot, label: `${NAMES[b.selector] ?? "Building"} ${b.slot + 1}` })),
+        ];
+        for (const choice of choices) {
+          const option = document.createElement("option"); option.value = `${choice.kind}:${choice.index}`; option.textContent = choice.label; target.append(option);
+        }
+        if (shepherdTarget !== null && [...target.options].some(option => option.value === shepherdTarget)) target.value = shepherdTarget;
+        else shepherdTarget = target.value || null;
+        target.addEventListener("change", () => { shepherdTarget = target.value; });
+        label.append(target); role.append(label);
+        for (const [task, label] of [[1, "Attack target"], [2, "Stun creatures near target"]] as const) {
+          const control = button(role, label, () => {
+            const choice = choices.find(choice => `${choice.kind}:${choice.index}` === target.value);
+            if (!choice) return;
+            const command: CampaignCommand = { type: "shepherd-interact", actorId: a.id, task, target: { kind: choice.kind, index: choice.index } }, result = queueCampaign(w, command);
+            if (result.ok) { recording?.commands.push({ tick: w.tick, type: "command", command }); say("Shepherd target order queued"); }
+            else say(result.reason ?? "Shepherd order rejected");
+          });
+          control.disabled = !a.ready || w.phase !== "active" || choices.length === 0;
+        }
+      }
       if (a && p.blueprints[a.blueprintIndex].category === 1) {
         const resource = document.createElement("p");
         resource.textContent = `Plant samples: ${w.specialists.records[a.id][114]}/40`;

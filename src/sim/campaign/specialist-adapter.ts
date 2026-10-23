@@ -65,6 +65,7 @@ import {
 import { mapSpecialistDamageVoice } from "../mechanics/specialist-voice";
 import { moveSpatial, copySpatialLinks, unlinkSpatial } from "./spatial";
 import { i16, put16, u16 } from "./bytes";
+import { cancelStagedShepherdWork } from "../mechanics/shepherd";
 
 export interface CampaignSpecialistServices {
   effectOptions(w: CampaignWorld): EffectSchedulerOptions<CampaignWorld>;
@@ -198,6 +199,8 @@ export function cancelStagedCampaignSpecialistWork(
   const binding = w.specialists.bindings[index]!;
   if (binding.category === 2)
     cancelStagedGeneticistWork(w, index, binding.owner);
+  else if (binding.category === 3)
+    cancelStagedShepherdWork(w, index, binding.owner);
   else if (binding.category === 1) {
     if (!services.cancelRole)
       throw new Error("Actual Botanist cancellation service required");
@@ -470,6 +473,8 @@ export function campaignGeneticistContext(
     },
     resolveMovePoint: (s, index, p) =>
       resolveSpecialistMovePoint(s, index, p, motion(s)),
+    movementTarget: (s, _actor, reference) =>
+      campaignEntity(s, `source:${reference.kind - 1}:${reference.index}` as SourceEntityId)?.native ?? null,
     lineOfSight: (s, index, target) =>
       geneticistLineOfSight(s, index, target, motion(s)),
     approachPoint: (s, index, target, distance) => {

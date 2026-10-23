@@ -10,6 +10,7 @@ import {
   queueGeneticistMove,
   cancelGeneticistWork,
   cancelStagedGeneticistWork,
+  continueSpecialistMovement,
   stepSpecialistLifecycleCallback,
   type GeneticistCallbackContext,
   type GeneticistContext,
@@ -444,6 +445,47 @@ function callback(
     animation: () => ({ holds: [0, 0], flags: 0, first: 0, last: 1 }),
   };
 }
+describe("shared specialist source526C0 target movement", () => {
+  it.each([1, 3, 4] as const)("retains the real kind%i target for task4 pursuit", (kind) => {
+    const f = fixture(), target: Native = Array(kind === 1 ? 124 : kind === 3 ? 200 : 67).fill(0);
+    f.w.specialists.bindings[0]!.category = 3;
+    f.raw()[0x16 + 22] = 3;
+    f.n()[90] = 4; f.n()[129] = kind; put(f.n(), 127, 7);
+    target[6] = kind; put(target, 15, 7);
+    expect(continueSpecialistMovement(f.w, 0, 1, {
+      tables: f.c.tables,
+      movementTarget: (_s, actor, ref) => {
+        expect([actor, ref]).toEqual([0, { kind, index: 7 }]); return target;
+      },
+    })).toBe(false);
+    expect([word(f.n(), 80), f.n()[82], f.n()[84], word(f.n(), 73)]).toEqual([7, kind, 20, 20]);
+  });
+  it("uses a kind4 target pose and one source draw before the real escape ray", () => {
+    const f = fixture(), target: Native = Array(67).fill(0);
+    f.n()[90] = 5; f.n()[129] = 4; put(f.n(), 127, 2);
+    target[6] = 4; put(target, 15, 2); put(target, 7, 2000); put(target, 9, 1000);
+    const escape = vi.fn((_s, actor, heading, distance) => {
+      expect([actor, heading, distance, f.w.rng.draws]).toEqual([0, 1536, 384, 1]); return true;
+    });
+    continueSpecialistMovement(f.w, 0, 0, { tables: f.c.tables, movementTarget: () => target, escapeRay: escape });
+    expect([word(f.n(), 11), word(f.n(), 13), word(f.n(), 75)]).toEqual([2000, 1000, 1536]);
+    expect(escape).toHaveBeenCalledTimes(1);
+  });
+  it("rejects an absent resolver for noncreature targets and validates native identity", () => {
+    const f = fixture(); f.n()[90] = 4; f.n()[129] = 3; put(f.n(), 127, 2);
+    expect(() => continueSpecialistMovement(f.w, 0, 0, f.c)).toThrow(/6D390/);
+    expect(() => continueSpecialistMovement(f.w, 0, 0, { ...f.c, movementTarget: () => f.m() })).toThrow(/identity differs/);
+    expect(f.w.rng.draws).toBe(0);
+  });
+  it("rejects an escape service that replaces its held target", () => {
+    const f = fixture(); f.n()[90] = 5;
+    let target = f.m();
+    expect(() => continueSpecialistMovement(f.w, 0, 0, {
+      tables: f.c.tables, movementTarget: () => target,
+      escapeRay: () => { target = target.slice(); return true; },
+    })).toThrow(/replaced its held target/);
+  });
+});
 describe("source57A10 Geneticist callback envelope", () => {
   it("keeps one outer rollback transaction across staged idle and role dispatch without nested copies", () => {
     for (const idle of [true, false]) {
