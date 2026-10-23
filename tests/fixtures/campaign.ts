@@ -8,6 +8,8 @@ export function campaignFixture(): Pack {
     map = Array(229376).fill(0),
     prefix = Array(0x355e).fill(0);
   put16(prefix, 0x1c5d, 512);
+  for (let slot = 0; slot < 25; slot++)
+    put16(prefix, 0x1ec7 + slot * 176 + 12, -1);
   for (let i = 0; i < 16384; i++) {
     put16(map, i * 14 + 2, 1024);
     map[i * 14 + 5] = 2;
@@ -252,6 +254,19 @@ export function campaignFixture(): Pack {
         unusedGoopWarningTicks: 100,
       },
     },
+    craterRules: {
+      schemaVersion: 1,
+      largeTextures: Array(9).fill(0),
+      largeFlags: Array(9).fill(2),
+      provenance: { executableSha256: sha, originalExecution: false },
+    },
+    zoneRules: {
+      schemaVersion: 1,
+      speciesComponents: Array.from({ length: 25 }, () => [4, 4]),
+      zoneTextIndices: Array(14).fill(0),
+      terrainLightVector: [0, 0, -256],
+      provenance: { executableSha256: sha, originalExecution: false },
+    },
     ecologyRules: {
       schemaVersion: 1,
       plants: Array.from({ length: 12 }, (_, selector) => ({
@@ -266,7 +281,17 @@ export function campaignFixture(): Pack {
         opaqueBytes: Array(18).fill(0),
         rowSha256: sha,
       })),
-      spreadDirections: Array.from({ length: 9 }, () => [0, 0]),
+      spreadDirections: [
+        [0, -256],
+        [256, -256],
+        [256, 0],
+        [256, 256],
+        [0, 256],
+        [-256, 256],
+        [-256, 0],
+        [-256, -256],
+        [0, 0],
+      ],
       plantResources: Array.from({ length: 12 }, (_, selector) => ({
         selector,
         path: "synthetic",

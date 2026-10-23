@@ -215,6 +215,54 @@ function duration(job: number[], t: TerrainState): void {
     throw new Error("Crater source duration overflows signed word");
   put(job, 12, remaining + 1);
 }
+/**791C0/77B80/77960 level-site constructor in the SAME25-slot terrain pool
+ * used by craters. Inactive priors survive; capacity failure writes nothing
+ * and consumes no RNG. Height/maintenance are dispatched later by79220. */
+export function createLevelTerrainJob<W extends CraterWorld>(
+  world: W,
+  point: [number, number],
+  footprint: number,
+  target: number,
+  step: number,
+): { slot: number; remaining: number } | null {
+  validate(world);
+  if (
+    point.some((v) => !integer(v, -32768, 32767)) ||
+    !integer(footprint, 1, 3) ||
+    !integer(target, 0, 32767) ||
+    !integer(step, 1, 32767)
+  )
+    throw new Error("Invalid original level terrain job request");
+  if (world.missionPrefix[CRATER_JOB_COUNT] >= 25) return null;
+  const slot = Array.from({ length: 25 }, (_, i) => i).find(
+    (i) => word(world.missionPrefix, CRATER_JOB_BASE + i * 176 + 12) < 0,
+  )!;
+  const start = CRATER_JOB_BASE + slot * 176,
+    job = world.missionPrefix.slice(start, start + 176),
+    dim = footprint + 1,
+    min = point.map((v) => wrap16((v & ~255) + (footprint === 1 ? 0 : -256))),
+    max = min.map((v) => wrap16(v + (dim - 1) * 256));
+  put(job, 0, min[0]);
+  put(job, 2, min[1]);
+  put(job, 4, max[0]);
+  put(job, 6, max[1]);
+  job[8] = job[9] = dim;
+  put(job, 10, step);
+  for (let row = 0; row < dim; row++)
+    for (let col = 0; col < dim; col++) {
+      const cell = worldCell(
+        wrap16(min[0] + col * 256),
+        wrap16(min[1] + row * 256),
+      );
+      if (readWord(world.terrain, cell, 2) < 0)
+        throw new Error("Negative original terrain job height");
+      put(job, 14 + row * 18 + col * 2, target);
+    }
+  duration(job, world.terrain);
+  world.missionPrefix.splice(start, 176, ...job);
+  world.missionPrefix[CRATER_JOB_COUNT]++;
+  return { slot, remaining: word(job, 12) };
+}
 /**79160 capacity check happens before77C60's map writes or RNG. */
 export function createCraterJob<W extends CraterWorld>(
   world: W,

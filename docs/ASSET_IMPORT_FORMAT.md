@@ -19,6 +19,7 @@ Top-level fields:
 | sounds/audioProfile                | SOUND.DAT bank/format/cue descriptor identities,196 extracted WAVE records and473 English SPE WAVE records                                                      |
 | rules/economyRules/ecologyRules    | Hash-admitted numeric tables, scalar equations, source ANB holds and resource descriptors; no instructions or pointers                                          |
 | zoneRules/etherealRules            | Species components, zone text selectors, terrain light vector and observation thresholds from hash-admitted numeric ranges                                      |
+| geneticistRules/craterRules/effectRules | Geneticist projectile/capture metadata, crater textures and all71 ordered shared effect descriptors; metadata rows68–70 do not imply EFF animations |
 | texts                              | First 604 CP437 English text entries, private only                                                                                                              |
 | unknown                            | Resource and reason records; explicit missing campaign/music/font/codec work                                                                                    |
 
@@ -27,6 +28,8 @@ CONQ admission checks size, fast tag `0x55336`, extension tag `0x6BE`, map regio
 ANB:18-byte header; six-byte sprite records; bounded row RLE with opaque literal zero;10-byte component,14-byte frame,10-byte animation records. Indexed8 uses RGB6 MAIN.PAL expanded by floor(component×255/63). The packed4 decoder admits all26 creature/BONES resources and retains high-nibble-first pixels, transparency and source metadata. Neutral Mule/BONES rendering uses the original paired palette, health depth and FADE row. Other runtime palette wrappers remain separate work. Metadata pointers are bounds/alignment checked.
 
 The numeric LE reader admits the exact executable hash and each selected range independently. It supports initialized data pages and virtual zero tails, and never executes or packs original instructions. See mechanic documents for source locations and gameplay limits. Original font and CD music integration remain unresolved.
+
+Ecology tables retain all25 species trait rows, Mule combat parameters and signed cold-loss coefficients. Shared effect descriptors retain retirement mode, gravity, priority, retirement child, movement and water-response flags. Their source numeric range is admitted independently; importing a descriptor does not install its factory, callback or an unsupported resource. Geneticist profiles retain signed speed/range/cooldown words and the actual effect codes41–43, with separately admitted20/41–43 descriptors.
 
 Frame metadata also retains optional `sourceSize: [rawWidth, rawHeight]` and `sourceComponents: [spriteIndex, rawX, rawY, flags, extra][]` before presentation scaling. Gameplay uses these signed original coordinates where source callbacks require them: EFF59 initialization reads the first component's raw Y, and building collision reads raw frame height. Odd or negative values must not be reconstructed by doubling already truncated display coordinates. Both indexed8 and packed4 readers preserve this metadata.
 

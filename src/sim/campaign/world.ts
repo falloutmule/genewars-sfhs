@@ -67,7 +67,6 @@ import {
 import {
   beginConstruction,
   stepConstruction,
-  stepConstructionTerrainJobs,
   cancelConstruction,
   constructionAvailable,
   type ConstructionState,
@@ -585,6 +584,7 @@ function projection(w: CampaignWorld): ConstructionState {
     jobs: w.jobs,
     nextJobId: w.nextJobId,
     terrainLastFrame: w.terrainLastFrame,
+    missionPrefix: w.missionPrefix,
   };
 }
 function applyConstruction(
@@ -600,6 +600,7 @@ function applyConstruction(
   w.jobs = s.jobs;
   w.nextJobId = s.nextJobId;
   w.terrainLastFrame = s.terrainLastFrame;
+  if (s.missionPrefix) w.missionPrefix = s.missionPrefix;
   for (const p of s.players) {
     const host = w.players[p.id];
     host.funds = p.primary >>> 0;
@@ -1256,6 +1257,10 @@ function stageNativeHost(original: CampaignWorld, staged: CampaignWorld): void {
   staged.ethereals = cloneEthereals(original.ethereals);
   staged.presentation = structuredClone(original.presentation);
   staged.specialists = structuredClone(original.specialists);
+  staged.buildings = structuredClone(original.buildings);
+  staged.jobs = structuredClone(original.jobs);
+  staged.muleQueues = structuredClone(original.muleQueues);
+  staged.auxiliary = structuredClone(original.auxiliary);
 }
 function commitNativeHost(target: CampaignWorld, staged: CampaignWorld): void {
   target.buildingNative = staged.buildingNative;
@@ -1263,6 +1268,10 @@ function commitNativeHost(target: CampaignWorld, staged: CampaignWorld): void {
   target.ethereals = staged.ethereals;
   target.presentation = staged.presentation;
   target.specialists = staged.specialists;
+  target.buildings = staged.buildings;
+  target.jobs = staged.jobs;
+  target.muleQueues = staged.muleQueues;
+  target.auxiliary = staged.auxiliary;
 }
 function rewardPresentation(
   w: CampaignWorld,
@@ -1417,13 +1426,16 @@ export function stepCampaign(w: CampaignWorld, pack: Pack): void {
               : p.command.actorId,
         );
       }
-    for (const a of [...w.actors].sort((a, b) => a.id - b.id))
+    for (let actorIndex = 0; actorIndex < 20; actorIndex++) {
+      const a = w.actors.find((a) => a.id === actorIndex);
+      if (!a) continue;
       try {
         actorStep(w, a, pack);
       } catch (e) {
         a.reason = String(e instanceof Error ? e.message : e);
         notice(w, a.reason, "error", a.id);
       }
+    }
     syncEconomy(w);
     const contacts = w.economy.buildings.filter((b) => {
       const p = w.economy.players[b.owner];
@@ -1884,14 +1896,21 @@ export function stepCampaign(w: CampaignWorld, pack: Pack): void {
       gravity: context(w, pack).gravity,
       obstacleAt: (p) => buildingObstacle(w, p),
     });
-    if (w.jobs.some((j) => j.status === "working")) {
-      const r = stepConstructionTerrainJobs(
-        projection(w),
-        tables(pack),
-        context(w, pack),
-      );
-      applyConstruction(w, r.state, r.events, pack);
-    }
+    for (const job of w.jobs)
+      if (job.status === "working") {
+        if (job.nativeSlot === undefined)
+          throw new Error(
+            "Unsupported earlier development terrain job without a native slot",
+          );
+        job.remaining = i16(
+          w.missionPrefix,
+          0x1ec7 + job.nativeSlot * 176 + 12,
+        );
+        if (job.remaining < 0) {
+          job.remaining = 0;
+          job.status = "complete";
+        }
+      }
     for (const p of w.economy.players) {
       w.players[p.id].goop = p.goop;
       put32(w.players[p.id].raw, 0x5e6, p.capacity);
@@ -2086,6 +2105,24 @@ export function validateCampaignWorld(w: CampaignWorld, hash: string): void {
   )
     throw new Error("Invalid complete campaign save state");
   validateSpatial(w.spatial);
+  const nativeJobs = Array.from({ length: 25 }, (_, slot) =>
+    i16(w.missionPrefix, 0x1ec7 + slot * 176 + 12),
+  );
+  if (nativeJobs.filter((v) => v >= 0).length !== w.missionPrefix[0x2ff7])
+    throw new Error("Invalid shared terrain job save count");
+  const workingJobs = w.jobs.filter((j) => j.status === "working");
+  if (
+    new Set(workingJobs.map((j) => j.nativeSlot)).size !== workingJobs.length ||
+    workingJobs.some(
+      (j) =>
+        !integer(j.nativeSlot!, 0, 24) ||
+        nativeJobs[j.nativeSlot!] < 0 ||
+        j.remaining !== nativeJobs[j.nativeSlot!],
+    )
+  )
+    throw new Error(
+      "Unsupported or inconsistent development construction terrain job save",
+    );
   for (const n of w.specialists.records) validateSpecialistNative(n);
   for (const a of w.actors) {
     if (

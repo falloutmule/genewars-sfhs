@@ -23,6 +23,11 @@ import {
 } from "../mechanics/water";
 import type { MuleEvent } from "../mechanics/mule";
 import {
+  selectEffectSlot,
+  establishedEffectPriorities,
+} from "../mechanics/reward-effect";
+import { validateEffectNativePrior } from "../mechanics/power-motion";
+import {
   insertSpatial,
   moveSpatial,
   unlinkSpatial,
@@ -216,57 +221,32 @@ function retire(
         break;
       }
     }
-    if (!found)
-      throw new Error(
-        "Water replacement target needs its original callback host",
-      );
     if (!prior.nativePrior)
       throw new Error("Shared replacement numeric prior is unknown");
+    if (!found) validateEffectNativePrior(prior.nativePrior);
     prior.nativePrior[6] = 0;
   }
   prior.occupied = false;
   out.retired.push(id);
   updateNativeLinks(w);
 }
-const priorities: Record<number, number> = {
-  6: 27,
-  0x15: 19,
-  0x16: 20,
-  0x30: 20,
-  0x1a: 35,
-  0x2f: 35,
-  0x21: 1,
-  0x31: 1,
-};
 function allocate(
   w: WaterAdapterWorld,
   code: WaterCode,
+  pack: Pack,
   out: WaterAdapterReceipt,
   options: WaterAdapterOptions,
 ): number | null {
-  const free = w.powerEffects.slots.findIndex((s) => !s.occupied);
-  if (free >= 0) return free;
-  let priority = code === 0x15 ? 19 : 20,
-    selected: number | null = null;
-  for (let i = 0; i < 200; i++) {
-    const prior = (w.powerEffects.slots[i] as SharedSlot).nativePrior;
-    if (!prior || prior[69] === null || prior[21] === null)
-      throw new Error(
-        "Full-pool water priority needs original live effect selectors/flags",
-      );
-    const rank = priorities[prior[69]!];
-    if (rank === undefined)
-      throw new Error(
-        "Water replacement priority for this effect is not admitted",
-      );
-    if (rank > priority && !(prior[21]! & 1)) {
-      priority = rank;
-      selected = i;
-    }
-  }
-  if (selected === null) return null;
-  retire(w, selected, out, options);
-  return selected;
+  const selected = selectEffectSlot(
+    w.powerEffects,
+    code,
+    (selector) =>
+      pack.effectRules?.descriptors[selector]?.priority ??
+      establishedEffectPriorities[selector],
+  );
+  if (!selected) return null;
+  if (selected.replace) retire(w, selected.slot, out, options);
+  return selected.slot;
 }
 function create(
   w: WaterAdapterWorld,
@@ -286,7 +266,7 @@ function create(
     p.holds.some((v) => v !== 0)
   )
     throw new Error("Original water animation profile is not admitted");
-  const slot = allocate(w, request.code, out, options);
+  const slot = allocate(w, request.code, pack, out, options);
   if (slot === null) {
     out.failedFactories.push(request.code);
     return null;

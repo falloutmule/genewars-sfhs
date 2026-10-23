@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   createCraterJob,
+  createLevelTerrainJob,
   stepCraterJobs,
   CRATER_JOB_BASE as BASE,
   CRATER_JOB_COUNT as COUNT,
@@ -98,6 +99,25 @@ function fixture() {
   };
   return { w, rules, context, install, record };
 }
+
+it("allocates level work and destruction in one retained native pool with atomic full-capacity failure", () => {
+  const { w, rules } = fixture();
+  expect(createLevelTerrainJob(w, [5120, 5120], 1, 2048, 8)).toEqual({
+    slot: 0,
+    remaining: 1,
+  });
+  expect(createCraterJob(w, [8192, 8192], 0, rules).slot).toBe(1);
+  for (let index = 2; index < 25; index++)
+    expect(createLevelTerrainJob(w, [10240, 10240], 3, 2048, 8)?.slot).toBe(
+      index,
+    );
+  expect(w.missionPrefix[COUNT]).toBe(25);
+  const before = structuredClone(w);
+  expect(createLevelTerrainJob(w, [10240, 10240], 1, 2048, 8)).toBeNull();
+  expect(createCraterJob(w, [8192, 8192], 1, rules).slot).toBeNull();
+  expect(w).toEqual(before);
+  expect(w.missionPrefix[BASE + 175]).toBe(165);
+});
 describe("source crater creation and terrain job lifecycle", () => {
   it("uses the lowest retained native slot and exact small crater grid, nine draws and protected texture orientation", () => {
     const f = fixture();

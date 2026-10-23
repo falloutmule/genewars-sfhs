@@ -105,6 +105,34 @@ export const PackSchema = z
     rules: OriginalRulesSchema.optional(),
     economyRules: EconomyRulesSchema.optional(),
     ecologyRules: EcologyRulesSchema.optional(),
+    effectRules: z
+      .object({
+        schemaVersion: z.literal(1),
+        descriptors: z
+          .array(
+            z.object({
+              code: z.number().int().min(0).max(70),
+              retirementMode: z.number().int().min(0).max(255),
+              gravity: z.boolean(),
+              priority: z.number().int().min(0).max(255),
+              childCode: z.number().int().min(0).max(255).nullable(),
+              movable: z.boolean(),
+              waterResponse: z.boolean(),
+            }),
+          )
+          .length(71)
+          .refine(
+            (rows) => rows.every((row, index) => row.code === index),
+            "Expected ordered source effect descriptors",
+          ),
+        provenance: z
+          .object({
+            executableSha256: z.string().length(64),
+            originalExecution: z.literal(false),
+          })
+          .passthrough(),
+      })
+      .optional(),
     geneticistRules: z
       .object({
         schemaVersion: z.literal(1),
@@ -118,6 +146,19 @@ export const PackSchema = z
             }),
           )
           .length(3),
+        effectDescriptors: z
+          .array(
+            z.object({
+              code: z.number().int().min(0).max(255),
+              completion: z.number().int().min(0).max(255),
+              gravity: z.boolean(),
+              priority: z.number().int().min(0).max(255),
+              childCode: z.number().int().min(0).max(255).nullable(),
+              obstacle: z.boolean(),
+              water: z.boolean(),
+            }),
+          )
+          .length(4),
         provenance: z
           .object({
             executableSha256: z.string().length(64),

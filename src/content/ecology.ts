@@ -36,6 +36,10 @@ export const EcologyRulesSchema = z.object({
       foodWeights: z.tuple([byte, byte, byte]),
     })
     .optional(),
+  muleCold: z.object({
+    primaryLoss: z.number().int().min(-128).max(127),
+    secondaryLoss: z.number().int().min(-128).max(127),
+  }).optional(),
   plantResources: z
     .array(z.object({ selector: byte, path: z.string(), assetKey: z.string() }))
     .length(12),

@@ -128,13 +128,22 @@ export function rewardQuery(
 /** Known104EB6 descriptor priorities; unknown live selectors require a profile. */
 export const establishedEffectPriorities: Readonly<Record<number, number>> =
   Object.freeze({
+    2: 4,
+    3: 3,
+    5: 1,
     6: 27,
     21: 19,
     22: 20,
     26: 35,
+    27: 18,
+    28: 18,
+    29: 18,
+    30: 18,
+    31: 18,
     32: 42,
     33: 1,
     44: 5,
+    46: 20,
     47: 35,
     48: 20,
     49: 1,
@@ -436,4 +445,3 @@ export function stepRewardEffectRecord(
   }
   return out;
 }
-

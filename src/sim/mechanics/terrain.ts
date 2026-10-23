@@ -18,6 +18,8 @@ export interface SiteReservation {
 }
 export interface TerraformJob {
   id: number;
+  /** Original shared25-slot terrain pool identity in the campaign host. */
+  nativeSlot?: number;
   owner: number;
   reservation: SiteReservation;
   step: number;

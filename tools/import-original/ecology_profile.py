@@ -11,6 +11,7 @@ RANGES = (
     ('corpseFriction', 0x4520, 16, 'd56e59eae4da3dcb6d5cd9451d25e0ca49259a3a3004f43a40b47c40ae63a707'),
     ('speciesTraits', 0x45FC, 1125, '9cb13776195def5c4c875533fac9615356ffb8a65d4b059637f56c7e290a1707'),
     ('attackChannels', 0x60A0, 5, '5a5eaa0c7ccc5f4ffca0fd4f06c1847eead18eb5321dd301bb618ee4d720a96e'),
+    ('coldResponses', 0x60A8, 16, '6ea95fe9999a933073fffc681053051e33481d920c2b3f0ed2f0c41c1638bb76'),
 )
 
 
@@ -75,6 +76,9 @@ def import_ecology_rules(executable_bytes):
         elif name == 'attackChannels':
             result[name] = list(struct.unpack('<5b',raw))
             result['muleCombat']['attackChannel'] = result[name][4]
+        elif name == 'coldResponses':
+            values = struct.unpack('<16b', raw)
+            result['muleCold'] = {'primaryLoss': values[8+4], 'secondaryLoss': values[4]}
         else:
             for slot in range(12):
                 descriptor = raw[slot * 44:(slot + 1) * 44]

@@ -14,7 +14,20 @@ import {
   plantBlockerWeight,
   type EcologyState,
 } from "../mechanics/ecology";
-import { cloneWaterEffect, type EffectNative } from "../mechanics/water";
+import {
+  cloneWaterEffect,
+  makeWaterEffect,
+  type EffectNative,
+} from "../mechanics/water";
+import {
+  makeDestructionEffect,
+  runBlastArea,
+  stepDestructionEffect,
+  type DestructionRequest,
+  type DestructionChildRequest,
+  type DestructionAudio,
+  type BlastAreaContext,
+} from "../mechanics/destruction-effect";
 import { animationProfile } from "../mechanics/animation";
 import { stepBuildingEffect } from "../mechanics/building-effect";
 import { stepZoneEffectRecord } from "../mechanics/zones";
@@ -26,6 +39,7 @@ import {
   stepRewardEffectRecord,
   makeRewardEffect,
   selectEffectSlot,
+  establishedEffectPriorities,
   type RewardTarget,
   type RewardEffectUpdate,
   type RewardEvent,
@@ -64,6 +78,8 @@ export type EffectSchedulerWorld = PowerAdapterWorld &
     players?: unknown;
     notices?: unknown;
     audio?: unknown;
+    missionPrefix?: number[];
+    countdown?: number;
   };
 export interface EffectSchedulerOptions<
   W extends EffectSchedulerWorld = EffectSchedulerWorld,
@@ -87,6 +103,22 @@ export interface EffectSchedulerOptions<
   onRewardEvent?: (world: W, slot: number, event: RewardEvent) => void;
   /**35F90 registers nonzero-owner effects in the real AI order slots. */
   onRewardFactory?: (world: W, slot: number) => void;
+  /** Real current native target views, traversal and recursive damage ports. */
+  blastArea?: (
+    world: W,
+    native: readonly (number | null)[],
+    request: DestructionRequest,
+  ) => BlastAreaContext;
+  destructionObstacle?: (
+    world: W,
+    position: [number, number],
+    height: number,
+  ) => { position: [number, number]; ground: number } | null;
+  onDestructionEvent?: (
+    world: W,
+    slot: number,
+    event: DestructionAudio,
+  ) => void;
 }
 export interface EffectSchedulerReceipt {
   callbacks: { phase: "primary" | "newborn"; slot: number; code: number }[];
@@ -136,6 +168,7 @@ export function cloneEffectHost<W extends EffectSchedulerWorld>(
     })),
     economy: structuredClone(w.economy),
     rng: { ...w.rng },
+    ...(w.missionPrefix ? { missionPrefix: w.missionPrefix.slice() } : {}),
     source: {
       ...w.source,
       entities: w.source.entities.map((e) => ({
@@ -168,6 +201,8 @@ export function commitEffectHost<W extends EffectSchedulerWorld>(
     "players",
     "notices",
     "audio",
+    "missionPrefix",
+    "countdown",
   ] as const)
     if (key in s) (w as Record<string, unknown>)[key] = s[key];
   options.commitHost?.(w, s);
@@ -286,6 +321,174 @@ function removeReplacedHost(w: EffectSchedulerWorld, slot: number) {
       e.native = w.powerEffects.slots[slot].nativePrior!.slice();
     }
 }
+function emptyReceipt(): EffectSchedulerReceipt {
+  return {
+    callbacks: [],
+    landingEvents: [],
+    water: [],
+    power: [],
+    rewards: [],
+    createdNewborns: 0,
+    retired: [],
+    cleanedReferenceBytes: 0,
+    queueCandidates: [],
+  };
+}
+function effectPriority(pack: Pack, code: number): number | undefined {
+  return (
+    pack.effectRules?.descriptors[code]?.priority ??
+    establishedEffectPriorities[code]
+  );
+}
+/** Runs on an already staged world. Shared allocation occurs before every
+ * factory's RNG, and real recursive area damage completes before returning. */
+function destructionFactory<W extends EffectSchedulerWorld>(
+  w: W,
+  request: DestructionChildRequest,
+  pack: Pack,
+  options: EffectSchedulerOptions<W>,
+  out: EffectSchedulerReceipt,
+): number | null {
+  if (!pack.rules)
+    throw Error("Original destruction motion rules are required");
+  const allocation = selectEffectSlot(w.powerEffects, request.code, (code) =>
+    effectPriority(pack, code),
+  );
+  if (!allocation) return null;
+  const slot = allocation.slot;
+  if (allocation.replace) {
+    retire(w, slot, w.powerEffects.slots[slot].nativePrior!, out, options);
+    removeReplacedHost(w, slot);
+  }
+  if (request.code === 6) {
+    const p = createSourceParticle(
+      { ...request, code: 6, newborn: !!request.newborn },
+      w.rng,
+      landingContext(w, pack, options),
+    );
+    if (!p?.native || p.slot !== slot)
+      throw Error("Source destruction smoke allocation differs");
+    w.landings[0]?.particles.push(p);
+    w.powerEffects.slots[slot].occupied = true;
+    publish(w, slot, p.native);
+    insertSpatial(w.spatial, w.terrain, id(slot), worldCell(p.x, p.y));
+    links(w);
+    return slot;
+  }
+  if (request.code === 21 || request.code === 48) {
+    const water = makeWaterEffect(
+      slot,
+      { ...request, code: request.code },
+      w.powerEffects.slots[slot].nativePrior!,
+      {
+        terrain: w.terrain,
+        tables: pack.rules.tables,
+        bounce: pack.rules.tables.bounce,
+        rawWaterHeight: w.source.source.terrain.rawWaterHeight,
+        profile: (code) => animationProfile(pack.assets.EFF, code),
+        obstacleAt: options.obstacleAt,
+      },
+    );
+    if (request.newborn) {
+      water.flags |= 1;
+      water.native[21] = water.flags & 255;
+    }
+    const old = w.waterEffects.findIndex((e) => e.slot === slot);
+    if (old < 0) w.waterEffects.push(water);
+    else w.waterEffects[old] = water;
+    w.powerEffects.slots[slot].occupied = true;
+    publish(w, slot, water.native);
+    insertSpatial(w.spatial, w.terrain, id(slot), worldCell(water.x, water.y));
+    links(w);
+    return slot;
+  }
+  const concrete: DestructionRequest = { ...request, code: request.code };
+  const r = makeDestructionEffect(
+    w.powerEffects.slots[slot].nativePrior!,
+    { ...concrete, slot },
+    w.terrain,
+    w.rng,
+    pack.rules.tables,
+    animationProfile(pack.assets.EFF, request.code),
+  );
+  w.powerEffects.slots[slot].occupied = true;
+  publish(w, slot, r.native);
+  insertSpatial(w.spatial, w.terrain, id(slot), worldCell(...request.position));
+  links(w);
+  for (const e of r.events) options.onDestructionEvent?.(w, slot, e);
+  if (r.areaRequired) {
+    if (!options.blastArea)
+      throw Error("Original destruction blast area services are required");
+    const area = options.blastArea(
+      w,
+      w.powerEffects.slots[slot].nativePrior!,
+      concrete,
+    );
+    runBlastArea(
+      w.powerEffects.slots[slot].nativePrior!,
+      request.parameter,
+      request.instigator ?? null,
+      w.rng,
+      { ...area, currentRng: () => w.rng },
+    );
+    links(w);
+  }
+  return slot;
+}
+/** Use only inside an existing complete host transaction, including recursive
+ * virtual damage. The outer caller owns rollback and final validation. */
+export function createStagedDestructionEffect<W extends EffectSchedulerWorld>(
+  w: W,
+  request: DestructionRequest,
+  pack: Pack,
+  options: EffectSchedulerOptions<W>,
+): number | null {
+  return destructionFactory(w, request, pack, options, emptyReceipt());
+}
+export function createCampaignDestructionEffect<W extends EffectSchedulerWorld>(
+  w: W,
+  request: DestructionRequest,
+  pack: Pack,
+  options: EffectSchedulerOptions<W>,
+): number | null {
+  const s = cloneEffectHost(w, options);
+  validate(s);
+  const result = destructionFactory(s, request, pack, options, emptyReceipt());
+  if (result === null) return null;
+  validate(s);
+  commitEffectHost(w, s, options);
+  return result;
+}
+function projectedParticle(n: EffectNative): LandingParticle {
+  validateEffectNativePrior(n);
+  const word = (p: number) => ((n[p]! | (n[p + 1]! << 8)) << 16) >> 16,
+    dword = (p: number) => (word(p) & 65535) | (word(p + 2) << 16);
+  if (n[6] !== 5 || n[69] !== 6)
+    throw Error("Source native smoke projection needs selector6");
+  return {
+    native: n.slice(),
+    slot: word(15),
+    code: 6,
+    x: word(7),
+    y: word(9),
+    fractionX: n[67]!,
+    fractionY: n[68]!,
+    height: dword(39),
+    ground: dword(17),
+    vx: word(45),
+    vy: word(47),
+    vz: word(49),
+    accelerationZ: word(55),
+    animation: {
+      action: n[25]!,
+      hold: n[26]!,
+      frame: n[27]!,
+      direction: (n[28]! << 24) >> 24,
+      delay: (n[29]! << 24) >> 24,
+      counter: (n[30]! << 24) >> 24,
+    },
+  };
+}
 /**48790 code59, including source shared capacity/replacement and actual raw
  * component geometry. Called on the staged13780 world by its state6 port. */
 export function createCampaignRewardEffect<W extends EffectSchedulerWorld>(
@@ -306,7 +509,9 @@ export function createCampaignRewardEffect<W extends EffectSchedulerWorld>(
     component = pack.assets.EFF.frames?.[profile.first].sourceComponents?.[0];
   if (!component)
     throw new Error("Source reward raw component coordinate is required");
-  const allocation = selectEffectSlot(s.powerEffects, 59);
+  const allocation = selectEffectSlot(s.powerEffects, 59, (code) =>
+    effectPriority(pack, code),
+  );
   if (!allocation) return null;
   const out: EffectSchedulerReceipt = {
     callbacks: [],
@@ -375,7 +580,9 @@ export function stepEffectScheduler<W extends EffectSchedulerWorld>(
     };
   validate(s);
   const rewardParticle = (request: RewardParticleRequest): boolean => {
-    const allocation = selectEffectSlot(s.powerEffects, request.code);
+    const allocation = selectEffectSlot(s.powerEffects, request.code, (code) =>
+      effectPriority(pack, code),
+    );
     if (!allocation) return false;
     if (allocation.replace) {
       const replaced = allocation.slot;
@@ -395,10 +602,7 @@ export function stepEffectScheduler<W extends EffectSchedulerWorld>(
     );
     if (!p || !p.native || p.slot !== allocation.slot)
       throw new Error("Source reward particle allocation differs");
-    const container = s.landings[0];
-    if (!container)
-      throw new Error("Source reward particle callback host is missing");
-    container.particles.push(p);
+    s.landings[0]?.particles.push(p);
     s.powerEffects.slots[p.slot].occupied = true;
     publish(s, p.slot, p.native);
     insertSpatial(s.spatial, s.terrain, id(p.slot), worldCell(p.x, p.y));
@@ -445,6 +649,60 @@ export function stepEffectScheduler<W extends EffectSchedulerWorld>(
       }
       if (landing.phase === 4) retire(s, slot, landing.native, out, options);
       else publish(s, slot, landing.native);
+    } else if ([2, 3, 5, 27, 28, 29, 30, 31, 46].includes(code)) {
+      if (!pack.ecologyRules)
+        throw Error("Original destruction ecology motion tables are required");
+      const result = stepDestructionEffect(n, s.rng, {
+        frame: s.frame,
+        gravity: options.gravity,
+        water: s.source.source.terrain.loadedPhysicalWaterHeight,
+        terrain: s.terrain,
+        tables: pack.rules!.tables,
+        bounce: pack.rules!.tables.bounce,
+        friction: pack.ecologyRules.corpseFriction ?? [],
+        profile: (selector) => animationProfile(pack.assets.EFF, selector),
+        obstacle: options.destructionObstacle
+          ? (p, h) => options.destructionObstacle!(s, p, h)
+          : undefined,
+        particle(request, _rng, parentNative) {
+          publish(s, slot, parentNative);
+          moveSpatial(
+            s.spatial,
+            s.terrain,
+            id(slot),
+            worldCell(
+              ((parentNative[7]! | (parentNative[8]! << 8)) << 16) >> 16,
+              ((parentNative[9]! | (parentNative[10]! << 8)) << 16) >> 16,
+            ),
+          );
+          links(s);
+          parentNative.splice(
+            0,
+            81,
+            ...s.powerEffects.slots[slot].nativePrior!,
+          );
+          const child = destructionFactory(s, request, pack, options, out);
+          parentNative.splice(
+            0,
+            81,
+            ...s.powerEffects.slots[slot].nativePrior!,
+          );
+          return child !== null;
+        },
+      });
+      moveSpatial(
+        s.spatial,
+        s.terrain,
+        id(slot),
+        worldCell(
+          ((result.native[7]! | (result.native[8]! << 8)) << 16) >> 16,
+          ((result.native[9]! | (result.native[10]! << 8)) << 16) >> 16,
+        ),
+      );
+      publish(s, slot, result.native);
+      created = result.newborns;
+      if (result.retirementRequired)
+        retire(s, slot, result.native, out, options);
     } else if (
       code === 60 ||
       (code === 47 &&
@@ -515,7 +773,8 @@ export function stepEffectScheduler<W extends EffectSchedulerWorld>(
           particle = p;
         }
       }
-      if (!host || !particle || particle.code !== code || !particle.native)
+      if (!particle && code === 6) particle = projectedParticle(n);
+      if (!particle || particle.code !== code || !particle.native)
         throw new Error("Source landing particle binding is missing");
       const oldCell = worldCell(particle.x, particle.y),
         alive = stepLandingParticle(particle, landingContext(s, pack, options));
@@ -532,7 +791,7 @@ export function stepEffectScheduler<W extends EffectSchedulerWorld>(
       links(s);
       if (!alive) {
         retire(s, slot, particle.native!, out, options);
-        host.particles = host.particles.filter((p) => p !== particle);
+        if (host) host.particles = host.particles.filter((p) => p !== particle);
       }
     } else if (code === 32) {
       const result = stepProductionEffectRecord(n, s.terrain, {
