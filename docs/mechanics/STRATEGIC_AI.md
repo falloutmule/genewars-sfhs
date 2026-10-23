@@ -4,6 +4,8 @@
 70B00/37870. Its supporting modules implement retained storage, group binding,
 recruitment control, condition evaluation and zone-group synchronization.
 Concrete strategic planners and group role actions remain required services.
+The companion[creature family](STRATEGIC_AI_CREATURES.md) now supplies complete
+35730/35820 numeric bodies with their actual narrow command dependencies.
 The campaign opponent guard must remain until those complete services are
 available; this module does not establish a playable strategic opponent.
 
@@ -135,7 +137,9 @@ families can back the narrow factory/action ports once their host adapters are
 bound; the preserved data alone does not run them.
 
 `tools/import-original/strategic_ai_profile.py` admits only the executable
-identity and six hashed unsigned numeric group limits. Its provenance records
+identity and hashed unsigned numeric group limits, species genes and production
+weights. The latter two are25×2 at object3+4A64 (50 bytes) and25×5 at
+object3+79F8 (125 bytes). Its group-limit provenance records
 object3+79D4, virtual1079D4, six bytes, originalExecution=false and SHA-256
 `b2c9995a81357cf8cf6b6d59e964165b009fc3c9450769ea5ee35d1362b9c9fe`.
 No shared importer/schema file is changed by this module.
@@ -144,7 +148,7 @@ Thirty-four synthetic TS tests cover mutation ranges, strict ties, coordinate
 wrap, inactive/protected control cleanup, retained bytes, duplicate scheduler
 calls, recruitment order/capacity, conditions, timers, JSON restoration, native
 pointer/extent bounds and rollback after an earlier player or RNG mutation.
-Four synthetic importer cases cover numeric/provenance, foreign and oversized
+Five synthetic importer cases cover numeric/provenance, foreign and oversized
 inputs, changed/truncated tables and object bounds. The private closed listing
 comparison covers36 cases including actual mission3's first noncadence pass,
 with2,950,275 compared numeric values and131,504 model steps. Pointer gaps are

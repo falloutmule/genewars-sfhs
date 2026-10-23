@@ -1,4 +1,5 @@
 import sys
+import struct
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -12,15 +13,21 @@ class StrategicAIProfile(unittest.TestCase):
         data = bytes([0, 1, 127, 128, 254, 255])
         genes = bytes(range(50))
         weights = bytes(range(125))
+        values = struct.pack('<42h', *range(-21, 21))
+        threats = struct.pack('<42h', *range(-32768, -32726))
+        specialists = bytes([0, 100, 200, 255])
         with patch.object(profile, 'EXECUTABLE_SHA256', profile.sha(b'fixture')), \
                 patch.object(profile, 'GROUP_LIMITS_SHA256', profile.sha(data)), \
                 patch.object(profile, 'SPECIES_GENES_SHA256', profile.sha(genes)), \
                 patch.object(profile, 'PRODUCTION_WEIGHTS_SHA256', profile.sha(weights)), \
+                patch.object(profile, 'BUILDING_VALUES_SHA256', profile.sha(values)), \
+                patch.object(profile, 'BUILDING_THREAT_SHA256', profile.sha(threats)), \
+                patch.object(profile, 'SPECIALIST_THREAT_SHA256', profile.sha(specialists)), \
                 patch.object(profile, 'LEImage') as mapper:
-            mapper.return_value.read_object.side_effect = [data, genes, weights]
+            mapper.return_value.read_object.side_effect = [data, genes, weights, values, threats, specialists]
             result = profile.import_strategic_ai_rules(memoryview(b'fixture'))
             self.assertEqual([c.args for c in mapper.return_value.read_object.call_args_list],
-                             [(3, 0x79D4, 6), (3, 0x4A64, 50), (3, 0x79F8, 125)])
+                             [(3, 0x79D4, 6), (3, 0x4A64, 50), (3, 0x79F8, 125), (3, 0x78F8, 84), (3, 0x794C, 84), (3, 0x79D0, 4)])
         self.assertEqual(result['schemaVersion'], 1)
         self.assertEqual(result['groupLimits'], list(data))
         self.assertFalse(result['provenance']['originalExecution'])
@@ -31,6 +38,10 @@ class StrategicAIProfile(unittest.TestCase):
         self.assertEqual(result['productionWeights'], [list(weights[i:i + 5]) for i in range(0, 125, 5)])
         self.assertEqual(result['provenance']['speciesGenes']['bytes'], 50)
         self.assertEqual(result['provenance']['productionWeights']['bytes'], 125)
+        self.assertEqual(result['buildingValues'], [list(range(i, i + 3)) for i in range(-21, 21, 3)])
+        self.assertEqual(result['provenance']['buildingValues']['bytes'], 84)
+        self.assertEqual(result['buildingThreatValues'][0], [-32768, -32767, -32766])
+        self.assertEqual(result['specialistThreatWeights'], list(specialists))
 
     def test_rejects_foreign_nonbytes_and_oversized_inputs_before_mapping(self):
         with patch.object(profile, 'LEImage') as mapper, patch.object(profile, 'MAX_FILE_BYTES', 8):
@@ -67,6 +78,21 @@ class StrategicAIProfile(unittest.TestCase):
             mapper.return_value.read_object.side_effect = [limits, genes, bytes(124)]
             with self.assertRaisesRegex(ValueError, 'productionWeights'):
                 profile.import_strategic_ai_rules(b'fixture')
+
+    def test_rejects_each_changed_settlement_value_or_threat_range(self):
+        ranges = [bytes(6), bytes(50), bytes(125), bytes(84), bytes(84), bytes(4)]
+        names = ['GROUP_LIMITS_SHA256', 'SPECIES_GENES_SHA256', 'PRODUCTION_WEIGHTS_SHA256',
+                 'BUILDING_VALUES_SHA256', 'BUILDING_THREAT_SHA256', 'SPECIALIST_THREAT_SHA256']
+        from contextlib import ExitStack
+        with ExitStack() as stack:
+            stack.enter_context(patch.object(profile, 'EXECUTABLE_SHA256', profile.sha(b'fixture')))
+            for name, raw in zip(names, ranges):
+                stack.enter_context(patch.object(profile, name, profile.sha(raw)))
+            mapper = stack.enter_context(patch.object(profile, 'LEImage'))
+            for index, name in [(3, 'buildingValues'), (4, 'buildingThreatValues'), (5, 'specialistThreatWeights')]:
+                with self.subTest(name=name), self.assertRaisesRegex(ValueError, name):
+                    mapper.return_value.read_object.side_effect = ranges[:index] + [ranges[index][:-1]]
+                    profile.import_strategic_ai_rules(b'fixture')
 
 
 if __name__ == '__main__':
