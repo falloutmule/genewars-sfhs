@@ -382,9 +382,18 @@ describe("source-driven goal ledger and generic campaign result stages", () => {
         radius: 456,
         initialQuota: 71,
         remainingQuota: 29,
+        activeObservers: 0,
       },
     ]);
     expect(ledger.zoneMetadataStatus).toBe("provided");
+    b[0x2ff8 + 18] = 2;
+    expect(
+      value(describeMissionObjectives(p, c, b)).zones![0].activeObservers,
+    ).toBe(2);
+    b[0x2ff8 + 18] = 255;
+    expect(
+      value(describeMissionObjectives(p, c, b)).zones![0].activeObservers,
+    ).toBe(-1);
     expect(ledger.campaignProgress).toBe(1);
     expect(ledger.directlyEligible).toBe(true);
     expect(value(describeMissionObjectives(p, c)).zoneMetadataStatus).toBe(

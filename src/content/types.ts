@@ -4,6 +4,7 @@ import { OriginalRulesSchema } from "./rules";
 import { EconomyRulesSchema } from "./economy";
 import { EcologyRulesSchema } from "./ecology";
 import { AudioProfileSchema } from "./audio";
+import { SpecialistVoiceProfileSchema } from "./specialist-voice";
 import { ZoneRulesSchema, EtherealRulesSchema } from "./zones";
 export const MissionSchema = z.object({
   id: z.number().int().min(1).max(24),
@@ -184,6 +185,7 @@ export const PackSchema = z
       })
       .optional(),
     audioProfile: AudioProfileSchema.optional(),
+    specialistVoiceProfile: SpecialistVoiceProfileSchema.optional(),
     zoneRules: ZoneRulesSchema.optional(),
     etherealRules: EtherealRulesSchema.optional(),
     palettes: z

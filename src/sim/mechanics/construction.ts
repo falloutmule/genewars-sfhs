@@ -448,6 +448,23 @@ export function constructionSiteClass(
   discriminator: number,
   context: ConstructionContext,
 ): "valid" | "blocked" | "water" | "occupied" | "mineral" {
+  return classifyConstructionSite(
+    state.terrain,
+    position,
+    footprint,
+    discriminator,
+    (cell) => context.occupied(cell, state),
+  );
+}
+/**74E80 independent of modern construction projections. Native Engineer
+ * callbacks supply their current mask0 occupancy query directly. */
+export function classifyConstructionSite(
+  terrain: TerrainState,
+  position: ConstructionPoint,
+  footprint: number,
+  discriminator: number,
+  occupied: (cell: number) => boolean,
+): "valid" | "blocked" | "water" | "occupied" | "mineral" {
   if (![1, 2, 3].includes(footprint))
     throw new Error("Invalid construction footprint");
   const offset = footprint === 1 ? 1 : 2,
@@ -462,16 +479,16 @@ export function constructionSiteClass(
         ),
         at = cell * 14;
       if (col < size - 1 && row < size - 1) {
-        mineral ||= state.terrain.bytes[at + 13] > 1;
-        const material = state.terrain.bytes[at + 4];
+        mineral ||= terrain.bytes[at + 13] > 1;
+        const material = terrain.bytes[at + 4];
         if (
-          state.terrain.bytes[at + 11] & 1 ||
+          terrain.bytes[at + 11] & 1 ||
           (material >= 0x20 && material <= 0x22)
         )
           return "blocked";
-        if (context.occupied(cell, state)) return "occupied";
+        if (occupied(cell)) return "occupied";
       }
-      if ((state.terrain.bytes[at + 5] & 7) <= 1) return "water";
+      if ((terrain.bytes[at + 5] & 7) <= 1) return "water";
     }
   return discriminator === 11 && !mineral ? "mineral" : "valid";
 }

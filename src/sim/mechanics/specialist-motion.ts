@@ -749,6 +749,7 @@ export function stepStagedSpecialistMotion<W extends GeneticistWorld>(
       ![3, 4, 5].includes(b(n, 85))) ||
     (s.specialists.bindings[index]!.category !== 2 &&
       ![3, 4, 5].includes(b(n, 85)) &&
+      !(s.specialists.bindings[index]!.category === 0 && b(n, 85) === 9) &&
       !(s.specialists.bindings[index]!.category === 1 && b(n, 85) === 10) &&
       (![1, 8].includes(b(n, 85)) || b(n, 88) & 1))
   )

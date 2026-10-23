@@ -1,11 +1,12 @@
 # Specialist campaign integration
 
 The campaign uses actual20×200 specialist records, retained blueprint bindings,
-and the original player records. Geneticist and Botanist commands enter pending
+and the original player records. Engineer, Geneticist and Botanist commands enter pending
 native state before the shared57A10 control callback. Their motion, reveal,
 footsteps, damage, research/plant work and shared effects run against the current
-host pools. Engineer construction still uses its documented modern controller;
-this integration does not claim that controller is a complete native Engineer.
+host pools. Engineer task0 now binds its native controller to real terrain,
+building and shared-effect services; its modern queue waits for source idle.
+Other Engineer assignments and upgrades remain incomplete.
 
 Landing80AE0 updates the resolved candidate XY and readiness. It does not invent
 movement from the temporary constructor origin, resample cached ground/physical
@@ -30,8 +31,13 @@ outer rollback. Failed late factories are tested against the complete checksum.
 Modern Stop clears the modern queue and pending low command bits after source
 release. Device audio never gates authoritative gameplay. Botanist cleanup
 issues a deterministic idempotent stop for a previously journaled loop rather
-than querying wall-clock device playback. Hurt/death419E0 filename speech remains
-an explicit media integration gap; it is not reinterpreted as an indexed cue.
+than querying wall-clock device playback. Hurt/death419E0 requests map through
+the imported filename/SPE profile and enter a deterministic presentation
+journal. The browser applies original policy0 and shared nine-slot415C0
+allocation, then submits actual private samples. Device handles, completion,
+errors and playback outcomes never mutate gameplay. The explicit path-prefix
+policy is empty for SFHS resources.41780 caps, source service polling latency
+and exact cross-journal call order remain unbound.
 
 The synthetic host tests cover ordinary native movement/replay, immediate
 capture, active saves, damage persistence, death/retirement, planting, resource
@@ -45,4 +51,4 @@ state3 resolves the retained102-byte visitor and executes52B90 after normal
 motion, including real shared26 feedback. The visitor pass can lift a specialist
 after its own callback; that numeric pose is mirrored immediately so the next
 frame cannot overwrite it. Attack25 aims from the visitor's current callback
-pose before its recursive factory. Filename speech remains unresolved.
+pose before its recursive factory. Exact subtitle/dialogue UI mapping remains unresolved.

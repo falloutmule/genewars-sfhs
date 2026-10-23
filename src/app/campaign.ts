@@ -244,7 +244,7 @@ export async function openCampaign(
   async function mount() {
     renderedTick = -1;
     renderErrors.length = 0;
-    audio.reset(w.audio.nextSequence);
+    audio.reset(w.audio.nextSequence, w.presentation.voiceSequence ?? 0);
     input?.();
     scene?.dispose();
     app.innerHTML =
@@ -541,7 +541,7 @@ export async function openCampaign(
     }
     for (const zone of objectives.value.zones ?? []) {
       const row = document.createElement("p");
-      row.textContent = `Zone ${zone.index + 1}: ${zone.remainingQuota}/${zone.initialQuota} remaining · (${(zone.center[0] / 256).toFixed(1)}, ${(zone.center[1] / 256).toFixed(1)})`;
+      row.textContent = `Zone ${zone.index + 1}: ${zone.remainingQuota}/${zone.initialQuota} remaining · (${(zone.center[0] / 256).toFixed(1)}, ${(zone.center[1] / 256).toFixed(1)})${zone.remainingQuota > 0 ? (zone.activeObservers > 0 ? " · Ethereal inspection active" : " · Awaiting Ethereal inspection") : ""}`;
       ledger.append(row);
       button(ledger, `Show zone ${zone.index + 1}`, () => {
         scene?.focus(zone.center[0] / 256, zone.center[1] / 256);
@@ -594,7 +594,7 @@ export async function openCampaign(
       (a) => selected.has(a.id) && w.specialists.records[a.id][6] === 3,
     );
     node("campaign-selection").textContent = a
-      ? `${a.reason}${w.builders.find((b) => b.id === a.id)?.task ? " · stage " + w.builders.find((b) => b.id === a.id)!.task!.stage : ""}`
+      ? a.reason
       : "Tap a specialist, then a destination. Drag to pan; pinch or scroll to zoom.";
     const role = node("campaign-role");
     if (
@@ -1035,6 +1035,14 @@ export async function openCampaign(
     else {
       audio.resume();
       audio.consume(w.audio.requests);
+      audio.consumeVoices(
+        w.presentation.pending.flatMap(({ event }) =>
+          event.type === "specialist-voice"
+            ? [{ sequence: event.sequence, request: event.request }]
+            : [],
+        ),
+        { selectedPlayer: w.selectedPlayer, runtimeFlags: w.flags },
+      );
     }
     if (w.tick !== lastHud) {
       lastHud = w.tick;

@@ -6,6 +6,7 @@ import {
   type AudioState,
 } from "../src/sim/mechanics/audio";
 import type { Pack } from "../src/content/types";
+import { mapSpecialistDamageVoice } from "../src/sim/mechanics/specialist-voice";
 class FakeAudio {
   static instances: FakeAudio[] = [];
   static rejectRate = false;
@@ -82,7 +83,52 @@ function fixture() {
     });
   const rate = (ratePercent: number, entity = "source:4:3", cue = 84) =>
     requestAudioPlaybackRate(state, { frame: 2, entity, cue, ratePercent });
-  return { state, consumer, play, rate };
+  return { state, consumer, play, rate, pack };
+}
+
+function voiceFixture() {
+  const f = fixture();
+  f.pack.specialistVoiceProfile = {
+    schemaVersion: 1,
+    descriptorClasses: Array(100).fill(1),
+    rows: Array.from({ length: 16 }, (_, i) => ({
+      style: i >> 2,
+      category: i & 3,
+      filenamePrefix: `synthetic/voice${i}_`,
+      filenameSuffix: ".wav",
+      speechContainer: `synthetic/VOICE${i}.SPE`,
+      bundleIndex: i,
+      soundKeyPrefix: `VOICE${i}.SPE:`,
+    })),
+    provenance: { executableSha256: "0".repeat(64), originalExecution: false },
+  };
+  f.pack.specialistVoiceProfile.descriptorClasses![99] = 0;
+  for (let i = 0; i < 16; i++)
+    for (const record of [3, 4])
+      f.pack.sounds[`VOICE${i}.SPE:${record}`] =
+        `data:audio/wav;base64,synthetic-voice${i}-${record}`;
+  const voice = (sequence: number, variant: 4 | 5 = 4, index = 0) => ({
+    sequence,
+    request: mapSpecialistDamageVoice(
+      {
+        type: "specialist-voice",
+        index,
+        style: 0,
+        category: 0,
+        variant,
+        queuePolicy: 0,
+        arguments: [2, 0, 127, 100],
+      },
+      {
+        frame: 7,
+        owner: Math.floor(index / 5),
+        pathPrefix: "",
+        profile: f.pack.specialistVoiceProfile,
+        sounds: f.pack.sounds,
+      },
+    ),
+  });
+  return { ...f, voice, context: { selectedPlayer: 0, runtimeFlags: 4 } };
 }
 afterEach(() => vi.unstubAllGlobals());
 describe("explicit source audio rate journal", () => {
@@ -236,5 +282,213 @@ describe("CampaignAudio read-only source playback-rate device", () => {
     rate(500, "denied");
     consumer.consume(state.requests);
     expect(FakeAudio.instances.at(-1)?.rateWrites).toEqual([]);
+  });
+});
+
+describe("CampaignAudio specialist speech with shared source415C0 capacity", () => {
+  it("plays the SPE key with voice volume, preserves journals, and deduplicates case-insensitive filenames across entities", () => {
+    const f = voiceFixture(),
+      entries = [f.voice(0)];
+    f.consumer.voiceVolume = 0.25;
+    const before = JSON.stringify([f.state, entries, f.pack]);
+    expect(f.consumer.consumeVoices(entries, f.context)).toEqual([
+      { sequence: 0, status: "submitted" },
+    ]);
+    const a = FakeAudio.instances[0];
+    expect(a.src).toBe(f.pack.sounds["VOICE0.SPE:3"]);
+    expect(a.volume).toBe(0.25);
+    expect(a.preservesPitch).toBe(false);
+    expect(a.playbackRate).toBe(1);
+    expect(a.plays).toBe(1);
+    expect(JSON.stringify([f.state, entries, f.pack])).toBe(before);
+    expect(f.consumer.consumeVoices(entries, f.context)).toEqual([]);
+    const same = f.voice(1, 4, 1);
+    if (same.request.resource.status !== "profile-unavailable")
+      same.request.resource.filename =
+        same.request.resource.filename.toUpperCase();
+    expect(f.consumer.consumeVoices([same], f.context)[0].status).toBe(
+      "same-filename",
+    );
+    a.finish();
+    expect(f.consumer.consumeVoices([f.voice(2)], f.context)[0].status).toBe(
+      "same-filename",
+    );
+    expect(FakeAudio.instances).toHaveLength(1);
+  });
+  it("consumes muted/other-owner/disabled entries without starting devices or latching their filename", () => {
+    const f = voiceFixture();
+    f.consumer.enabled = false;
+    expect(f.consumer.consumeVoices([f.voice(0)], f.context)[0].status).toBe(
+      "muted",
+    );
+    f.consumer.enabled = true;
+    expect(
+      f.consumer.consumeVoices([f.voice(1)], {
+        ...f.context,
+        selectedPlayer: 1,
+      })[0].status,
+    ).toBe("other-owner");
+    expect(
+      f.consumer.consumeVoices([f.voice(2)], {
+        ...f.context,
+        runtimeFlags: 0,
+      })[0].status,
+    ).toBe("disabled");
+    expect(FakeAudio.instances).toHaveLength(0);
+    expect(f.consumer.consumeVoices([f.voice(3)], f.context)[0].status).toBe(
+      "submitted",
+    );
+    expect(FakeAudio.instances).toHaveLength(1);
+  });
+  it("shares nine descriptors with numeric effects, applies class0 eviction, and frees capacity on device end", () => {
+    const f = voiceFixture();
+    for (let i = 0; i < 9; i++) f.play(`effect:${i}`);
+    f.consumer.consume(f.state.requests);
+    expect(FakeAudio.instances).toHaveLength(9);
+    expect(f.consumer.consumeVoices([f.voice(0)], f.context)[0].status).toBe(
+      "submitted",
+    );
+    expect(FakeAudio.instances).toHaveLength(10);
+    expect(FakeAudio.instances[0].pauses).toBe(1); //First equal nonzero class.
+    expect(FakeAudio.instances.slice(1).every((a) => !a.paused)).toBe(true);
+    f.play("full-effect");
+    f.consumer.consume(f.state.requests);
+    expect(FakeAudio.instances).toHaveLength(10);
+    FakeAudio.instances[1].finish();
+    f.play("freed-effect");
+    f.consumer.consume(f.state.requests);
+    expect(FakeAudio.instances).toHaveLength(11);
+    expect(FakeAudio.instances.at(-1)!.src).toBe(f.pack.sounds.WAVE84);
+  });
+  it("retains the419E0 filename copy when all nine classes are protected and allocation fails", () => {
+    const f = voiceFixture();
+    f.pack.specialistVoiceProfile!.descriptorClasses!.fill(0);
+    for (let i = 0; i < 9; i++) f.play(`protected:${i}`);
+    f.consumer.consume(f.state.requests);
+    expect(f.consumer.consumeVoices([f.voice(0)], f.context)[0].status).toBe(
+      "capacity",
+    );
+    FakeAudio.instances[0].finish();
+    expect(f.consumer.consumeVoices([f.voice(1)], f.context)[0].status).toBe(
+      "same-filename",
+    );
+    expect(FakeAudio.instances).toHaveLength(9);
+    expect(f.consumer.consumeVoices([f.voice(2, 5)], f.context)[0].status).toBe(
+      "submitted",
+    );
+  });
+  it("interrupts speech and updates the filename before missing-sample failure; cue99 never loads SOUND.DAT", () => {
+    const f = voiceFixture();
+    f.consumer.consumeVoices([f.voice(0)], f.context);
+    const old = FakeAudio.instances[0],
+      missing = f.pack.sounds["VOICE0.SPE:4"];
+    delete f.pack.sounds["VOICE0.SPE:4"];
+    expect(f.consumer.consumeVoices([f.voice(1, 5)], f.context)[0].status).toBe(
+      "sample-unavailable",
+    );
+    expect(old.pauses).toBe(1);
+    expect(FakeAudio.instances).toHaveLength(1);
+    f.pack.sounds["VOICE0.SPE:4"] = missing;
+    expect(f.consumer.consumeVoices([f.voice(2, 5)], f.context)[0].status).toBe(
+      "same-filename",
+    );
+    expect(f.consumer.consumeVoices([f.voice(3)], f.context)[0].status).toBe(
+      "submitted",
+    );
+    expect(FakeAudio.instances).toHaveLength(2);
+  });
+  it("reports absent profiles/classes explicitly while retaining legacy numeric device behavior", () => {
+    const f = voiceFixture(),
+      mapped = f.voice(0);
+    delete f.pack.specialistVoiceProfile;
+    expect(f.consumer.consumeVoices([f.voice(0)], f.context)[0].status).toBe(
+      "profile-unavailable",
+    );
+    expect(
+      f.consumer.consumeVoices([{ ...mapped, sequence: 1 }], f.context)[0]
+        .status,
+    ).toBe("descriptor-classes-unavailable");
+    for (let i = 0; i < 10; i++) f.play(`legacy:${i}`);
+    f.consumer.consume(f.state.requests);
+    expect(FakeAudio.instances).toHaveLength(10);
+  });
+  it("releases a rejected speech descriptor, isolates stale ended callbacks after replacement, and honors voice rate/stop", async () => {
+    const f = voiceFixture();
+    FakeAudio.rejectPlay = true;
+    f.consumer.consumeVoices([f.voice(0)], f.context);
+    await Promise.resolve();
+    FakeAudio.rejectPlay = false;
+    f.consumer.consumeVoices([f.voice(1, 5)], f.context);
+    const first = FakeAudio.instances[1];
+    f.consumer.consumeVoices([f.voice(2)], f.context);
+    const latest = FakeAudio.instances[2];
+    first.finish(); //Late notification for a replaced physical channel.
+    f.rate(500, "source:2:0", 99);
+    f.consumer.consume(f.state.requests);
+    expect(latest.playbackRate).toBe(5);
+    for (let i = 0; i < 8; i++) f.play(`effect:${i}`);
+    f.consumer.consume(f.state.requests);
+    expect(FakeAudio.instances).toHaveLength(11); //Three voice attempts+eight effects.
+    f.play("must-not-steal-voice");
+    f.consumer.consume(f.state.requests);
+    expect(FakeAudio.instances).toHaveLength(11);
+    requestAudio(f.state, {
+      frame: 9,
+      entity: "source:2:0",
+      cue: 99,
+      mode: 4,
+      parameter: 0,
+      range: null,
+      gain: 1,
+    });
+    f.consumer.consume(f.state.requests);
+    expect(latest.paused).toBe(true);
+    f.play("released-by-voice-stop");
+    f.consumer.consume(f.state.requests);
+    expect(FakeAudio.instances).toHaveLength(12);
+  });
+  it("defers new speech while paused, resumes it once, and resets both journal cursors and aliases", () => {
+    const f = voiceFixture();
+    f.consumer.pause();
+    expect(f.consumer.consumeVoices([f.voice(0)], f.context)[0].status).toBe(
+      "paused",
+    );
+    expect(FakeAudio.instances[0].plays).toBe(0);
+    f.consumer.resume();
+    expect(FakeAudio.instances[0].plays).toBe(1);
+    f.consumer.resume();
+    expect(FakeAudio.instances[0].plays).toBe(1);
+    f.consumer.reset(f.state.nextSequence, 5);
+    expect(
+      f.consumer.consumeVoices([f.voice(0), f.voice(4)], f.context),
+    ).toEqual([]);
+    expect(f.consumer.consumeVoices([f.voice(5)], f.context)[0].status).toBe(
+      "submitted",
+    );
+    expect(FakeAudio.instances).toHaveLength(2);
+    FakeAudio.instances[0].finish(); //Cannot release the newly reset allocator.
+    f.consumer.dispose();
+    expect(FakeAudio.instances[1].paused).toBe(true);
+    f.consumer.reset(f.state.nextSequence); //Default voice cursor starts at0.
+    expect(f.consumer.consumeVoices([f.voice(0)], f.context)[0].status).toBe(
+      "submitted",
+    );
+  });
+  it("frees rejected speech capacity before any later voice, and frees a subsequent media-error channel", async () => {
+    const f = voiceFixture();
+    FakeAudio.rejectPlay = true;
+    f.consumer.consumeVoices([f.voice(0)], f.context);
+    await Promise.resolve();
+    FakeAudio.rejectPlay = false;
+    f.pack.specialistVoiceProfile!.descriptorClasses!.fill(0);
+    for (let i = 0; i < 9; i++) f.play(`after-rejection:${i}`);
+    f.consumer.consume(f.state.requests);
+    expect(FakeAudio.instances).toHaveLength(10); //Denied voice+nine occupied effects.
+    const broken = FakeAudio.instances[1];
+    broken.listeners.get("error")!();
+    expect(broken.paused).toBe(true);
+    f.play("after-media-error");
+    f.consumer.consume(f.state.requests);
+    expect(FakeAudio.instances).toHaveLength(11);
   });
 });

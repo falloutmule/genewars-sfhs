@@ -303,6 +303,19 @@ describe("campaign specialist services", () => {
       offset = 22 + binding.blueprintIndex * 36,
       before = (w.players[0].raw[offset + 26] << 24) >> 24;
     damageCampaignSpecialist(w, index, 4, null, pack, services);
+    const voice = w.presentation.pending.find(
+      (e) => e.event.type === "specialist-voice",
+    );
+    expect(voice?.event).toMatchObject({
+      type: "specialist-voice",
+      sequence: 0,
+      request: {
+        entity: "source:2:1",
+        variant: 4,
+        resource: { status: "profile-unavailable" },
+      },
+    });
+    expect(w.presentation.voiceSequence).toBe(1);
     const hit = w.players[0].blueprints[binding.blueprintIndex].health;
     expect(hit).toBeLessThan(before);
     stepCampaign(w, pack);

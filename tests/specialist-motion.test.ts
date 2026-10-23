@@ -179,7 +179,8 @@ describe("source category2 specialist6FB60 motion", () => {
       f.n()[88] = 0;
       stepSpecialistMotion(f.s, 0, f.c);
       expect(f.n().slice(7, 85)).toEqual(expected.n().slice(7, 85));
-      f.n()[85] = 9;
+      // Role states are admitted only for their actual category:0/9 and1/10.
+      f.n()[85] = category === 0 ? 10 : 9;
       const before = structuredClone(f.s);
       expect(() => stepSpecialistMotion(f.s, 0, f.c)).toThrow(
         /ordinary idle\/move/,

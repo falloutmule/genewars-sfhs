@@ -274,6 +274,21 @@ export function reserveSite(
     }
   }
   for (const c of vertices) t.bytes[c * 14 + 11] |= 16;
+  return readSiteReservation(t, anchor, footprint);
+}
+/** Reconstruct the geometry of an already reserved native site without
+ * repeating reservation/material writes. The height is a current read only. */
+export function readSiteReservation(
+  t: TerrainState,
+  anchor: [number, number],
+  footprint: number,
+): SiteReservation {
+  if (![1, 2, 3].includes(footprint)) throw new Error("Unsupported footprint");
+  const vertices = vertexCells(anchor, footprint),
+    dim = footprint + 1,
+    cells: number[] = [];
+  for (let y = 0; y < footprint; y++)
+    for (let x = 0; x < footprint; x++) cells.push(vertices[y * dim + x]);
   const perimeter = vertices.filter(
     (_, i) =>
       i < dim || i >= dim * (dim - 1) || i % dim === 0 || i % dim === dim - 1,

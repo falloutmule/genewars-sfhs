@@ -276,6 +276,7 @@ export interface ObjectiveZoneDescriptor {
   radius: number;
   initialQuota: number;
   remainingQuota: number;
+  activeObservers: number;
 }
 export interface MissionObjectiveLedger {
   player: number;
@@ -399,6 +400,7 @@ export function describeMissionObjectives(
         radius: i32(sourcePrefix, at + 6),
         initialQuota: i32(sourcePrefix, at + 10),
         remainingQuota: i32(sourcePrefix, at + 14),
+        activeObservers: (sourcePrefix[at + 18] << 24) >> 24,
       };
     });
     zoneMetadataStatus = "provided";

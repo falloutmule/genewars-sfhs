@@ -62,6 +62,7 @@ import {
   cancelSpecialistWithoutActiveRole,
   stepSpecialistAbductionCallback,
 } from "../mechanics/specialist-abduction";
+import { mapSpecialistDamageVoice } from "../mechanics/specialist-voice";
 import { moveSpatial, copySpatialLinks, unlinkSpatial } from "./spatial";
 import { i16, put16, u16 } from "./bytes";
 
@@ -94,11 +95,34 @@ function consumeDamageEvents(
   w: CampaignWorld,
   index: number,
   events: readonly SpecialistDamageEvent[],
+  pack: Pack,
 ): void {
-  //419E0 filename speech remains an explicit media integration obligation.
-  //Do not reinterpret it as a numeric effect cue. The normalized death state
-  //and original corpse remain visible even without that presentation service.
-  for (const e of events)
+  for (const e of events) {
+    if (e.type === "specialist-voice") {
+      const sequence = w.presentation.voiceSequence ?? 0;
+      if (
+        !Number.isSafeInteger(sequence) ||
+        sequence < 0 ||
+        sequence >= Number.MAX_SAFE_INTEGER
+      )
+        throw new Error("Invalid specialist voice sequence");
+      w.presentation.voiceSequence = sequence + 1;
+      w.presentation.pending.push({
+        frame: w.frame,
+        event: {
+          type: "specialist-voice",
+          sequence,
+          request: mapSpecialistDamageVoice(e, {
+            frame: w.frame,
+            owner: Math.floor(e.index / 5),
+            pathPrefix: "",
+            profile: pack.specialistVoiceProfile,
+            sounds: pack.sounds,
+          }),
+        },
+      });
+      if (w.presentation.pending.length > 128) w.presentation.pending.shift();
+    }
     if (e.type === "specialist-retired") {
       const retired = e.retiredIndex;
       if (retired !== null) {
@@ -120,6 +144,7 @@ function consumeDamageEvents(
         }
       }
     }
+  }
   synchronizeCampaignSpecialistBlueprints(w);
   if (w.specialists.records[index][6] === 3) {
     mirrorCampaignSpecialist(w, index);
@@ -179,7 +204,9 @@ export function cancelStagedCampaignSpecialistWork(
     services.cancelRole(w, index);
   } else if (
     binding.category === 0 &&
-    w.builders.find((b) => b.id === index)?.task
+    (w.builders.find((b) => b.id === index)?.task ||
+      w.specialists.records[index][130] !== 0 ||
+      w.specialists.records[index][88]! & 1)
   ) {
     if (!services.cancelConstruction)
       throw new Error("Actual specialist construction cancellation required");
@@ -230,7 +257,7 @@ export function damageCampaignSpecialist(
     e ? { index: e.index, kind: e.kind } : null,
     campaignSpecialistDamageContext(w, pack, services),
   );
-  consumeDamageEvents(w, index, r.events);
+  consumeDamageEvents(w, index, r.events, pack);
   return r.dead;
 }
 export function retireCampaignSpecialist(
@@ -244,7 +271,7 @@ export function retireCampaignSpecialist(
     index,
     campaignSpecialistDamageContext(w, pack, services),
   );
-  consumeDamageEvents(w, index, events);
+  consumeDamageEvents(w, index, events, pack);
 }
 export function mirrorCampaignSpecialist(
   w: CampaignWorld,
@@ -472,7 +499,7 @@ export function campaignGeneticistContext(
         index,
         campaignSpecialistDamageContext(s, pack, services),
       );
-      consumeDamageEvents(s, index, r.events);
+      consumeDamageEvents(s, index, r.events, pack);
       return { handled: r.handled, retired: r.retired };
     },
   };

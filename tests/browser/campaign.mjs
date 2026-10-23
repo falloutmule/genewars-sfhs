@@ -71,7 +71,8 @@ try {
       return {
         phase: w.phase,
         frame: w.frame,
-        task: w.builders[0].task?.phase,
+        task: w.specialists.records[0][88] & 1,
+        constructionStage: w.specialists.records[0][136],
         ready: w.actors[0].ready,
         selection: c.selection,
         notices: w.notices.slice(-3),
@@ -149,8 +150,13 @@ try {
           return {
             phase: w.phase,
             frame: w.frame,
-            task: w.builders[0].task?.phase,
-            idle: !w.builders[0].task && w.builders[0].status === "idle",
+            task: w.specialists.records[0][88] & 1,
+            constructionStage: w.specialists.records[0][136],
+            idle:
+              w.specialists.records[0][85] === 1 &&
+              w.specialists.records[0][130] === 0 &&
+              w.specialists.records[0][88] === 0 &&
+              !(w.specialists.records[0][87] & 3),
             reason: w.actors[0].reason,
             counts: w.players[0].completed,
           };

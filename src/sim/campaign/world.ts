@@ -169,6 +169,14 @@ import {
 } from "./ethereal-attack-adapter";
 import { campaignPunishmentServices } from "./punishment-adapter";
 import { cloneCampaignHostRoots } from "./clone-host";
+import type { SpecialistVoiceRequest } from "../mechanics/specialist-voice";
+import {
+  stepCampaignEngineer,
+  requestCampaignEngineer,
+  moveCampaignEngineer,
+  stopCampaignEngineer,
+  cancelStagedCampaignEngineer,
+} from "./engineer-adapter";
 import { revealCampaignRadius } from "./reveal-adapter";
 import {
   stepCampaignGeneticist,
@@ -280,10 +288,16 @@ export interface CampaignWorld extends CampaignBootstrap {
   ethereals: EtherealState;
   presentation: {
     uiFrame: number;
+    voiceSequence?: number;
     pending: {
       frame: number;
       event:
         | EtherealAdapterEvent
+        | {
+            type: "specialist-voice";
+            sequence: number;
+            request: SpecialistVoiceRequest;
+          }
         | { type: "reward"; slot: number; request: RewardEvent };
     }[];
   };
@@ -1167,6 +1181,48 @@ function issue(w: CampaignWorld, c: CampaignCommand, pack: Pack): void {
     }
     return;
   }
+  if (category === 0) {
+    const n = w.specialists.records[a.id];
+    if (c.type === "cancel") {
+      stopCampaignEngineer(w, a.id, pack, specialistServices(pack));
+      const current = w.actors.find((v) => v.id === a.id)!;
+      current.orders = [];
+      current.goal = null;
+      current.route = [];
+      current.reason = "Stopped";
+      return;
+    }
+    if (c.type !== "move" && c.type !== "construct")
+      throw new Error("Unsupported Engineer command");
+    if (c.queued)
+      w.actors
+        .find((v) => v.id === a.id)!
+        .orders.push({
+          type: c.type,
+          point: c.point,
+          ...(c.type === "construct" ? { selector: c.selector } : {}),
+        });
+    else if (c.type === "move") {
+      moveCampaignEngineer(w, a.id, c.point, pack, specialistServices(pack));
+      w.actors.find((v) => v.id === a.id)!.orders = [];
+    } else if ([1, 8].includes(n[85]!) && n[130] === 0 && !(n[88]! & 1)) {
+      requestCampaignEngineer(
+        w,
+        a.id,
+        c.selector,
+        c.point,
+        pack,
+        specialistServices(pack),
+      );
+      w.actors.find((v) => v.id === a.id)!.orders = [];
+    } else {
+      stopCampaignEngineer(w, a.id, pack, specialistServices(pack));
+      w.actors.find((v) => v.id === a.id)!.orders = [
+        { type: "construct", point: c.point, selector: c.selector },
+      ];
+    }
+    return;
+  }
   const builder = w.builders.find((b) => b.id === a.id);
   if (c.type === "cancel" || !c.queued) {
     if (builder?.task) {
@@ -1325,6 +1381,37 @@ function actorStep(w: CampaignWorld, a: CampaignActor, pack: Pack): void {
     return;
   }
   const category = w.players[a.owner].blueprints[a.blueprintIndex].category;
+  if (category === 0) {
+    const n = w.specialists.records[a.id];
+    if (
+      a.orders.length &&
+      n[85] === 1 &&
+      n[130] === 0 &&
+      n[88] === 0 &&
+      !(n[87]! & 3)
+    ) {
+      const order = a.orders.shift()!;
+      if (order.type === "construct")
+        requestCampaignEngineer(
+          w,
+          a.id,
+          order.selector!,
+          order.point,
+          pack,
+          specialistServices(pack),
+        );
+      else
+        moveCampaignEngineer(
+          w,
+          a.id,
+          order.point,
+          pack,
+          specialistServices(pack),
+        );
+    }
+    stepCampaignEngineer(w, a.id, pack, specialistServices(pack));
+    return;
+  }
   if (category === 1) {
     const n = w.specialists.records[a.id];
     if (a.orders.length && n[85] !== 8 && !(n[87]! & 3)) {
@@ -1619,6 +1706,13 @@ function specialistServices(pack: Pack): CampaignSpecialistServices {
         specialistServices(pack),
       ),
     cancelConstruction: (s, index) => {
+      if (
+        s.specialists.records[index][130] !== 0 ||
+        s.specialists.records[index][88]! & 1
+      ) {
+        cancelStagedCampaignEngineer(s, index, pack, specialistServices(pack));
+        return;
+      }
       const terrain = s.terrain,
         rng = s.rng,
         prefix = s.missionPrefix;
