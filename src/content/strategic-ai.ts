@@ -3,6 +3,8 @@ import { z } from "zod";
 export const StrategicAIRulesSchema = z.object({
   schemaVersion: z.literal(1),
   groupLimits: z.array(z.number().int().min(0).max(255)).length(6),
+  /** Admitted cold-process image; every mission applies the source retention reset. */
+  creatureControlPrior: z.array(z.number().int().min(0).max(255)).length(600).optional(),
   buildingValues: z.array(z.tuple([
     z.number().int().min(-32768).max(32767),
     z.number().int().min(-32768).max(32767),

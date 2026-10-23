@@ -10,6 +10,7 @@ PRODUCTION_WEIGHTS_SHA256 = 'c9966e10c7b70cf06838f4739273597fdf3ff86d0a566167b1b
 BUILDING_VALUES_SHA256 = 'ee9c21c6449a10c2e42862da10fdb291c77dde8cd779645b215aa698feee77f8'
 BUILDING_THREAT_SHA256 = 'f18a2e4b69ba6c4d46cfc96eed1a3fb71bb7baa400e2fb02a88971db646aee9d'
 SPECIALIST_THREAT_SHA256 = 'e7e2dfe94e08fc91e8d9b16537b550d3b5a7ed2ab0e5427280f402f3543d4471'
+CREATURE_CONTROL_PRIOR_SHA256 = 'bd50e12c55dda3ee443c1cb6d71c7bcf6351c4ec96f7bc8d6adec015d1192eea'
 
 
 def import_strategic_ai_rules(executable_bytes):
@@ -27,7 +28,8 @@ def import_strategic_ai_rules(executable_bytes):
             ('productionWeights', 0x79F8, 125, 5, PRODUCTION_WEIGHTS_SHA256),
             ('buildingValues', 0x78F8, 84, 6, BUILDING_VALUES_SHA256),
             ('buildingThreatValues', 0x794C, 84, 6, BUILDING_THREAT_SHA256),
-            ('specialistThreatWeights', 0x79D0, 4, 1, SPECIALIST_THREAT_SHA256)):
+            ('specialistThreatWeights', 0x79D0, 4, 1, SPECIALIST_THREAT_SHA256),
+            ('creatureControlPrior', 0x84D7C, 600, 1, CREATURE_CONTROL_PRIOR_SHA256)):
         raw = image.read_object(3, offset, size)
         if len(raw) != size or sha(raw) != expected:
             raise ValueError('strategic AI ' + name + ' hash/extent mismatch')

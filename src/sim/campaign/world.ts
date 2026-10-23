@@ -46,6 +46,8 @@ import {
 } from "../mechanics/ecology";
 import { nextRandom } from "../mechanics/random";
 import { assertOpponentStrategyImplemented } from "../mechanics/opponent-startup";
+import { createCampaignStrategicStorage, cloneCampaignStrategicStorage, validateCampaignStrategicStorage,
+  campaignStrategicAuxiliary, type CampaignStrategicStorage } from "./strategic-state";
 import {
   findRoute,
   moveGoal,
@@ -208,6 +210,8 @@ import {
 } from "./botanist-adapter";
 type CampaignCarry = NonNullable<Parameters<typeof bootstrapCampaign>[3]> & {
   specialistOrigin?: [number, number];
+  creatureControl?: number[];
+  controlProvenance?: string;
 };
 
 const point = z.tuple([
@@ -286,6 +290,8 @@ export interface CampaignNotice {
   entityId: number | null;
 }
 export interface CampaignWorld extends CampaignBootstrap {
+  /** Present only after the imported cold/retained control image is established. */
+  strategy?: CampaignStrategicStorage;
   entryCarry: CampaignCarry | null;
   specialists: SpecialistPool;
   collapse: CollapsePool;
@@ -397,8 +403,14 @@ export function createCampaign(
     }
   }
   const initialBuildings = initializeCampaignBuildings(b.source, pack);
+  if (pack.strategicAIRules?.creatureControlPrior && carry && !carry.creatureControl)
+    throw Error("Campaign carry lacks its actual strategic creature control");
+  const strategy = pack.strategicAIRules?.creatureControlPrior ? createCampaignStrategicStorage(s.extensionBase64,
+    carry?.creatureControl ?? pack.strategicAIRules.creatureControlPrior,
+    carry?.controlProvenance ?? "Hash-admitted cold creature control; source71B70 inline retention reset") : undefined;
   const w: CampaignWorld = {
     ...b,
+    ...(strategy ? { strategy } : {}),
     specialists,
     collapse: makeCollapsePool(
       initializeNativePool(b.source, 5),
@@ -504,6 +516,7 @@ export function createCampaign(
     notices: [],
   };
   put16(w.missionPrefix, 0x355c, w.countdown);
+  if (strategy) w.auxiliary = campaignStrategicAuxiliary(strategy);
   return w;
 }
 export function restartCampaign(w: CampaignWorld, pack: Pack): CampaignWorld {
@@ -1656,6 +1669,7 @@ function syncEconomy(w: CampaignWorld): void {
   );
 }
 function stageNativeHost(original: CampaignWorld, staged: CampaignWorld): void {
+  if (original.strategy) staged.strategy = cloneCampaignStrategicStorage(original.strategy);
   staged.buildingNative = original.buildingNative.map((n) => n.slice());
   staged.creatureNative = original.creatureNative.map((n) => n.slice());
   staged.ethereals = cloneEthereals(original.ethereals);
@@ -1671,6 +1685,7 @@ function stageNativeHost(original: CampaignWorld, staged: CampaignWorld): void {
   staged.auxiliary = structuredClone(original.auxiliary);
 }
 function commitNativeHost(target: CampaignWorld, staged: CampaignWorld): void {
+  if (staged.strategy) target.strategy = staged.strategy;
   target.buildingNative = staged.buildingNative;
   target.creatureNative = staged.creatureNative;
   target.ethereals = staged.ethereals;
@@ -2418,7 +2433,7 @@ export function stepCampaign(w: CampaignWorld, pack: Pack): void {
             }
             if (event.type === "activate") {
               for (const a of staged.actors.filter(
-                (a) => a.owner === event.owner,
+                (a) => a.owner === event.owner && !(staged.specialists.records[a.id][112]! & 1),
               )) {
                 a.ready = true;
                 const native = staged.specialists.records[a.id];
@@ -2601,6 +2616,7 @@ export function continueCampaign(w: CampaignWorld, pack: Pack): CampaignWorld {
     world: w.missionPrefix.slice(0x34ba, 0x3550),
     rngRing: w.rng.ring,
     specialistOrigin: w.specialistOrigin,
+    ...(w.strategy ? { creatureControl: w.strategy.creatureControl.slice(), controlProvenance: w.strategy.controlProvenance } : {}),
   });
   next.auxiliary = {
     entries: auxiliary.value.entries,
@@ -2617,6 +2633,12 @@ export function continueCampaign(w: CampaignWorld, pack: Pack): CampaignWorld {
   return next;
 }
 export function validateCampaignWorld(w: CampaignWorld, hash: string): void {
+  if (w.strategy) {
+    validateCampaignStrategicStorage(w.strategy);
+    if (w.auxiliary.entries.length !== 300 || w.auxiliary.entries.some((e, i) =>
+      e.lowFlags !== (w.strategy!.creatureControl[i * 2] & 7) || e.second !== w.strategy!.creatureControl[i * 2 + 1]))
+      throw Error("Saved strategic control and carry projection differ");
+  }
   if (
     w.version !== 2 ||
     w.contentHash !== hash ||

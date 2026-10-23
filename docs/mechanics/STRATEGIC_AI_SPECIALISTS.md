@@ -59,9 +59,10 @@ Idle Engineer planning retains completion/error bookkeeping: selector/local
 classification, settlement construction slots, reservation clears,6A2 timer,
 AI46 readiness and global creature-control mask16 cleanup. It respects the
 source existing-building/cooldown/reservation gates. The37C50 construction
-planning subtree is a required temporary service, with its exact actor/player
-request and typed result.37D60/37F30/390D0 are the next bounded implementation;
-no provider is installed here.
+planning subtree is a required service, with its exact actor/player request and
+typed result. `strategic-ai-engineer.ts` supplies its concrete numeric
+37D60/37F30/390D0 bodies and requires the remaining real site/query/action ports;
+see `STRATEGIC_AI_ENGINEER.md`. No provider is installed here.
 
 Botanist decisions use signed blueprint energy fields and AI63C. A ready lab
 with a clear actual landing state can receive its training command. With no lab

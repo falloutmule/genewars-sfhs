@@ -253,10 +253,11 @@ export function queryMuleAirborneBuilding(
   firstLinkedBuilding: (cell: number) => Native | null,
   heightRaw: (native: Native) => number,
   mask: 0 | 1 = 1,
+  searchOffsets?: readonly (readonly [number, number])[],
 ): { native: Native; position: [number, number]; ground: number } | null {
   if (!(terrain.bytes[worldCell(...at) * 14 + 11] & 1)) return null;
   const classes = [3, 1, 2, 3, 2, 2, 1, 2, 1, 2, 3, 3, 2, 1];
-  const offsets = [
+  const offsets = searchOffsets ?? [
     [0, 0],
     [256, 0],
     [256, 256],
@@ -267,6 +268,14 @@ export function queryMuleAirborneBuilding(
     [256, -256],
     [7680, 0],
   ];
+  if (
+    offsets.length !== 9 ||
+    offsets.some(
+      (p) => p.length !== 2 ||
+        p.some((v) => !Number.isInteger(v) || v < -32768 || v > 32767),
+    )
+  )
+    throw Error("Original74160 nine signed-word query offsets required");
   for (const [i, delta] of offsets.entries()) {
     const n = firstLinkedBuilding(
       worldCell(signed(at[0] + delta[0]), signed(at[1] + delta[1])),
@@ -1864,15 +1873,14 @@ export interface OwnedMuleMoveResult extends MuleStepResult {
   panelRefreshRequested: boolean;
 }
 /** Ordinary81C60 opcode11 ->5DF50 move. No RNG, path preview or teleport. */
-export function requestOwnedMuleMove(
+export function requestStagedOwnedMuleMove(
   state: EcologyState,
   index: number,
   target: [number, number],
   context: OwnedMuleMoveContext,
 ): OwnedMuleMoveResult {
-  const staged = cloneEcologyState(state);
   try {
-    const mule = staged.mules.find((m) => m.index === index);
+    const mule = state.mules.find((m) => m.index === index);
     if (
       !mule ||
       mule.native[6] !== 1 ||
@@ -1894,7 +1902,7 @@ export function requestOwnedMuleMove(
         outcome: "ignored",
         panelRefreshRequested: false,
       };
-    releaseAction(staged, mule);
+    releaseAction(state, mule);
     n[0x5e] = 0;
     for (const at of [0x6e, 0x72]) {
       put(n, at, target[0]);
@@ -1904,7 +1912,6 @@ export function requestOwnedMuleMove(
     n[0x61] = (n[0x61]! | 0x80) & 0xbf;
     n[0x78] = 7;
     n[0x5f] = 0;
-    Object.assign(state, staged);
     return {
       committed: true,
       reason: null,
@@ -1923,6 +1930,20 @@ export function requestOwnedMuleMove(
       panelRefreshRequested: false,
     };
   }
+}
+/** Standalone atomic wrapper. The staged entry preserves every retained
+ * ecology/native alias and requires its caller to own whole-host rollback. */
+export function requestOwnedMuleMove(
+  state: EcologyState,
+  index: number,
+  target: [number, number],
+  context: OwnedMuleMoveContext,
+): OwnedMuleMoveResult {
+  const staged = cloneEcologyState(state),
+    result = requestStagedOwnedMuleMove(staged, index, target, context);
+  if (result.committed && result.outcome === "installed")
+    Object.assign(state, staged);
+  return result;
 }
 /**5D700. Neutral creatures inherently qualify; human creatures require a
  * real category3 roster entry whose control mode and range match. */

@@ -23,6 +23,8 @@ from effect_profile import import_effect_rules
 from specialist_voice_profile import import_specialist_voice_profile
 from building_profile import import_building_rules
 from strategic_ai_profile import import_strategic_ai_rules
+from strategic_engineer_profile import import_strategic_engineer_rules
+from creature_command_profile import import_creature_command_rules
 from shepherd_profile import import_shepherd_rules
 
 spec = importlib.util.spec_from_file_location('gw_codecs', Path(__file__).with_name('codecs.py'))
@@ -79,6 +81,8 @@ def run(source_path, out_path):
         specialist_voice_profile = import_specialist_voice_profile(source.read(executable))
         building_rules = import_building_rules(source.read(executable))
         strategic_ai_rules = import_strategic_ai_rules(source.read(executable))
+        strategic_engineer_rules = import_strategic_engineer_rules(source.read(executable))
+        creature_command_rules = import_creature_command_rules(source.read(executable))
         shepherd_rules = import_shepherd_rules(source.read(executable))
         def read(name):
             data = source.read(name)
@@ -158,7 +162,7 @@ def run(source_path, out_path):
                            'executableSha256': exe_hash},
                 'manifest': sorted(manifest, key=lambda x: x['path']), 'missions': missions,
                 'palettes': {'mainRgb8': main_colors, 'fadeBase64': base64.b64encode(fade).decode('ascii'), 'fadeSha256': sha(fade)},
-                'audioProfile': audio_profile, 'specialistVoiceProfile': specialist_voice_profile, 'buildingRules': building_rules, 'strategicAIRules': strategic_ai_rules, 'shepherdRules': shepherd_rules, 'zoneRules': zone_rules, 'etherealRules': ethereal_rules, 'craterRules': crater_rules, 'geneticistRules': geneticist_rules, 'effectRules': effect_rules,
+                'audioProfile': audio_profile, 'specialistVoiceProfile': specialist_voice_profile, 'buildingRules': building_rules, 'strategicAIRules': strategic_ai_rules, 'strategicEngineerRules': strategic_engineer_rules, 'creatureCommandRules': creature_command_rules, 'shepherdRules': shepherd_rules, 'zoneRules': zone_rules, 'etherealRules': ethereal_rules, 'craterRules': crater_rules, 'geneticistRules': geneticist_rules, 'effectRules': effect_rules,
                 'assets': assets, 'sounds': sounds, 'texts': decoded_texts, 'unknown': unknown}
         encoded = json.dumps(pack, sort_keys=True, separators=(',', ':')).encode('utf-8')
         packed = gzip.compress(encoded, compresslevel=9, mtime=0)

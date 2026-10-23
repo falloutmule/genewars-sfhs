@@ -3,6 +3,8 @@ import { StartupSchema } from "./startup";
 import { OriginalRulesSchema } from "./rules";
 import { BuildingRulesSchema } from "./building-rules";
 import { StrategicAIRulesSchema } from "./strategic-ai";
+import { StrategicEngineerRulesSchema } from "./strategic-engineer";
+import { CreatureCommandRulesSchema } from "./creature-command";
 import { ShepherdRulesSchema } from "./shepherd";
 import { EconomyRulesSchema } from "./economy";
 import { EcologyRulesSchema } from "./ecology";
@@ -109,6 +111,8 @@ export const PackSchema = z
     rules: OriginalRulesSchema.optional(),
     buildingRules: BuildingRulesSchema.optional(),
     strategicAIRules: StrategicAIRulesSchema.optional(),
+    strategicEngineerRules: StrategicEngineerRulesSchema.optional(),
+    creatureCommandRules: CreatureCommandRulesSchema.optional(),
     shepherdRules: ShepherdRulesSchema.optional(),
     economyRules: EconomyRulesSchema.optional(),
     ecologyRules: EcologyRulesSchema.optional(),
