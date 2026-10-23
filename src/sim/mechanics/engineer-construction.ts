@@ -1,4 +1,4 @@
-/** Native534D0 task0 stages0..5 and ordinary507D0/51E80 construction work.
+/** Native534D0 task0 construction/repair, task1 sabotage and task4 upgrade.
  * Reuses the original shared terrain pool and526C0 continuation. It never
  * performs common6FB60 physics, idle recovery, or7AC00 presentation. */
 import {
@@ -115,6 +115,111 @@ export interface EngineerSiteReservation {
   targetHeight: number;
   events: ConstructionEvent[];
 }
+/**441C0 BL0 and43F60 numeric writes for actual target grade0..2. The caller
+ * performs recursive attended-actor release before43620/reveal. */
+export function planEngineerBuildingContribution(
+  before: readonly (number | null)[],
+  increment: number,
+  maximumHealth: number,
+) {
+  const n = before.slice(),
+    selector = byte(n, 45),
+    owner = byte(n, 24),
+    index = word(n, 15),
+    grade = byte(n, 46),
+    targetGrade = byte(n, 47),
+    priorFlags = word(n, 49) & 65535;
+  if (
+    n.length !== 67 ||
+    byte(n, 6) !== 4 ||
+    selector > 13 ||
+    owner > 3 ||
+    Math.floor(index / 64) !== owner ||
+    grade > 2 ||
+    targetGrade > 2 ||
+    !Number.isInteger(increment) ||
+    increment < -32768 ||
+    increment > 32767 ||
+    !Number.isInteger(maximumHealth) ||
+    maximumHealth < 1 ||
+    maximumHealth > 32767
+  )
+    throw Error("Actual Engineer grade0..2 building contribution required");
+  put(n, 43, wrap16(word(n, 43) + increment));
+  let damageRecoveryNative: Native | null = null;
+  if (
+    priorFlags & 0x40 &&
+    grade === targetGrade &&
+    word(n, 43) > Math.trunc(maximumHealth / 3)
+  ) {
+    put(n, 49, word(n, 49) & 0xfebf);
+    damageRecoveryNative = n.slice();
+    n[21] = byte(n, 21) | 4;
+  }
+  const completed = word(n, 43) >= maximumHealth;
+  if (completed) {
+    n[46] = targetGrade;
+    n[27] = 0;
+    put(n, 43, maximumHealth);
+    put(n, 49, (word(n, 49) | 1) & 0xfebf);
+    n[21] = byte(n, 21) | 4;
+    put(n, 61, 200);
+    if (selector === 7) {
+      n[29] = 3;
+      n[51] = (targetGrade * -50 - 6) & 255;
+    }
+    if (selector === 11) n[50] = byte(n, 50) & 253;
+  }
+  return {
+    native: n,
+    damageRecoveryNative,
+    completed,
+    completedPlayerCountOffset:
+      completed && targetGrade === 0 ? 0x600 + selector : null,
+    acquiredOwnershipBit: completed && targetGrade === 0 ? 1 << selector : null,
+    attendedActor:
+      completed && priorFlags & 0x400 && byte(n, 66) === 3 ? word(n, 64) : null,
+    firstCompletionAudio:
+      completed && !(priorFlags & 1) && ![6, 8, 13].includes(selector)
+        ? 77
+        : null,
+    changedUiAudioCondition: completed || damageRecoveryNative !== null,
+  };
+}
+/**44F50 numeric prefix.44E50 capacity recomputation observes this image
+ * before its selector0 stored-GOOP reset. Selector12 requires its own effects. */
+export function planEngineerBuildingUpgrade(
+  before: readonly (number | null)[],
+) {
+  if (
+    before.length !== 67 ||
+    byte(before, 6) !== 4 ||
+    byte(before, 45) > 13 ||
+    byte(before, 47) >= 2
+  )
+    throw Error("Actual grade0/1 upgrade target required");
+  if (byte(before, 45) === 12)
+    throw Error(
+      "Actual44E50 selector12 double family6 effect service required",
+    );
+  const n = before.slice();
+  put(n, 49, word(n, 49) & 0xfefe);
+  n[21] = byte(n, 21) | 4;
+  n[50] = byte(n, 50) | 1;
+  n[47] = (byte(n, 47) + 1) & 255;
+  return { native: n, resetStoredGoop: byte(n, 45) === 0 };
+}
+export interface EngineerTakeoverChargeRequest {
+  code: 50;
+  actor: number;
+  building: number;
+  owner: number;
+  position: Point;
+  height: number;
+  angles: [0, 0, 0];
+  parameter: 0;
+  delay: 1;
+}
 export interface EngineerNativeConstructionContext<W extends GeneticistWorld>
   extends Pick<GeneticistContext<W>, "tables" | "escapeRay"> {
   /** Actual104E1C fourteen signed dwords. Only the admitted selector is read. */
@@ -151,6 +256,21 @@ export interface EngineerNativeConstructionContext<W extends GeneticistWorld>
   ): { completed: boolean; events: ConstructionEvent[] };
   /** Actual Engineer resource action14 descriptor, before common advancement. */
   animation(world: W, actor: number, action: 14): AnimationProfile;
+  /** Original104DE0 classes,104E12 radii and104570 front offset. Only
+   * existing-building task1/4 reads these optional admitted tables. */
+  buildingFootprints?: readonly number[];
+  buildingHealth?: readonly number[];
+  buildingHalfWidths?: readonly number[];
+  buildingFrontOffset?: readonly [number, number];
+  startUpgrade?(world: W, building: number): void;
+  startTakeover?(world: W, building: number, actor: number): void;
+  placeTakeoverCharge?(
+    world: W,
+    request: EngineerTakeoverChargeRequest,
+  ): boolean;
+  setTakeoverChargePhase?(world: W, actor: number, phase: 1 | 2): void;
+  debitTakeoverScore?(world: W, actor: number, amount: 500): void;
+  takeoverAnimation?(world: W, actor: number): AnimationProfile;
 }
 const byte = (n: readonly (number | null)[], p: number): number => {
   const v = n[p];
@@ -280,6 +400,31 @@ function releaseResources<W extends GeneticistWorld>(
       terrainJobs: [],
     };
   if (
+    world.specialists.bindings[index]?.category !== 0 ||
+    request.active !== !!(byte(n, 88) & 1)
+  )
+    throw Error("Native Engineer release snapshot differs");
+  if (!request.active) return out;
+  if (request.task !== byte(n, 126))
+    throw Error("Native Engineer release task snapshot differs");
+  if (request.task === 1 || request.task === 4) {
+    const target = building(world, n, c);
+    if (target)
+      target[50] = byte(target, 50) & (request.task === 1 ? 239 : 251);
+    if (request.task === 1 && word(n, 136) >= 0) {
+      if (!c.setTakeoverChargePhase)
+        throw Error("Actual code50 charge cancellation service required");
+      c.setTakeoverChargePhase(world, index, 2);
+    }
+    n[88] = byte(n, 88) & 254;
+    return out;
+  }
+  if (request.task === 0 && byte(n, 131) === 255) {
+    n[74] = byte(n, 74) & 247;
+    n[88] = byte(n, 88) & 254;
+    return out;
+  }
+  if (
     request.task !== 0 ||
     byte(n, 126) !== 0 ||
     world.specialists.bindings[index]?.category !== 0
@@ -311,6 +456,357 @@ function releaseResources<W extends GeneticistWorld>(
   }
   return out;
 }
+function existingClass<W extends GeneticistWorld>(
+  target: Native,
+  c: EngineerNativeConstructionContext<W>,
+) {
+  const selector = byte(target, 45),
+    size = c.buildingFootprints?.[selector];
+  if (selector > 13 || size == null || ![1, 2, 3].includes(size))
+    throw Error("Actual104DE0 building class required");
+  return size;
+}
+function halfWidth<W extends GeneticistWorld>(
+  target: Native,
+  c: EngineerNativeConstructionContext<W>,
+): number {
+  const width = c.buildingHalfWidths?.[existingClass(target, c)];
+  if (width == null || !Number.isInteger(width) || width < 0 || width > 32767)
+    throw Error("Actual104E12 building radius required");
+  return width;
+}
+function front<W extends GeneticistWorld>(
+  target: Native,
+  c: EngineerNativeConstructionContext<W>,
+): Point {
+  const offset = c.buildingFrontOffset;
+  if (
+    !offset ||
+    offset.length !== 2 ||
+    offset.some((v) => !Number.isInteger(v) || v < -32768 || v > 32767)
+  )
+    throw Error("Actual104570 building front offset required");
+  return [
+    wrap16(word(target, 7) + (offset[0] >> 1)),
+    wrap16(word(target, 9) + (offset[1] >> 1)),
+  ];
+}
+/**73F70 signed-word doubled-coordinate arithmetic, including unsigned radius. */
+function perimeter<W extends GeneticistWorld>(
+  p: Point,
+  angle: number,
+  radius: number,
+  c: EngineerNativeConstructionContext<W>,
+): Point {
+  const at = (angle - 512) & 2047,
+    r = (radius * 2) & 65535,
+    dx = Math.imul(c.tables.cosine[at], r) >> 16,
+    dy = Math.imul(c.tables.sine[at], r) >> 16;
+  return [
+    (wrap16(wrap16(p[0] * 2) + dx) >> 1) & 32767,
+    (wrap16(wrap16(p[1] * 2) + dy) >> 1) & 32767,
+  ];
+}
+function nominate(n: Native, target: Native): void {
+  n[79] = n[82] = 0;
+  put(n, 77, word(target, 15));
+  n[79] = byte(target, 6);
+  n[73] = byte(n, 73) | 128;
+}
+function approachExisting<W extends GeneticistWorld>(
+  n: Native,
+  target: Native,
+  p: Point,
+  speed: number,
+  c: EngineerNativeConstructionContext<W>,
+) {
+  put(n, 11, p[0]);
+  put(n, 13, p[1]);
+  n[84] = 20;
+  n[22] = byte(n, 22) & 191;
+  put(n, 73, (word(n, 73) | 20) & 0xeffc);
+  n[22] = byte(n, 22) & 127;
+  nominate(n, target);
+  put(n, 57, yaw(n, position(target), c.tables));
+  n[112] = byte(n, 112) | 16;
+  put(n, 63, speed);
+}
+function resumeExisting<W extends GeneticistWorld>(
+  w: W,
+  index: number,
+  target: Native,
+  c: EngineerNativeConstructionContext<W>,
+) {
+  const a = readSpecialistControlActor(w, index),
+    n = a.native;
+  if (byte(n, 90) !== 6) {
+    continueSpecialistMovement(w, index, 1, c);
+    return;
+  }
+  //526C0/52340 case6 nominates the actual building; using case1 would erase it.
+  if (byte(n, 112) & 32) return;
+  if (a.style === 3 && (w.frame + index) & 1 && byte(n, 115) > 0)
+    n[115] = byte(n, 115) - 1;
+  if (word(n, 73) & 3) return;
+  if (!(word(n, 73) & 16) && !(word(n, 73) & 32)) {
+    if (!(word(n, 73) & 16)) {
+      const angle = yaw(n, position(target), c.tables);
+      put(n, 75, angle);
+      put(n, 57, angle);
+    }
+    put(n, 11, word(n, 96));
+    put(n, 13, word(n, 98));
+    n[22] = byte(n, 22) & 191;
+    put(n, 73, (word(n, 73) | 20) & 0xeffc);
+    n[84] = 20;
+    n[22] = byte(n, 22) & 127;
+    nominate(n, target);
+  }
+  if (word(n, 73) & 96) {
+    n[22] = byte(n, 22) & 63;
+    n[84] = 0;
+    n[73] = byte(n, 73) & 239;
+    n[88] = byte(n, 88) & 253;
+  }
+}
+function activateExisting<W extends GeneticistWorld>(
+  w: W,
+  index: number,
+  c: EngineerNativeConstructionContext<W>,
+): EngineerConstructionReceipt {
+  const a = readSpecialistControlActor(w, index),
+    n = a.native,
+    task = byte(n, 126),
+    out = result("native-existing-building-prepared"),
+    target = building(w, n, c);
+  if (![1, 4].includes(task) || byte(n, 85) !== 9 || !(byte(n, 88) & 1))
+    throw Error("Actual Engineer existing-building activation required");
+  if (!target) {
+    n[122] = 3;
+    cancel(w, index, c, out, "native-existing-building-missing");
+    out.status = "rejected";
+    return out;
+  }
+  let destination: Point;
+  put(n, 134, 0);
+  if (task === 1) {
+    const size = existingClass(target, c);
+    put(n, 136, size + 1);
+    put(n, 132, 110 - a.skill);
+    n[89] = 16;
+    if (size === 1) destination = front(target, c);
+    else {
+      put(n, 138, Math.trunc(2048 / (size + 1)));
+      put32(n, 144, 768);
+      destination = perimeter(
+        position(target),
+        768,
+        halfWidth(target, c) + 128,
+        c,
+      );
+    }
+  } else {
+    put(n, 136, Number(byte(target, 47) > byte(target, 46)));
+    n[89] = 13;
+    destination = front(target, c);
+  }
+  approachExisting(n, target, destination, a.speed, c);
+  out.events.push({
+    type: "message",
+    actorId: index,
+    index: task === 1 ? 10 : 9,
+  });
+  return out;
+}
+function buildingDistance(n: Native, target: Native): number {
+  const dx = torusDelta(word(n, 7), word(target, 7)),
+    dy = torusDelta(word(n, 9), word(target, 9)),
+    dz = ((dword(n, 39) - dword(target, 17)) | 0) >> 3;
+  return (Math.imul(dx, dx) + Math.imul(dy, dy) + Math.imul(dz, dz)) >>> 0;
+}
+function flipExisting<W extends GeneticistWorld>(
+  n: Native,
+  target: Native,
+  c: EngineerNativeConstructionContext<W>,
+) {
+  const angle = yaw(n, position(target), c.tables);
+  n[112] =
+    angle >= 768 && angle <= 1792 ? byte(n, 112) | 4 : byte(n, 112) & 251;
+}
+function stepExisting<W extends GeneticistWorld>(
+  w: W,
+  index: number,
+  c: EngineerNativeConstructionContext<W>,
+): EngineerConstructionReceipt {
+  const a = readSpecialistControlActor(w, index),
+    n = a.native,
+    task = byte(n, 126),
+    out = result("native-existing-building-work"),
+    target = building(w, n, c),
+    arrived = !!(word(n, 73) & 32);
+  if (
+    ![1, 4].includes(task) ||
+    byte(n, 85) !== 9 ||
+    byte(n, 130) !== 1 ||
+    !(byte(n, 88) & 1)
+  )
+    throw Error("Actual Engineer existing-building work required");
+  if (!target) {
+    n[122] = 3;
+    cancel(w, index, c, out, "native-existing-building-missing");
+    return out;
+  }
+  if (task === 4) {
+    if (arrived) {
+      if (word(n, 136) === 0) {
+        put(n, 136, 1);
+        if (!c.startUpgrade)
+          throw Error("Actual44F50 building upgrade service required");
+        c.startUpgrade(w, word(target, 15));
+      }
+      n[112] = (byte(n, 112) & 111) | 128;
+      put(n, 134, (draw(w, index, 0x8f2, out) % 200) + 100);
+      flipExisting(n, target, c);
+      return out;
+    }
+    if (!(byte(n, 112) & 128)) {
+      resumeExisting(w, index, target, c);
+      return out;
+    }
+    const remaining = wrap16(word(n, 134) - 1);
+    put(n, 134, remaining);
+    if (
+      remaining !== 0 &&
+      (((w.frame + index) & 3) !== 3 || buildingDistance(n, target) <= 65536)
+    )
+      return out;
+    if (byte(a.blueprint, 2) !== 0) {
+      const r = c.progressBuilding(w, word(target, 15), 5);
+      out.events.push(...r.events);
+      if (c.building(w, word(target, 15)) !== target)
+        throw Error("Engineer441C0 replaced its retained building");
+      if (r.completed) {
+        cancel(w, index, c, out, "native-existing-building-finished");
+        return out;
+      }
+    }
+    n[112] = byte(n, 112) & 123;
+    const angle = draw(w, index, 0x59c, out) * 8,
+      radius = draw(w, index, 0x59d, out),
+      at = (angle - 512) & 2047,
+      center = position(target),
+      dx = Math.imul(c.tables.cosine[at], radius * 2) >> 16,
+      dy = Math.imul(c.tables.sine[at], radius * 2) >> 16;
+    goal(
+      n,
+      [
+        (wrap16(wrap16(center[0] * 2) + dx) >> 1) & 32767,
+        (wrap16(wrap16(center[1] * 2) + dy) >> 1) & 32767,
+      ],
+      a.speed,
+    );
+    n[90] = 6;
+    put(n, 127, word(target, 15));
+    n[129] = byte(target, 6);
+    return out;
+  }
+  const stage = word(n, 136);
+  if (stage < 0) return out;
+  if (stage === 0 && byte(n, 112) & 128) {
+    if (!c.takeoverAnimation)
+      throw Error("Actual Engineer action17 animation required");
+    const p = c.takeoverAnimation(w, index);
+    if (
+      !animationFinished(
+        {
+          action: byte(n, 25),
+          hold: byte(n, 26),
+          frame: byte(n, 27),
+          direction: (byte(n, 28) << 24) >> 24,
+          delay: (byte(n, 29) << 24) >> 24,
+          counter: (byte(n, 30) << 24) >> 24,
+        },
+        p,
+      )
+    )
+      return out;
+    if (
+      byte(target, 24) !== a.owner &&
+      !(byte(a.blueprint, 0x6e5) & (1 << (byte(target, 24) & 31)))
+    ) {
+      if (!c.debitTakeoverScore)
+        throw Error("Actual806E0 takeover score debit required");
+      c.debitTakeoverScore(w, index, 500);
+    }
+    if (!c.setTakeoverChargePhase || !c.startTakeover)
+      throw Error("Actual code50 trigger/44F20 takeover services required");
+    c.setTakeoverChargePhase(w, index, 1);
+    c.startTakeover(w, word(target, 15), index);
+    put(n, 136, -1);
+    n[113] = byte(n, 113) | 1;
+    return out;
+  }
+  if (arrived) {
+    n[112] = byte(n, 112) & 239;
+    if (stage === 0) {
+      n[89] = 17;
+      n[27] = 0;
+      n[28] = 1;
+      n[112] = byte(n, 112) | 128;
+      flipExisting(n, target, c);
+      audio(out, index, 64, 2);
+    } else {
+      n[112] = byte(n, 112) | 128;
+      put(n, 134, word(n, 132));
+      flipExisting(n, target, c);
+    }
+    return out;
+  }
+  if (!(byte(n, 112) & 128)) {
+    resumeExisting(w, index, target, c);
+    return out;
+  }
+  const remaining = wrap16(word(n, 134) - 1);
+  put(n, 134, remaining);
+  if (remaining !== 0) return out;
+  n[112] = byte(n, 112) & 123;
+  const width = halfWidth(target, c),
+    radius = width + 256;
+  if (buildingDistance(n, target) <= Math.imul(radius, radius) >>> 0) {
+    if (!c.placeTakeoverCharge)
+      throw Error("Actual code50 planted charge factory required");
+    c.placeTakeoverCharge(w, {
+      code: 50,
+      actor: index,
+      building: word(target, 15),
+      owner: a.owner,
+      position: position(n),
+      height: groundHeight(w.terrain, ...position(n)),
+      angles: [0, 0, 0],
+      parameter: 0,
+      delay: 1,
+    });
+    put(n, 136, word(n, 136) - 1);
+  }
+  let destination: Point;
+  if (word(n, 136) === 0)
+    destination = perimeter(
+      position(target),
+      (draw(w, index, 0x5aa, out) % 256) * 8,
+      (existingClass(target, c) + 1) << 8,
+      c,
+    );
+  else {
+    put32(n, 144, (dword(n, 144) + word(n, 138)) & 2047);
+    destination = perimeter(position(target), word(n, 144), width, c);
+  }
+  goal(n, destination, a.speed);
+  n[90] = 6;
+  put(n, 127, word(target, 15));
+  n[129] = byte(target, 6);
+  if (word(n, 136) !== 0) put(n, 134, word(n, 132));
+  return out;
+}
 function cancel<W extends GeneticistWorld>(
   world: W,
   index: number,
@@ -325,8 +821,8 @@ function cancel<W extends GeneticistWorld>(
     {
       mode: 1,
       task: byte(n, 126),
-      selector: byte(n, 131),
-      stage: word(n, 136),
+      selector: byte(n, 126) === 0 ? byte(n, 131) : null,
+      stage: byte(n, 126) === 4 ? null : word(n, 136),
       active: !!(byte(n, 88) & 1),
     },
     c,
@@ -393,6 +889,16 @@ function activate<W extends GeneticistWorld>(
   index: number,
   c: EngineerNativeConstructionContext<W>,
 ): EngineerConstructionReceipt {
+  if (byte(readSpecialistControlActor(world, index).native, 126) !== 0)
+    return activateExisting(world, index, c);
+  if (byte(readSpecialistControlActor(world, index).native, 131) === 255) {
+    const n = readSpecialistControlActor(world, index).native,
+      out = result("native-existing-building-repair-prepared");
+    n[89] = 15;
+    put(n, 136, 5);
+    out.events.push({ type: "message", actorId: index, index: 9 });
+    return out;
+  }
   const a = bound(world, index),
     n = a.native,
     s = selected(n),
@@ -451,6 +957,15 @@ function step<W extends GeneticistWorld>(
   index: number,
   c: EngineerNativeConstructionContext<W>,
 ): EngineerConstructionReceipt {
+  if (byte(readSpecialistControlActor(world, index).native, 126) !== 0)
+    return stepExisting(world, index, c);
+  if (byte(readSpecialistControlActor(world, index).native, 131) === 255)
+    return stepBuildingWork(
+      world,
+      index,
+      c,
+      result("native-existing-building-repair"),
+    );
   const a = bound(world, index),
     n = a.native,
     s = selected(n),
@@ -627,14 +1142,35 @@ function step<W extends GeneticistWorld>(
     n[112] = byte(n, 112) & 123;
     return out;
   }
-  const target = building(world, n, c);
+  return stepBuildingWork(world, index, c, out);
+}
+function stepBuildingWork<W extends GeneticistWorld>(
+  world: W,
+  index: number,
+  c: EngineerNativeConstructionContext<W>,
+  out: EngineerConstructionReceipt,
+): EngineerConstructionReceipt {
+  const a = bound(world, index),
+    n = a.native,
+    arrived = !!(word(n, 73) & 32),
+    target = building(world, n, c);
+  const continuation = (mode: 0 | 1) =>
+    continueSpecialistMovement(world, index, mode, c);
   if (!target) {
     n[122] = 3;
     cancel(world, index, c, out, "native-construction-building-missing");
     return out;
   }
   if (arrived) {
-    if (word(target, 49) & 1) {
+    let finished = !!(word(target, 49) & 1);
+    if (byte(n, 131) === 255) {
+      const maximum =
+        c.buildingHealth?.[byte(target, 45) * 3 + byte(target, 46)];
+      if (maximum == null || !Number.isInteger(maximum) || maximum < 1)
+        throw Error("Actual current-grade building health required");
+      finished = finished && word(target, 43) >= maximum;
+    }
+    if (finished) {
       out.events.push({ type: "message", actorId: index, index: 17 });
       cancel(world, index, c, out, "native-construction-finished");
       return out;

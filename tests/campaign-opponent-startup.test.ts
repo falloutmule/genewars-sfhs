@@ -69,7 +69,7 @@ describe("campaign opponent entry", () => {
     expect(carried.rng.draws).toBe(64);
     expect(carried.players[0].progress).toBe(2);
   });
-  it("creates only human landing and rejects the required unbound strategy pass before simulation advances", () => {
+  it("creates only human landing and rejects an older fixture without established strategic storage before simulation advances", () => {
     const pack = opponentFixture(),
       w = createCampaign(pack, "opponent-host");
     enterCampaign(w, pack);
@@ -81,7 +81,7 @@ describe("campaign opponent entry", () => {
     const before = structuredClone(w);
     stepCampaign(w, pack);
     expect(w.phase).toBe("blocked");
-    expect(w.notices.at(-1)!.text).toMatch(/strategicAI37870.*players 1/);
+    expect(w.notices.at(-1)!.text).toMatch(/lacks established strategic state/);
     expect({ ...w, phase: before.phase, notices: before.notices }).toEqual(
       before,
     );

@@ -17,6 +17,7 @@ export interface StrategicSpatialContext extends Pick<StrategicSurveyContext, "c
   water: number;
   tables: Pick<MotionTables, "sine" | "cosine">;
   plantValues: readonly { growthDeltas: readonly number[]; crowdingLimit: number; nutrition: number }[];
+  footprintSearchOffsets?: readonly (readonly [number, number])[];
 }
 function point(p: readonly number[]): asserts p is Point {
   if (p.length !== 2 || p.some(v => !aiInteger(v, -32768, 32767))) throw Error("Actual strategic spatial signed point required");
@@ -39,7 +40,7 @@ function buildingBlocked(s: StrategicAIState, p: Point, c: StrategicSpatialConte
   return !!queryMuleAirborneBuilding(c.terrain(s), p, -1, cell => {
     for (const { n } of native(s, cell, c)) if (aiByte(n, 6) === 4) return n as (number | null)[];
     return null;
-  }, () => { throw Error("Negative-height strategic query unexpectedly requested ANB height"); }, 0);
+  }, () => { throw Error("Negative-height strategic query unexpectedly requested ANB height"); }, 0, c.footprintSearchOffsets);
 }
 /**8D7B0/8D930: two independent signed axes, source X-outer/Y-inner order.
  * The returned point is the actual terminal cursor, not a selected point. */

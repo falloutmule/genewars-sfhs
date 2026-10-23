@@ -95,6 +95,16 @@ export function stepEffect8Record(
 ): ProductionEffectUpdate {
   return stepCommonEffectRecord(before, terrain, c, 8);
 }
+/** Engineer trigger51/0x33 and cancel10/0x0A feedback have ordinary mode0
+ * callbacks, no gravity/obstacle/water response and no own callback writes. */
+export function stepEngineerChargeChildRecord(
+  before: readonly (number | null)[],
+  terrain: TerrainState,
+  c: ProductionEffectContext,
+  code: 10 | 51,
+): ProductionEffectUpdate {
+  return stepCommonEffectRecord(before, terrain, c, code);
+}
 /** Source7 Botanist work dust: six zero-hold frames, otherwise the same
  * immovable/no-water/no-gravity common effect contract as source8. */
 export function stepEffect7Record(
@@ -118,7 +128,7 @@ function stepCommonEffectRecord(
   before: readonly (number | null)[],
   terrain: TerrainState,
   c: ProductionEffectContext,
-  code: 7 | 8 | 26 | 32 | 60 | 61,
+  code: 7 | 8 | 10 | 26 | 32 | 51 | 60 | 61,
 ): ProductionEffectUpdate {
   validateEffectNativePrior(before);
   if (
@@ -141,15 +151,19 @@ function stepCommonEffectRecord(
     throw new Error("Original production effect motion tables required");
   const p = c.profile,
     frames =
-      code === 7 || code === 60
-        ? 6
-        : code === 61
-          ? 9
-          : code === 8
-            ? 13
-            : code === 32
-              ? 10
-              : 5,
+      code === 10
+        ? 4
+        : code === 51
+          ? 23
+          : code === 7 || code === 60
+            ? 6
+            : code === 61
+              ? 9
+              : code === 8
+                ? 13
+                : code === 32
+                  ? 10
+                  : 5,
     delayed = code === 26 || code === 60 || code === 61;
   if (
     p.flags !== 0 ||
@@ -158,11 +172,13 @@ function stepCommonEffectRecord(
     p.last - p.first !== frames - 1
   )
     throw new Error(
-      code === 8
-        ? "Original EFF8 thirteen zero-hold frames required"
-        : code === 32
-          ? "Original EFF32 ten zero-hold frames required"
-          : "Original EFF26 five hold1 frames required",
+      code === 10 || code === 51
+        ? "Original Engineer feedback zero-hold ANB profile required"
+        : code === 8
+          ? "Original EFF8 thirteen zero-hold frames required"
+          : code === 32
+            ? "Original EFF32 ten zero-hold frames required"
+            : "Original EFF26 five hold1 frames required",
     );
   const n = before.slice(),
     samples: [number, number][] = [],

@@ -1,9 +1,12 @@
-/** Native Engineer task0 over the current staged campaign pools. */
+/** Native Engineer task0/1/4 over the current staged campaign pools. */
 import type { Pack } from "../../content/types";
 import type { CampaignWorld } from "./world";
 import {
   makeEngineerConstructionServices,
   planEngineerCompletedBuildingContribution,
+  planEngineerBuildingContribution,
+  planEngineerBuildingUpgrade,
+  type EngineerTakeoverChargeRequest,
 } from "../mechanics/engineer-construction";
 import {
   stepEngineerCallback,
@@ -47,11 +50,28 @@ import {
 import {
   allocateStagedSharedEffect,
   publishStagedSharedEffect,
+  cloneEffectHost,
 } from "./effect-scheduler";
 import { campaignQueryEntities, synchronizeCampaignLinks } from "./entity-view";
 import { campaignAirborneBuilding } from "./mule-damage-adapter";
 import { insertSpatial } from "./spatial";
 import { i16, u16, u32, put16, put32 } from "./bytes";
+import { planBotanistEconomy } from "../mechanics/botanist";
+
+export interface CampaignEngineerServices extends CampaignSpecialistServices {
+  placeTakeoverCharge?(
+    world: CampaignWorld,
+    request: EngineerTakeoverChargeRequest,
+  ): boolean;
+  setTakeoverChargePhase?(
+    world: CampaignWorld,
+    actor: number,
+    phase: 1 | 2,
+  ): void;
+  /** Source MAINPANL-specific audio/UI condition; modern presentation policy
+   * is explicit and has no authoritative effect. Absence does not claim it. */
+  buildingPresentationActive?: boolean;
+}
 
 function capacity(w: CampaignWorld, owner: number) {
   const after = updateNativeBuildingCapacity(w, owner),
@@ -74,20 +94,40 @@ export function progressCampaignEngineerBuilding(
   pack: Pack,
   slot: number,
   increment: number,
+  services?: CampaignEngineerServices,
 ) {
   const n = w.buildingNative[slot],
     b = w.buildings.find((b) => b.slot === slot);
   if (!b || n?.[6] !== 4 || n[45] !== b.selector)
     throw Error("Current Engineer building projection missing");
-  const maximum = pack.rules!.tables.buildingHealth[b.selector * 3],
+  const targetGrade = n[47]!,
+    general =
+      targetGrade !== 0 ||
+      n[46] !== 0 ||
+      ![0, 1, 3, 6, 11].includes(b.selector) ||
+      (!(u16(n as number[], 49) & 1) && u16(n as number[], 49) !== 0),
+    maximum = pack.rules!.tables.buildingHealth[b.selector * 3 + targetGrade],
     owner = n[24]!,
     events: ConstructionEvent[] = [],
     alreadyComplete = !!(u16(n as number[], 49) & 1);
   let completed: boolean,
     completionOffset: number | null,
     ownedBit: number | null,
-    audio: number | null;
-  if (alreadyComplete) {
+    audio: number | null,
+    attendedActor: number | null = null;
+  if (general) {
+    const plan = planEngineerBuildingContribution(n, increment, maximum);
+    if (plan.damageRecoveryNative) {
+      n.splice(0, n.length, ...plan.damageRecoveryNative);
+      capacity(w, owner);
+    }
+    n.splice(0, n.length, ...plan.native);
+    completed = plan.completed;
+    completionOffset = plan.completedPlayerCountOffset;
+    ownedBit = plan.acquiredOwnershipBit;
+    audio = plan.firstCompletionAudio;
+    attendedActor = plan.attendedActor;
+  } else if (alreadyComplete) {
     const plan = planEngineerCompletedBuildingContribution(
       n,
       increment,
@@ -116,6 +156,7 @@ export function progressCampaignEngineerBuilding(
     audio = plan.value.completionAudioCue;
   }
   b.health = i16(n as number[], 43);
+  b.grade = n[46]! as 0 | 1 | 2;
   b.complete = !!(u16(n as number[], 49) & 1);
   b.energy = i16(n as number[], 61);
   events.push({
@@ -129,6 +170,13 @@ export function progressCampaignEngineerBuilding(
     if (completionOffset !== null)
       raw[completionOffset] = (raw[completionOffset] + 1) & 255;
     if (ownedBit !== null) put16(raw, 0x60e, u16(raw, 0x60e) | ownedBit);
+    if (attendedActor !== null) {
+      if (!services)
+        throw Error("Actual43F60 attended Engineer cancellation required");
+      events.push({ type: "message", actorId: attendedActor, index: 17 });
+      cancelStagedCampaignEngineer(w, attendedActor, pack, services);
+    }
+    if (general) capacity(w, owner);
     for (const m of w.ecology.mules)
       if (
         m.native[6] === 1 &&
@@ -138,7 +186,7 @@ export function progressCampaignEngineerBuilding(
         m.native[90] = m.native[120] = m.native[95] = 0;
         m.native[96] = m.native[96]! & 239;
       }
-    capacity(w, owner);
+    if (!general) capacity(w, owner);
     events.push({
       type: "building-completed",
       buildingId: slot,
@@ -154,10 +202,86 @@ export function progressCampaignEngineerBuilding(
         parameter: 0,
         gain: 1,
         range: null,
+        ...(general
+          ? {
+              initialRatePercent:
+                115 - pack.rules!.tables.buildingFootprints[b.selector] * 15,
+            }
+          : {}),
       });
   }
+  mirrorExistingBuilding(w, slot, general);
   mirrorResources(w);
   return { completed, events };
+}
+function mirrorExistingBuilding(
+  w: CampaignWorld,
+  slot: number,
+  requireEconomy = true,
+): void {
+  const n = w.buildingNative[slot],
+    b = w.buildings.find((v) => v.slot === slot),
+    e = w.economy.buildings.find((v) => v.owner * 64 + v.slot === slot),
+    flags = u16(n as number[], 49);
+  if (!b || (!e && requireEconomy))
+    throw Error("Actual existing building host projection missing");
+  b.grade = n[46]! as 0 | 1 | 2;
+  b.health = i16(n as number[], 43);
+  b.complete = !!(flags & 1);
+  b.energy = i16(n as number[], 61);
+  if (e) {
+    e.grade = b.grade;
+    e.complete = b.complete;
+    e.energy = b.energy;
+    e.disabled = !!(flags & 64);
+    e.capacitySuppressed = !!(flags & 0x840);
+    e.hqUpgradeSuppressed = !!(flags & 0x140);
+  }
+}
+/**44F50 followed by44E50. No source resource debit is inserted here. */
+export function startStagedCampaignEngineerUpgrade(
+  w: CampaignWorld,
+  slot: number,
+  pack: Pack,
+  services: CampaignEngineerServices,
+): void {
+  const n = w.buildingNative[slot];
+  if (!n) throw Error("Actual44F50 building slot required");
+  const plan = planEngineerBuildingUpgrade(n);
+  n.splice(0, n.length, ...plan.native);
+  capacity(w, n[24]!);
+  if (plan.resetStoredGoop) put32(n as number[], 54, 0);
+  if (services.buildingPresentationActive)
+    requestAudio(w.audio, {
+      frame: w.frame,
+      entity: `source:3:${slot}`,
+      cue: 78,
+      mode: 2,
+      parameter: 0,
+      gain: 1,
+      range: null,
+      initialRatePercent:
+        115 - pack.rules!.tables.buildingFootprints[n[45]!] * 15,
+    });
+  mirrorExistingBuilding(w, slot);
+  mirrorResources(w);
+}
+/**44F20 starts the actual building takeover callback; it does not transfer
+ * ownership in the Engineer command/callback. */
+export function startStagedCampaignEngineerTakeover(
+  w: CampaignWorld,
+  slot: number,
+  actor: number,
+): void {
+  const n = w.buildingNative[slot],
+    a = w.specialists.records[actor];
+  if (n?.[6] !== 4 || a?.[6] !== 3)
+    throw Error("Actual44F20 building/actor required");
+  put16(n as number[], 64, i16(a as number[], 15));
+  n[66] = a[6];
+  put32(n as number[], 54, 256);
+  n[50] = n[50]! | 8;
+  mirrorExistingBuilding(w, slot);
 }
 /** Real shared44 plus immediate kind4 child creation. Allocation capacity
  * remains distinct from construction payment;534D0 retries on null. */
@@ -257,12 +381,50 @@ export function createStagedCampaignEngineerBuilding(
 export function campaignEngineerContext(
   w: CampaignWorld,
   pack: Pack,
-  services: CampaignSpecialistServices,
+  services: CampaignEngineerServices,
 ): EngineerCallbackContext<CampaignWorld> {
   const common = campaignGeneticistContext(w, pack, services),
     tables = pack.rules!.tables;
   return {
     ...common,
+    //57A10 is an outer callback transaction. Existing-building work can touch
+    //building/specialist pools and recursive effects beyond the generic effect
+    //host roots. Stage those too, preserving their shared aliases.
+    stageWorld: (original) => {
+      const staged = cloneEffectHost(
+        original,
+        services.effectOptions(original),
+      );
+      const keys = [
+        "buildingNative",
+        "creatureNative",
+        "specialists",
+        "collapse",
+        "ethereals",
+        "presentation",
+        "buildings",
+        "jobs",
+        "muleQueues",
+        "auxiliary",
+        "pendingEnvironmentEffects",
+        "strategy",
+      ] as const;
+      //The normal host already stages these. Supply complete mutable isolation
+      //for public callers with bare effect options, without recloning content.
+      if (keys.some((key) => original[key] && staged[key] === original[key])) {
+        const extra = structuredClone(
+          Object.fromEntries(
+            keys
+              .filter((key) => key in original)
+              .map((key) => [key, original[key]]),
+          ),
+        );
+        Object.assign(staged, extra);
+        for (const mule of staged.ecology.mules)
+          staged.creatureNative[mule.index] = mule.native;
+      }
+      return staged;
+    },
     resolvePlacementPoint: (s, index, origin, requested) =>
       resolveMovementTarget(origin, requested, tables, (p) => {
         const n = s.specialists.records[index],
@@ -282,6 +444,37 @@ export function campaignEngineerContext(
       tables,
       escapeRay: common.escapeRay,
       constructionCosts: tables.constructionCosts,
+      buildingFootprints: tables.buildingFootprints,
+      buildingHealth: tables.buildingHealth,
+      buildingHalfWidths: tables.buildingCombatHalfWidths,
+      buildingFrontOffset: pack.buildingRules?.processingFrontOffset,
+      startUpgrade: (s, slot) =>
+        startStagedCampaignEngineerUpgrade(s, slot, pack, services),
+      startTakeover: startStagedCampaignEngineerTakeover,
+      placeTakeoverCharge: (s, request) => {
+        if (!services.placeTakeoverCharge)
+          throw Error("Actual code50 planted charge host required");
+        return services.placeTakeoverCharge(s, request);
+      },
+      setTakeoverChargePhase: (s, actor, phase) => {
+        if (!services.setTakeoverChargePhase)
+          throw Error("Actual code50 charge phase host required");
+        services.setTakeoverChargePhase(s, actor, phase);
+      },
+      debitTakeoverScore: (s, actor, amount) => {
+        const raw = s.players[s.specialists.bindings[actor]!.owner].raw,
+          r = planBotanistEconomy(raw, s.missionPrefix, {
+            operation: "debit",
+            amount,
+            entity: null,
+          });
+        raw.splice(0, raw.length, ...r.raw);
+      },
+      takeoverAnimation: (s, actor) =>
+        animationProfile(
+          pack.assets[s.specialists.bindings[actor]!.assetKey],
+          17,
+        ),
       siteClass: (s, p, size) =>
         (
           ({ valid: 0, blocked: 1, water: 2, occupied: 3, mineral: 4 }) as const
@@ -318,7 +511,7 @@ export function campaignEngineerContext(
       createBuildingEffect: (s, r) =>
         createStagedCampaignEngineerBuilding(s, pack, services, r),
       progressBuilding: (s, slot, increment) =>
-        progressCampaignEngineerBuilding(s, pack, slot, increment),
+        progressCampaignEngineerBuilding(s, pack, slot, increment, services),
       animation: (s, index, action) =>
         animationProfile(
           pack.assets[s.specialists.bindings[index]!.assetKey],

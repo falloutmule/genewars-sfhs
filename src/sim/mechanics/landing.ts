@@ -66,6 +66,13 @@ export interface LandingContext {
   water: number;
   gravity: number;
   frame: number;
+  /** Actual74270(mask1), with postphysics physical height. Required lazily
+   * on the source odd-slot airborne cadence. Code49's4AF40 response reads
+   * movable descriptor0, so a non-null target does not change its motion. */
+  obstacle?: (
+    position: [number, number],
+    height: number,
+  ) => { position: [number, number]; ground: number } | null;
   profile(code: 6 | 47 | 26): AnimationProfile;
   plantBlockerWeight(cell: number): number;
   occupiedEffectSlots: readonly number[];
@@ -413,8 +420,19 @@ export function stepLandingMain(
     throw new Error(
       "Landing water contact requires its environmental callback",
     );
+  const queryBuilding = () => {
+    //6DF30 invokes virtual4=1F260 and70=4B090 before74270. For code49
+    //these mean positive physical-ground and true, on odd(frame+lowID).
+    if (!((c.frame + (s.slot & 255)) & 1) || ((s.height - g) | 0) <= 0) return;
+    if (!c.obstacle)
+      throw new Error("Original landing74270 obstacle target service required");
+    c.obstacle([...s.point], s.height);
+    //4AF40's code49 path tests1E620. Its actual six-byte descriptor has
+    //movable=0, so a returned building causes no6DD50 impulse or factory.
+  };
   if (s.phase === 0) {
-    s.height -= 136;
+    s.height = Math.max(g, s.height - 136);
+    queryBuilding();
     if (s.height <= g) {
       s.height = g;
       s.vz = 0;
@@ -436,6 +454,7 @@ export function stepLandingMain(
       s.vz += s.accelerationZ;
       s.height += s.vz >> 3;
     }
+    queryBuilding();
     s.timer--;
     if (s.phase === 1 && s.timer === 0) {
       s.timer = 30;

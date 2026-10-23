@@ -28,7 +28,6 @@ import {
 import { decodeBytes, i16, u16, u32, put16, put32 } from "./bytes";
 import {
   createLanding,
-  activationDestination,
   type LandingState,
 } from "../mechanics/landing";
 import {
@@ -45,9 +44,10 @@ import {
   type EcologyState,
 } from "../mechanics/ecology";
 import { nextRandom } from "../mechanics/random";
-import { assertOpponentStrategyImplemented } from "../mechanics/opponent-startup";
 import { createCampaignStrategicStorage, cloneCampaignStrategicStorage, validateCampaignStrategicStorage,
   campaignStrategicAuxiliary, type CampaignStrategicStorage } from "./strategic-state";
+import { activateStagedCampaignSpecialists } from "./strategic-recruit-adapter";
+import { stepCampaignStrategy } from "./strategic-adapter";
 import {
   findRoute,
   moveGoal,
@@ -185,7 +185,9 @@ import {
   moveCampaignEngineer,
   stopCampaignEngineer,
   cancelStagedCampaignEngineer,
+  type CampaignEngineerServices,
 } from "./engineer-adapter";
+import { campaignEngineerChargeServices, stepCampaignEngineerChargeEffect } from "./engineer-charge-adapter";
 import { revealCampaignRadius } from "./reveal-adapter";
 import {
   stepCampaignGeneticist,
@@ -1738,6 +1740,8 @@ function rewardFactoryOptions(
       ),
     shepherdEffect: (staged, slot, out) =>
       stepCampaignShepherdEffect(staged, slot, pack, rewardFactoryOptions(staged, pack), out),
+    engineerChargeEffect: (staged, slot, out) =>
+      stepCampaignEngineerChargeEffect(staged, slot, pack, rewardFactoryOptions(staged, pack), out),
     etherealAttackEffect: (staged, slot, out) =>
       stepCampaignEtherealAttackEffect(
         staged,
@@ -1775,8 +1779,9 @@ function rewardFactoryOptions(
     },
   };
 }
-function specialistServices(pack: Pack): CampaignSpecialistServices {
+function specialistServices(pack: Pack): CampaignEngineerServices {
   return {
+    ...campaignEngineerChargeServices(pack, (staged) => rewardFactoryOptions(staged, pack)),
     effectOptions: (staged) => rewardFactoryOptions(staged, pack),
     cancelRole: (s, index) =>
       cancelStagedCampaignBotanist(s, index, pack, specialistServices(pack)),
@@ -1899,15 +1904,31 @@ function syncNativeBindings(w: CampaignWorld): void {
 export function stepCampaign(w: CampaignWorld, pack: Pack): void {
   if (w.phase !== "active") return;
   try {
-    assertOpponentStrategyImplemented(
-      w.players.map((p) => p.raw),
-      {
-        flags: w.flags,
-        runtimeMode: w.runtimeMode,
-        activePlayerCount: w.source.source.context.activePlayerCount,
-      },
-    );
+    //70B00/37870 runs on the current frame before1C120 consumes queued
+    //commands and before the actor/economy/effect callbacks below.
+    stepCampaignStrategy(w, pack, specialistServices(pack));
     syncNativeBindings(w);
+    const ready = w.pending
+      .filter((p) => p.frame <= w.frame)
+      .sort((a, b) => a.sequence - b.sequence);
+    w.pending = w.pending.filter((p) => p.frame > w.frame);
+    for (const p of ready)
+      try {
+        issue(w, p.command, pack);
+      } catch (e) {
+        notice(
+          w,
+          String(e instanceof Error ? e.message : e),
+          "warning",
+          p.command.type === "move-mule"
+            ? 2000 + p.command.muleIndex
+            : p.command.type === "produce-mule"
+              ? p.command.buildingId
+              : p.command.actorId,
+        );
+      }
+    //1C120 finishes queued human dispatch before7A280 observes the current
+    //positions, then58780 actors and47F80 buildings run in that order.
     stepCampaignZones(w, pack, {
       gravity: context(w, pack).gravity,
       obstacleAt: (p) => buildingObstacle(w, p),
@@ -1929,25 +1950,6 @@ export function stepCampaign(w: CampaignWorld, pack: Pack): void {
           notice(staged, "Marked-zone score penalty", "warning");
       },
     });
-    const ready = w.pending
-      .filter((p) => p.frame <= w.frame)
-      .sort((a, b) => a.sequence - b.sequence);
-    w.pending = w.pending.filter((p) => p.frame > w.frame);
-    for (const p of ready)
-      try {
-        issue(w, p.command, pack);
-      } catch (e) {
-        notice(
-          w,
-          String(e instanceof Error ? e.message : e),
-          "warning",
-          p.command.type === "move-mule"
-            ? 2000 + p.command.muleIndex
-            : p.command.type === "produce-mule"
-              ? p.command.buildingId
-              : p.command.actorId,
-        );
-      }
     for (let actorIndex = 0; actorIndex < 20; actorIndex++) {
       const a = w.actors.find((a) => a.id === actorIndex);
       if (!a) continue;
@@ -2426,60 +2428,13 @@ export function stepCampaign(w: CampaignWorld, pack: Pack): void {
         pack,
         {
           ...rewardFactoryOptions(w, pack),
-          onLandingEvent(staged, landing, event, landingContext) {
+          onLandingEvent(staged, landing, event) {
             if (event.type === "audio") {
               emitAudio(staged, `source:4:${landing.slot}`, 0x50, 4);
               emitAudio(staged, `source:4:${landing.slot}`, event.channel);
             }
             if (event.type === "activate") {
-              for (const a of staged.actors.filter(
-                (a) => a.owner === event.owner && !(staged.specialists.records[a.id][112]! & 1),
-              )) {
-                a.ready = true;
-                const native = staged.specialists.records[a.id];
-                put16(
-                  native as number[],
-                  0x70,
-                  (u16(native as number[], 0x70) & 0xfbfe) | 1,
-                );
-                native[0x16] = native[0x16]! & ~8;
-                const candidate = activationDestination(
-                  landing.point,
-                  staged.rng,
-                  landingContext,
-                );
-                put16(native as number[], 7, candidate[0]);
-                put16(native as number[], 9, candidate[1]);
-                a.motion = readGeneticistMotion(native);
-                a.goal = null;
-                a.route = [];
-                staged.players[a.owner].blueprints[
-                  a.blueprintIndex
-                ].runtimeFlags |= 2;
-                const bpAt = 0x16 + a.blueprintIndex * 36;
-                const activationCount =
-                  (u32(staged.players[a.owner].raw, bpAt + 0x1c) + 1) >>> 0;
-                put32(
-                  staged.players[a.owner].raw,
-                  bpAt + 0x1c,
-                  activationCount,
-                );
-                if (
-                  activationCount === 1 &&
-                  staged.players[a.owner].blueprints[a.blueprintIndex]
-                    .category === 1
-                )
-                  native[0x72] = 40;
-                insertSpatial(
-                  staged.spatial,
-                  staged.terrain,
-                  a.sourceId as `source:2:${number}`,
-                  worldCell(a.motion.x, a.motion.y),
-                );
-                const b = staged.builders.find((b) => b.id === a.id);
-                if (b) b.enabled = true;
-              }
-              staged.players[event.owner].activationCount++;
+              activateStagedCampaignSpecialists(staged, event.owner, pack, specialistServices(pack));
               notice(staged, "Specialists have landed");
             }
             if (event.type === "message")

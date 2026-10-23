@@ -79,6 +79,7 @@ import {
   type PlantFireRequest,
 } from "../mechanics/plant-fire";
 import type { SpecialistCorpseRequest } from "../mechanics/specialist-damage";
+import type { EngineerChargeUpdate } from "../mechanics/engineer-charge";
 import {
   stepBotanistWorkEffectRecord,
   stepBotanistEconomyEffectRecord,
@@ -164,6 +165,12 @@ export interface EffectSchedulerOptions<
     slot: number,
     receipt: EffectSchedulerReceipt,
   ) => GeneticistProjectileStep;
+  /** Actual planted50/0x32 and trigger51/0x33 or cancel10/0x0A feedback. */
+  engineerChargeEffect?: (
+    world: W,
+    slot: number,
+    receipt: EffectSchedulerReceipt,
+  ) => EngineerChargeUpdate;
 }
 export interface EffectSchedulerReceipt {
   callbacks: { phase: "primary" | "newborn"; slot: number; code: number }[];
@@ -174,6 +181,7 @@ export interface EffectSchedulerReceipt {
   geneticist: { slot: number; update: GeneticistProjectileStep }[];
   attacks?: { slot: number; update: GeneticistProjectileStep }[];
   shepherd?: { slot: number; update: GeneticistProjectileStep }[];
+  engineerCharges?: { slot: number; update: EngineerChargeUpdate }[];
   createdNewborns: number;
   retired: SourceEntityId[];
   cleanedReferenceBytes: number;
@@ -309,6 +317,9 @@ function landingContext<W extends EffectSchedulerWorld>(
     water: w.source.source.terrain.loadedPhysicalWaterHeight,
     gravity: options.gravity,
     frame: w.frame,
+    obstacle: options.destructionObstacle
+      ? (point, height) => options.destructionObstacle!(w, point, height)
+      : undefined,
     profile: (code) => animationProfile(pack.assets.EFF, code),
     plantBlockerWeight: (cell) => plantBlockerWeight(w.ecology, cell),
     occupiedEffectSlots: w.powerEffects.slots.flatMap((p, i) =>
@@ -914,14 +925,39 @@ export function stepEffectScheduler<W extends EffectSchedulerWorld>(
       publishStagedSharedEffect(s, slot, result.native);
       if (result.retirementRequired)
         retireStagedSharedEffect(s, slot, options, out);
+    } else if (code === 50 || code === 10 || code === 51) {
+      if (!options.engineerChargeEffect)
+        throw Error(
+          "Original Engineer charge/feedback callback service is required",
+        );
+      const result = options.engineerChargeEffect(s, slot, out);
+      if (
+        !result ||
+        typeof result.retirementRequired !== "boolean" ||
+        !Number.isInteger(result.newborns) ||
+        result.newborns < 0 ||
+        result.newborns > 1
+      )
+        throw Error("Original Engineer charge callback receipt is invalid");
+      publishStagedSharedEffect(s, slot, result.native);
+      (out.engineerCharges ??= []).push({ slot, update: result });
+      created = result.newborns;
+      if (result.retirementRequired)
+        retireStagedSharedEffect(s, slot, options, out);
     } else if (code === 25 || [20, 37, 38, 39, 40, 41, 42, 43].includes(code)) {
       const provider =
-        code === 25 ? options.etherealAttackEffect : code >= 37 && code <= 40 ? options.shepherdEffect : options.geneticistEffect;
+        code === 25
+          ? options.etherealAttackEffect
+          : code >= 37 && code <= 40
+            ? options.shepherdEffect
+            : options.geneticistEffect;
       if (!provider)
         throw Error(
           code === 25
             ? "Original Ethereal attack callback service is required"
-            : code >= 37 && code <= 40 ? "Original Shepherd effect callback service is required" : "Original Geneticist effect callback service is required",
+            : code >= 37 && code <= 40
+              ? "Original Shepherd effect callback service is required"
+              : "Original Geneticist effect callback service is required",
         );
       const result = provider(s, slot, out);
       if (
@@ -937,7 +973,8 @@ export function stepEffectScheduler<W extends EffectSchedulerWorld>(
         throw Error("Original Geneticist effect callback receipt is invalid");
       publishStagedSharedEffect(s, slot, result.native);
       if (code === 25) (out.attacks ??= []).push({ slot, update: result });
-      else if (code >= 37 && code <= 40) (out.shepherd ??= []).push({ slot, update: result });
+      else if (code >= 37 && code <= 40)
+        (out.shepherd ??= []).push({ slot, update: result });
       else out.geneticist.push({ slot, update: result });
       created = result.newborns;
       if (result.retirementRequired)

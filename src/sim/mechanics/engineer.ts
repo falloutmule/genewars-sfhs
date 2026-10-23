@@ -31,20 +31,21 @@ export interface EngineerTerrainJobChange {
 }
 export interface EngineerReleaseRequest {
   mode: 0 | 1;
-  task: number;
-  selector: number;
-  stage: number;
+  /** Null for inactive pending work:51E80 bypasses its task operands. */
+  task: number | null;
+  selector: number | null;
+  stage: number | null;
   active: boolean;
 }
 /** All services run inside the caller's isolated transaction and mutate held
  * records in place. A receipt acknowledges actual work, not a ready flag.
  * No service may perform6FB60, idle recovery, or the common7AC00 tail. */
 export interface EngineerConstructionServices<W extends GeneticistWorld> {
-  /** Source74E80 ->42B90/8CBA0, after the exact507D0 category0/task0 prefix.
+  /** Source74E80 ->42B90/8CBA0 task0, or existing-building task1/4 setup,
    * Success includes actual reservation/task bytes and message15; rejection
    * includes actual feedback/reason and51E80 release. No motion step. */
   activate(world: W, actor: number): EngineerConstructionReceipt;
-  /** Source534D0 task0 ONLY. Arrival/526C0 continuation still belongs here,
+  /** Source534D0 task0/1/4 ONLY. Arrival/526C0 continuation still belongs here,
    * following the common motion prefix already performed this callback.
    * Terrain jobs run in their separate79220 family pass. */
   step(world: W, actor: number): EngineerConstructionReceipt;
@@ -151,7 +152,9 @@ function absorb(out: EngineerReceipt, r: EngineerConstructionReceipt): void {
 }
 function services<W extends GeneticistWorld>(c: EngineerContext<W>) {
   if (!c.construction)
-    throw Error("Engineer requires actual role-only construction service");
+    throw Error(
+      "Engineer task0/1/4 requires actual role-only construction service",
+    );
   return c.construction;
 }
 function released(n: Native): void {
@@ -169,20 +172,37 @@ function activate<W extends GeneticistWorld>(
   out: EngineerReceipt,
 ): void {
   const n = actor(w, index).native;
-  if (byte(n, 126) !== 0 || byte(n, 130) !== 1)
-    throw Error("Engineer507D0 requires source new-building task0");
-  const selected = selector(byte(n, 131));
+  const task = byte(n, 126);
+  if (![0, 1, 4].includes(task) || byte(n, 130) !== 1)
+    throw Error("Engineer507D0 requires source building task0/1/4");
+  if (task !== 0) {
+    n[112] = byte(n, 112) & 251;
+    n[85] = 9;
+    const r = guard(w, index, () => services(c).activate(w, index));
+    absorb(out, r);
+    if (r.status !== "active") released(n);
+    return;
+  }
+  const selected = byte(n, 131) === 255 ? 255 : selector(byte(n, 131));
   n[112] = byte(n, 112) & 251;
-  n[129] = 0;
+  if (selected !== 255) n[129] = 0;
   n[85] = 9;
-  put(n, 136, 0);
+  put(n, 136, selected === 255 ? 5 : 0);
   const port = services(c).activate;
   if (!port) throw Error("Engineer source507D0 site service is required");
   const r = guard(w, index, () => port(w, index));
   absorb(out, r);
   if (byte(n, 85) !== 9)
     throw Error("Engineer507D0 service changed the retained state9 dispatch");
-  if (r.status === "active") {
+  if (r.status === "active" && selected === 255) {
+    if (
+      byte(n, 126) !== 0 ||
+      word(n, 136) !== 5 ||
+      byte(n, 89) !== 15 ||
+      !(byte(n, 88) & 1)
+    )
+      throw Error("Engineer existing-building repair setup differs");
+  } else if (r.status === "active") {
     const taskPoint = engineerPlacementPoint(
       [word(n, 7), word(n, 9)],
       selected,
@@ -218,20 +238,25 @@ function release<W extends GeneticistWorld>(
 ): void {
   const n = actor(w, index).native,
     active = !!(byte(n, 88) & 1),
-    task = byte(n, 126);
+    task = active ? byte(n, 126) : null;
   if (active || byte(n, 130) !== 0) {
-    if (task !== 0)
+    if (active && ![0, 1, 4].includes(task!))
       throw Error("Engineer release requires unimplemented non-building task");
     const port = services(c).release;
     if (!port)
       throw Error("Engineer source51E80 construction release is required");
-    if (active) n[74] = byte(n, 74) & 247;
+    if (active && task === 0) n[74] = byte(n, 74) & 247;
     const r = guard(w, index, () =>
       port(w, index, {
         mode,
         task,
-        selector: selector(byte(n, 131)),
-        stage: word(n, 136),
+        selector:
+          active && task === 0
+            ? byte(n, 131) === 255
+              ? 255
+              : selector(byte(n, 131))
+            : null,
+        stage: active && (task === 0 || task === 1) ? word(n, 136) : null,
         active,
       }),
     );
@@ -441,14 +466,13 @@ export function stepStagedEngineerRole<W extends GeneticistWorld>(
   if (byte(n, 126) === 255 && byte(n, 130) === 0 && !(byte(n, 88) & 1))
     return out;
   if (
-    byte(n, 126) !== 0 ||
+    ![0, 1, 4].includes(byte(n, 126)) ||
     byte(n, 130) !== 1 ||
     !(byte(n, 88) & 1) ||
-    word(n, 136) < 0 ||
-    word(n, 136) > 5
+    (byte(n, 126) === 0 && (word(n, 136) < 0 || word(n, 136) > 5))
   )
-    throw Error("Engineer534D0 requires admitted task0/stage0..5");
-  selector(byte(n, 131));
+    throw Error("Engineer534D0 requires admitted building task0/1/4");
+  if (byte(n, 126) === 0 && byte(n, 131) !== 255) selector(byte(n, 131));
   const port = services(c).step;
   if (!port) throw Error("Engineer source534D0 role-only service is required");
   const r = guard(w, index, () => port(w, index));
@@ -456,11 +480,10 @@ export function stepStagedEngineerRole<W extends GeneticistWorld>(
   if (r.status === "active") {
     if (
       byte(n, 85) !== 9 ||
-      byte(n, 126) !== 0 ||
+      ![0, 1, 4].includes(byte(n, 126)) ||
       byte(n, 130) !== 1 ||
       !(byte(n, 88) & 1) ||
-      word(n, 136) < 0 ||
-      word(n, 136) > 5
+      (byte(n, 126) === 0 && (word(n, 136) < 0 || word(n, 136) > 5))
     )
       throw Error(
         "Engineer role service did not retain its active native task",

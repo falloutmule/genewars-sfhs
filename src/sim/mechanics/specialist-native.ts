@@ -279,6 +279,54 @@ export function projectSpecialistMotion(
     sourceClassSpeed: handle.classSpeed,
   };
 }
+/**4FD30 only: no roster append,80830 placement or56E20 scratch reset.
+ * The actual slot prior is preserved outside this constructor's writes. */
+export function initializeSpecialistNative(
+  before: readonly (number | null)[],
+  raw: readonly number[],
+  request: { slot: number; blueprintIndex: number; origin: SpecialistOrigin },
+  r: SpecialistRules,
+): { native: SpecialistNative; binding: SpecialistBinding } {
+  validateSpecialistNative(before);
+  const owner = player(raw);
+  int(request.slot, owner * 5, owner * 5 + 4, "owner slot");
+  int(request.blueprintIndex, 0, 31, "blueprint index");
+  if (request.origin.position.length !== 2)
+    throw Error("Specialist coordinate extent differs");
+  request.origin.position.forEach((v) =>
+    int(v, -32768, 32767, "temporary coordinate"),
+  );
+  int(request.origin.height, -2147483648, 2147483647, "origin height");
+  int(request.origin.shade, 0, 255, "origin shade");
+  const n = before.slice(),
+    handle = binding(raw, request.blueprintIndex, r);
+  n[2] = n[5] = 0;
+  n[6] = 3;
+  pw(n, 15, request.slot);
+  n[24] = owner;
+  pw(n, 7, request.origin.position[0]);
+  pw(n, 9, request.origin.position[1]);
+  pd(n, 17, request.origin.height);
+  n[23] = request.origin.shade;
+  n.fill(0, 11, 15);
+  pw(n, 21, 0x280);
+  n[25] = n[26] = n[27] = n[29] = 0;
+  n[28] = 1;
+  pd(n, 39, 0);
+  pw(n, 43, 50);
+  n.fill(0, 45, 57);
+  pw(n, 57, 0);
+  pw(n, 59, 512);
+  pw(n, 61, 0);
+  n[74] = b(n, 74) & 0x3b;
+  n[83] = 1;
+  n[84] = 0;
+  n[85] = 1;
+  n.fill(0, 104, 108);
+  pw(n, 112, 0);
+  n[116] = request.blueprintIndex;
+  return { native: n, binding: handle };
+}
 /**81310 first-free allocation plus4FD30,80830(no associated unit),56E20.
  * Entire pool/player afterimages are returned; no caller input is mutated.
  */
@@ -318,38 +366,23 @@ export function createSpecialist(
   if (count >= 5)
     throw Error("Specialist player ID list is full despite free native slot");
   const index = owner * 5 + local,
-    n = pool.records[index],
     at = 0x16 + request.blueprintIndex * 36;
   // Allocation metadata writes precede4FD30; validation below remains staged.
   next[at + 0x20] |= 1;
   next[4 + count] = index;
   next[3] = count + 1;
-  const handle = binding(next, request.blueprintIndex, r);
-  n[2] = n[5] = 0;
-  n[6] = 3;
-  pw(n, 15, index);
-  n[24] = owner;
-  pw(n, 7, request.origin.position[0]);
-  pw(n, 9, request.origin.position[1]);
-  pd(n, 17, request.origin.height);
-  n[23] = request.origin.shade;
-  n.fill(0, 11, 15);
-  pw(n, 21, 0x280);
-  n[25] = n[26] = n[27] = n[29] = 0;
-  n[28] = 1;
-  pd(n, 39, 0);
-  pw(n, 43, 50);
-  n.fill(0, 45, 57);
-  pw(n, 57, 0);
-  pw(n, 59, 512);
-  pw(n, 61, 0);
-  n[74] = b(n, 74) & 0x3b;
-  n[83] = 1;
-  n[84] = 0;
-  n[85] = 1;
-  n.fill(0, 104, 108);
-  pw(n, 112, 0);
-  n[116] = request.blueprintIndex;
+  const constructor = initializeSpecialistNative(
+      pool.records[index],
+      next,
+      {
+        slot: index,
+        blueprintIndex: request.blueprintIndex,
+        origin: request.origin,
+      },
+      r,
+    ),
+    n = constructor.native,
+    handle = constructor.binding;
   //80830 no-unit branch places without refreshing origin ground/shade.
   pw(n, 7, request.finalTarget[0]);
   pw(n, 9, request.finalTarget[1]);
