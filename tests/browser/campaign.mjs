@@ -286,6 +286,7 @@ try {
       return {
         state: n[85],
         task: n[126],
+        working: !!(n[88] & 1),
         ordered: w.notices.some(
           (n) => n.text === "Botanist work ordered" && n.entityId === a.id,
         ),
@@ -294,7 +295,8 @@ try {
     });
     assert.equal(botanist.ordered, true);
     assert.ok([1, 8, 10].includes(botanist.state));
-    if (botanist.state === 10) assert.equal(botanist.task, 0);
+    if (botanist.working) assert.equal(botanist.task, 0);
+    else assert.equal(botanist.task, 255);
     assert.deepEqual(botanist.errors, []);
     await page.screenshot({
       path: resolve(out, `${viewport.width}-krell.png`),

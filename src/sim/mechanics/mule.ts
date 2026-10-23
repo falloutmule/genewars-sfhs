@@ -2688,20 +2688,23 @@ function action(
     return;
   }
   if (n[0x5e] === 7) {
-    verifyNeighborhood(state, mule, c);
-    const target = w(n, 0x55),
-      plant = state.plants[target];
-    if (
-      n[0x57] !== 2 ||
-      !plant?.active ||
-      plant.growth <= 0 ||
-      !(n[0x61]! & 0x40) ||
-      n[0x60]! & 2 ||
-      w(n, 0x6c) & 15
-    )
-      throw new Error(
-        "Mule feeding target/state is outside the original admitted branch",
-      );
+    //6A243/6889A validates its reference and736F0 range before the damage
+    //cadence test.724C0 can clear only the reference kind between callbacks.
+    const target = w(n, 0x55);
+    if (n[0x57] !== 2) {
+      releaseAction(state, mule);
+      idleWait(state, mule, random, c);
+      return;
+    }
+    const plant = state.plants[target];
+    if (!plant?.active)
+      throw Error("Mule feeding reference has an inactive plant binding");
+    if (distance(c.terrain, point(n), plant.position) >>> 0 > 4096) {
+      releaseAction(state, mule);
+      idleWait(state, mule, random, c);
+      return;
+    }
+    if (w(n, 0x6c) & 15) return;
     const amount = c.rules.plants[plant.selector].nutrition,
       retired = plant.growth <= 3;
     if (c.plantDamage) c.plantDamage(state, c.terrain, random, target, 3);
@@ -2723,6 +2726,7 @@ function action(
       { kind: "mule-fed", id: mule.id, target },
       { kind: "mule-audio", id: mule.id, channel: full ? 0x1b : 0x12 },
     );
+    verifyNeighborhood(state, current, c);
     const capture: { query: MuleCombatQuery | null } = { query: null };
     if (combatChoice(state, current, random, c, events, capture)) return;
     const peer = mateTarget(state, current, random, c);
@@ -2733,9 +2737,7 @@ function action(
       return;
     }
     if (retired || full) {
-      state.plants[target].plantFlags &= 0xfe;
-      state.plants[target].native[46] = state.plants[target].plantFlags;
-      resetAction(n);
+      releaseAction(state, current);
       idleWait(state, current, random, c);
     }
     return;
@@ -2952,8 +2954,7 @@ function stepMule(
       throw new Error(
         "Owned Mule callback requires actual selected-player, alliance, building and operator context",
       );
-    const phase = (c.frame + w(n, 15)) >>> 0,
-      oldState = n[0x5e];
+    const phase = (c.frame + w(n, 15)) >>> 0;
     if (n[0x16]! & 0x48 || w(n, 0x49) & 0x400)
       throw new Error("Mule attached movement prefix is required");
     const route = routePrefix(staged, mule, random, c, phase),
@@ -3138,9 +3139,8 @@ function stepMule(
         put(n, 0x6c, 0);
       if (
         ([0, 8].includes(n[0x5e]!) && w(n, 0x6c) === 0) ||
-        [1, 3, 4, 5, 6, 10].includes(n[0x5e]!) ||
+        [1, 3, 4, 5, 6, 7, 10].includes(n[0x5e]!) ||
         ([15, 16, 18, 20, 21].includes(n[0x5e]!) && w(n, 0x6c) <= 0) ||
-        (oldState === 7 && (w(n, 0x6c) & 15) === 0) ||
         (n[0x5e] === 1 && (w(n, 0x49) & 0x200) !== 0 && !(n[0x60]! & 0x80))
       )
         action(staged, mule, random, c, events);

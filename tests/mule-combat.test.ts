@@ -29,7 +29,7 @@ import type {
   EcologyPlant,
   EcologyState,
 } from "../src/sim/mechanics/ecology";
-import type { GeneRng } from "../src/sim/mechanics/random";
+import { nextRandom, type GeneRng } from "../src/sim/mechanics/random";
 import { worldCell } from "../src/sim/mechanics/terrain";
 
 type N = (number | null)[];
@@ -442,6 +442,117 @@ function feedingFixture() {
   return { ...f, c, linked };
 }
 describe("synchronous Mule plant damage", () => {
+  it("releases a cleared feeding reference on its next odd callback before the16-tick damage cadence", () => {
+    const f = feedingFixture(),
+      expected = { ...f.rng },
+      delay = 10 + (nextRandom(expected) % 20),
+      p = f.state.plants[0];
+    f.self.native[87] = 0; //Actual724C0 leaves the index and state7 retained.
+    put(f.self.native, 85, 5);
+    put(f.self.native, 108, 29);
+    f.c.plantDamage = () => {
+      throw Error("Cleared reference must not damage a plant");
+    };
+    const r = stepOwnedMule(f.state, 0, f.rng, f.c),
+      n = f.state.mules[0].native;
+    expect(r.reason).toBeNull();
+    expect(n[94]).toBe(8);
+    expect(word(n, 108)).toBe(delay - 1); //Ordinary shared tail owns decrement.
+    expect([word(n, 85), n[87]]).toEqual([5, 0]);
+    expect(f.state.plants[0]).toEqual(p);
+    expect(f.rng).toEqual(expected);
+    expect(r.events.some((e) => e.kind === "mule-fed")).toBe(false);
+  });
+  it("treats a non-plant feeding reference as the sourceNULL branch without dereferencing its retained index", () => {
+    const f = feedingFixture();
+    f.self.native[87] = 3;
+    put(f.self.native, 85, -1);
+    put(f.self.native, 108, 29);
+    const r = stepOwnedMule(f.state, 0, f.rng, f.c);
+    expect(r.reason).toBeNull();
+    expect(f.state.mules[0].native[94]).toBe(8);
+    expect(f.state.mules[0].native[87]).toBe(0);
+    expect(f.rng.draws).toBe(1);
+  });
+  it("releases a plant beyond source64-unit range before cadence, clearing only its feeding reservation", () => {
+    const f = feedingFixture(),
+      p = f.state.plants[0];
+    p.position[0] += 65;
+    put(p.native, 7, p.position[0]);
+    p.plantFlags = p.native[46] = 5;
+    put(f.self.native, 108, 29);
+    f.c.plantDamage = () => {
+      throw Error("Distant target must not be eaten");
+    };
+    const r = stepOwnedMule(f.state, 0, f.rng, f.c);
+    expect(r.reason).toBeNull();
+    expect(f.state.mules[0].native[94]).toBe(8);
+    expect(f.state.plants[0].plantFlags).toBe(4);
+    expect(f.state.plants[0].growth).toBe(2);
+    expect(f.rng.draws).toBe(1);
+  });
+  it("admits inclusive64-unit feeding range and preserves the same two neighborhood draws", () => {
+    const f = feedingFixture(),
+      p = f.state.plants[0];
+    p.position[0] += 64;
+    put(p.native, 7, p.position[0]);
+    p.growth = 7;
+    put(p.native, 44, 7);
+    const r = stepOwnedMule(f.state, 0, f.rng, f.c);
+    expect(r.reason).toBeNull();
+    expect(f.state.plants[0].growth).toBe(4);
+    expect(f.state.mules[0].native[94]).toBe(7);
+    expect(f.rng.draws).toBe(2);
+  });
+  it("leaves a valid feeding target alone between16-tick damage gates without extra RNG", () => {
+    const f = feedingFixture();
+    put(f.self.native, 108, 29);
+    f.c.plantDamage = () => {
+      throw Error("Not a damage-cadence callback");
+    };
+    const r = stepOwnedMule(f.state, 0, f.rng, f.c);
+    expect(r.reason).toBeNull();
+    expect(f.state.mules[0].native[94]).toBe(7);
+    expect(word(f.state.mules[0].native, 108)).toBe(28);
+    expect(f.rng.draws).toBe(0);
+  });
+  it("uses source6C900's already-dead return for an active retiring plant before normal feeding release", () => {
+    const f = feedingFixture(),
+      p = f.state.plants[0];
+    p.growth = 0;
+    put(p.native, 44, 0);
+    p.plantFlags = p.native[46] = 129;
+    p.retirement = p.native[48] = 4;
+    const reserve = word(f.self.native, 104),
+      r = stepOwnedMule(f.state, 0, f.rng, f.c);
+    expect(r.reason).toBeNull();
+    expect(word(f.state.mules[0].native, 104)).toBeGreaterThan(reserve);
+    expect(f.state.plants[0].active).toBe(true);
+    expect(f.state.plants[0].retirement).toBe(4);
+    expect(f.state.plants[0].plantFlags).toBe(128);
+    expect(f.state.mules[0].native[94]).toBe(8);
+    expect(f.rng.draws).toBe(3);
+  });
+  it("does not add a hunger-flag gate to an actual state7 feeding callback", () => {
+    const f = feedingFixture(),
+      p = f.state.plants[0];
+    p.growth = 7;
+    put(p.native, 44, 7);
+    f.self.native[97] = 0;
+    const r = stepOwnedMule(f.state, 0, f.rng, f.c);
+    expect(r.reason).toBeNull();
+    expect(f.state.plants[0].growth).toBe(4);
+    expect(f.rng.draws).toBe(2);
+  });
+  it("preserves the dangling kind2/inactive plant invariant and full callback rollback", () => {
+    const f = feedingFixture();
+    f.state.plants[0].active = false;
+    const before = JSON.stringify([f.state, f.terrain, f.rng]),
+      r = stepOwnedMule(f.state, 0, f.rng, f.c);
+    expect(r.reason).toMatch(/inactive plant binding/);
+    expect(r.committed).toBe(false);
+    expect(JSON.stringify([f.state, f.terrain, f.rng])).toBe(before);
+  });
   it("requires immediate retirement services before the same-callback neighborhood query", () => {
     const f = feedingFixture(),
       before = JSON.stringify([f.state, f.terrain, f.rng]),

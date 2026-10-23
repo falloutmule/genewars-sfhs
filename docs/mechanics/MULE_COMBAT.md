@@ -161,6 +161,16 @@ an eaten-plant receipt after the whole Mule callback is too late. The numeric
 fallback remains usable when damage does not retire the plant; immediate
 retirement without this host service rejects before any query or commit.
 
+State7 validates its55 reference and736F0 ground-aware squared range4096 on
+every odd callback(6A243/6889A), before testing its16-tick damage cadence.
+After724C0 clears only the reference kind, the original69616 branch releases
+the action and takes its10+rand%20 wait or actual occupied-cell escape. It does
+the same beyond range; it does not dereference a non-plant reference's retained
+index. Valid targets simply wait between damage gates. An active plant whose
+growth is already nonpositive follows6C900's true return, nutrition and normal
+release; a dangling kind2 reference to an inactive plant remains an invariant
+failure. Hunger flags do not add a state7 gate absent from the source.
+
 The host must synchronize every changed Mule backing record, including the
 target and any recoil recipient. Supplying only the current creature is
 insufficient. The exact selected-player/alliance/player research records and
@@ -176,14 +186,16 @@ unlinking and target-reference cleanup.
 
 ## Validation and limits
 
-Forty-two synthetic combat tests cover asymmetric alliance/sector/head
+Fifty synthetic combat tests cover asymmetric alliance/sector/head
 order, primary/secondary scores, specialist style gates and conditional draws,
 the intentional scratch-flag fix, current kind3 motion, nominated building
 radius/admission/arrival,8AE10 fallback, attack quarter/half scaling, synchronous
 damage and retirement, state6 blood/nutrition, reference retention, range/yaw
 seams, escape paths, recoil, death, ANB gating, JSON saveability and full
 callback rollback, plus feeding retirement/query ordering and failed immediate
-retirement rollback. The29 other Mule tests also pass.
+retirement rollback. Feeding tests also cover cleared references before cadence,
+inclusive range64, distant cancellation, already-retiring plants and retained
+inactive-target guards. The29 other Mule tests also pass.
 
 Private read-only frozen source packets match40 complete local numeric records
 (4,640 nonpointer bytes), RNG and audio:10 damage,10 attack entry with its

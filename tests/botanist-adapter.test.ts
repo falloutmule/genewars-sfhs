@@ -127,6 +127,29 @@ const occupied = (w: CampaignWorld) =>
   );
 
 describe("campaign Botanist adapter", () => {
+  it("explains an empty collection area instead of reporting a released task as clearing plants", () => {
+    const { w, pack, index, services } = fixture(),
+      n = w.specialists.records[index];
+    w.frame = 0; //Actual work cadence gate, independent of motion's arrival flag.
+    n[85] = 10;
+    n[88] = 1;
+    n[126] = 0;
+    n[112] = 129;
+    put16(n as number[], 73, 32);
+    put16(n as number[], 136, w.actors.find((a) => a.id === index)!.motion.x);
+    put16(n as number[], 138, w.actors.find((a) => a.id === index)!.motion.y);
+    put32(n as number[], 142, 1536 * 1536);
+    stepCampaignBotanist(w, index, pack, services);
+    expect(w.specialists.records[index][126]).toBe(255);
+    expect(w.actors.find((a) => a.id === index)!.reason).toBe(
+      "No suitable plants nearby",
+    );
+    expect(w.notices.at(-1)).toMatchObject({
+      severity: "warning",
+      text: "No suitable plants nearby",
+      entityId: index,
+    });
+  });
   it("uses actual category1 factory bindings and preserves held native/player/binding through plant creation and credit1/8", () => {
     const f = fixture(),
       { w, pack, index, services } = f,

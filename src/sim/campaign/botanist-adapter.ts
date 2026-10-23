@@ -245,7 +245,26 @@ function consume(w: CampaignWorld, index: number, r: BotanistReceipt) {
   if (w.specialists.records[index][6] !== 3) return;
   const n = w.specialists.records[index],
     a = w.actors.find((a) => a.id === index)!;
-  if (n[85] === 10)
+  const blocked: Record<string, string> = {
+      "no-area-plants": "No suitable plants nearby",
+      "botanist-resource-full": "Plant sample storage is full",
+      "insufficient-botanist-resource": "No plant samples available",
+      "no-planting-site": "No suitable planting site nearby",
+      "no-harvest-target": "No suitable plant to clear nearby",
+    },
+    feedback = [...r.events]
+      .reverse()
+      .find((e) => e.type === "feedback" && e.mode === 1);
+  if (feedback?.type === "feedback" && blocked[feedback.reason]) {
+    a.reason = blocked[feedback.reason];
+    w.notices.push({
+      frame: w.frame,
+      severity: "warning",
+      text: a.reason,
+      entityId: index,
+    });
+    if (w.notices.length > 40) w.notices.shift();
+  } else if (n[85] === 10 && n[88]! & 1 && n[126]! <= 2)
     a.reason =
       n[126] === 0
         ? "Collecting plant samples"
