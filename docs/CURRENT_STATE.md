@@ -1,5 +1,18 @@
 # Current direct-conversion state — 24 October 2026
 
+## Sealed continuation across the mortality boundary
+
+The sealed pre-step save `.private/madami-power-botanist-continuation-20261023/segment-003/save-last-valid-prestep.json` (frame **20,933**, sha256 `0ba30528…aadae2`) was re-hashed before use and is **byte-unchanged**; the continuation ran from a child in `.private/mortality-continuation-20261024/`.
+
+- **Continuation A:** frame 20,933 (hash `f3b28716…`) → **20,960**, phase active, **no error notices** — the guard that previously stopped the run at 20,933 no longer fires.
+- **Continuation B:** save at frame 20,940, reload, continue → same frame and **identical hash `513c21bb…`**, so save/reload continuation is deterministic across the boundary.
+- The dying record entered state 24 at frame 20,934 with its attachment bit cleared, and 13 records were in post-death states, all with `0x60` bit 2 clear.
+- The pack the sealed world belongs to is content hash `b8872317…`; the current `.private/imported/genewars.gwpack` is a later rebuild (`ff9853…`) and cannot be used to load this save. The preserved `b8872317` pack is `.private/imported-ai-host-priors/genewars.gwpack`.
+
+**Not proven:** canonical acceptance stays **0/24**. Nothing here is a mission result.
+
+**Next executable task:** continue the child continuation past 20,960 until the next genuine unsupported family appears, then implement that family.
+
 ## Checkpoint — Mule mortality cleanup as a reusable creature-lifecycle family
 
 **Canonical acceptance remains 0/24.**
