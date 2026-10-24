@@ -46,6 +46,10 @@ export interface BotanistContext<W extends GeneticistWorld>
     "tables" | "cellOrder" | "escapeRay" | "resolveMovePoint"
   > {
   rules: BotanistRules;
+  /** Current intrusive-map membership, independent of native kind/flags.
+   * Carried plants remain kind2 while deliberately unlinked. Contexts without
+   * this port retain the strict all-active coordinate-domain contract. */
+  linkedPlantCell?(w: W, index: number): number | null;
   /**6C900, including immediate6C780 if growth becomes nonpositive. */
   damagePlant?(w: W, plant: number, amount: number, actor: number): void;
   /**6C4B0 first-free factory, real links/BP bookkeeping/80780(+1) included. */
@@ -330,9 +334,21 @@ function plants<W extends GeneticistWorld>(
   cell: number,
   c: BotanistContext<W>,
 ): EcologyPlant[] {
-  const present = w.ecology.plants.filter(
-      (p) => byte(p.native, 6) === 2 && worldCell(...point(p.native)) === cell,
-    ),
+  const present = w.ecology.plants.filter((p) => {
+      if (byte(p.native, 6) !== 2) return false;
+      const poseCell = worldCell(...point(p.native));
+      if (!c.linkedPlantCell) return poseCell === cell;
+      const linkedCell = c.linkedPlantCell(w, p.index);
+      if (linkedCell === null) return false;
+      if (
+        !Number.isInteger(linkedCell) ||
+        linkedCell < 0 ||
+        linkedCell >= 16384 ||
+        linkedCell !== poseCell
+      )
+        throw Error("Botanist linked plant cell differs from its actual pose");
+      return linkedCell === cell;
+    }),
     ids = c.cellOrder(w, cell);
   if (
     new Set(ids).size !== ids.length ||
@@ -341,7 +357,13 @@ function plants<W extends GeneticistWorld>(
     throw Error("Botanist query requires complete actual shared-cell order");
   return ids.flatMap((id) => {
     const p = present.find((p) => p.id === id);
-    if (!p) return [];
+    if (!p) {
+      if (id.startsWith("source:1:"))
+        throw Error(
+          "Botanist shared-cell order includes an unlinked or wrong-cell plant",
+        );
+      return [];
+    }
     if (
       p.native.length !== 49 ||
       word(p.native, 15) !== p.index ||

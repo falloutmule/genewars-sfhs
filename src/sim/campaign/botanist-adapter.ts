@@ -183,6 +183,17 @@ export function campaignBotanistContext(
   return {
     ...campaignGeneticistContext(w, pack, services),
     rules: botanistRulesFromEcology(pack.ecologyRules),
+    linkedPlantCell(s, index) {
+      const plant = s.ecology.plants[index],
+        id = `source:1:${index}` as const;
+      if (!plant || plant.index !== index || plant.id !== id)
+        throw Error("Actual Botanist plant pool identity required");
+      const node = s.spatial.nodes[id];
+      if (!node) return null;
+      if (node.id !== id || node.family !== 1 || node.index !== index)
+        throw Error("Actual Botanist plant spatial identity required");
+      return node.cell;
+    },
     damagePlant: (s, index, amount) => {
       damageCampaignPlant(s, pack, index, amount);
     },
