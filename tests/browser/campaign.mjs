@@ -308,10 +308,14 @@ try {
     else assert.equal(botanist.task, 255);
     assert.deepEqual(botanist.errors, []);
     // --- Krell: real unlock order, Mule production and herding to the zone.
-    const CELLS = [
-      [4.5, 58.5], [5.5, 58.5], [6.5, 58.5], [4.5, 59.5], [6.5, 59.5],
-      [5.5, 59.5], [4.5, 57.5], [6.5, 57.5], [3.5, 58.5], [7.5, 58.5],
-    ];
+    // Valid Krell sites, each offset from the mission anchor and mutually clear.
+    const SITES = {
+      Extractor: [4.5, 58.5],
+      "First Stage Distributor": [3.5, 63.5],
+      "Photon Processor": [9.5, 59.5],
+      Genepod: [8.5, 64.5],
+    };
+    const CELLS = [[4.5, 58.5], [3.5, 63.5], [9.5, 59.5], [8.5, 64.5], [5.5, 58.5]];
     const readyEngineer = async () => {
       for (let i = 0; i < 25; i++) {
         const ready = await page.evaluate(() => {
@@ -339,7 +343,8 @@ try {
         return !!b && !b.disabled;
       }, label);
       if (!enabled) return "locked";
-      for (const [x, y] of CELLS) {
+      const preferred = SITES[label] ? [SITES[label], ...CELLS] : CELLS;
+      for (const [x, y] of preferred) {
         if (viewport.width < viewport.height)
           await page.getByRole("button", { name: "Build", exact: true }).click();
         await page
@@ -349,8 +354,8 @@ try {
         if (!at) continue;
         if (viewport.width < 1000) await page.touchscreen.tap(at.x, at.y);
         else await page.mouse.click(at.x, at.y);
-        for (let i = 0; i < 32; i++) {
-          await page.evaluate(() => window.CR.advanceCampaign(100));
+        for (let i = 0; i < 12; i++) {
+          await page.evaluate(() => window.CR.advanceCampaign(400));
           const done = await page.evaluate(
             (s) => window.CR.inspect().campaign.world.players[0].completed[s],
             selector,
