@@ -41,11 +41,13 @@ Objective: **1400 current GOOP**, with storage capacity 1600 tracked separately.
 
 So **capacity 1600 is exactly four grade-1 Recycling Plants** (4 × 400), which is what the preserved Madami runs built, and it is a *separate* requirement from the GOOP total.
 
-**GOOP is credited only by Extractor harvesting** (`economy.ts:736`): `player.goop = min(goop + consumed × goopPerResource, capacity)`. A grade-0 Extractor therefore yields 4 GOOP per 240-frame cycle, i.e. ~60 GOOP per 3,600 frames per Extractor. Reaching 1400 at grade 0 needs roughly 21,000 frames with four Extractors; at grade 2 (6 units → 12 GOOP/cycle) the same four Extractors reach it in roughly 7,000 frames. **Grade upgrades are the lever, not more buildings.**
+**GOOP is credited only by Extractor harvesting** (`economy.ts:736`): `player.goop = min(goop + consumed × goopPerResource, capacity)`. A grade-0 Extractor therefore yields 4 GOOP per 240-frame cycle, i.e. ~60 GOOP per 3,600 frames per Extractor. Reaching 1400 at grade 0 needs roughly 21,000 frames with four Extractors.
 
-This explains the preserved runs: they grew GOOP 294 → 444 → 558 → 640 over ~20,000 ticks with four Recycling Plants and Botanist planting, because the Botanist path only feeds corpses/plants into recycling and never matches extractor throughput. It is not a missing mechanic — it is the wrong economy emphasis.
+**Correction to an earlier reading of this section:** grade upgrades are *not* a lever available today. `capacity.store4[building.grade]` and `harvestUnits[building.grade]` read a grade that is fixed at construction or startup — nothing in `src/sim/` increments a building's `grade` during play, and `src/app/campaign.ts` has no upgrade affordance at all (`grep -n "upgrade" src/app/campaign.ts` returns nothing). Adding one would invent behaviour without source evidence, so the implementable route is **more grade-0 Extractors plus sustained harvesting time**, not upgrading. Four Extractors reach 1400 in ~21,000 frames; six reach it in ~14,000.
 
-Next step for Madami is a UI route that upgrades Extractor grade before mass-producing, which needs the upgrade affordance checked in `src/app/campaign.ts` before the browser test is extended.
+This explains the preserved runs: they grew GOOP 294 → 444 → 558 → 640 over ~20,000 ticks with four Recycling Plants and Botanist planting, because the Botanist path only feeds corpses/plants into recycling and never matches extractor throughput. It is not a missing mechanic — it is the wrong economy emphasis, and the prior chains simply built too few Extractors.
+
+**Open question for Madami:** carried funds at mission start were 11 in the preserved runs, while an Extractor costs construction funds, so the route has to establish whether enough Extractors can be paid for from the carried economy before harvesting time dominates.
 
 ## Software campaign acceptance: 2/24 — Exceland and Krell
 
