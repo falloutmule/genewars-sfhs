@@ -47,7 +47,9 @@ So **capacity 1600 is exactly four grade-1 Recycling Plants** (4 × 400), which 
 
 This explains the preserved runs: they grew GOOP 294 → 444 → 558 → 640 over ~20,000 ticks with four Recycling Plants and Botanist planting, because the Botanist path only feeds corpses/plants into recycling and never matches extractor throughput. It is not a missing mechanic — it is the wrong economy emphasis, and the prior chains simply built too few Extractors.
 
-**Open question for Madami:** carried funds at mission start were 11 in the preserved runs, while an Extractor costs construction funds, so the route has to establish whether enough Extractors can be paid for from the carried economy before harvesting time dominates.
+**Funds answer:** `player.funds` is mirrored from `raw 0x4a3` rather than computed in the converted economy, and `recycling-adapter.ts` re-reads it after consumption — so Recycling Plants are the income as well as the capacity (they convert corpses/plants into funds). That reconciles the preserved runs, which sat at 11 funds with capacity 1600 and four plants: they had already spent down, and the plants were the running income. Construction costs read from `rules.tables.constructionCosts`: Extractor 650, Recycling Plant 300, Stores 300, First Stage Distributor 400, Genepod 600.
+
+**Consequence for the route:** a single grade-0 Extractor takes ~22,000 ticks for 1400 GOOP, and capacity must reach 1400 first (extractor 600 + two Recycling Plants at 400 each), so the opening move is plants for capacity and income, then Extractors paid for out of recycling, then harvesting time. This is a long mission by construction and will not fit a 420 s browser run in one pass.
 
 ## Software campaign acceptance: 2/24 — Exceland and Krell
 
