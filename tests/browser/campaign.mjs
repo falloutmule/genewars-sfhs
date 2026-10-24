@@ -24,11 +24,14 @@ const browser = await chromium.launch({
 });
 const results = [];
 try {
-  for (const viewport of [
-    { width: 1440, height: 900 },
-    { width: 915, height: 412 },
-    { width: 412, height: 915 },
-  ]) {
+  const viewports = process.env.CAMPAIGN_VIEWPORTS
+    ? JSON.parse(process.env.CAMPAIGN_VIEWPORTS)
+    : [
+        { width: 1440, height: 900 },
+        { width: 915, height: 412 },
+        { width: 412, height: 915 },
+      ];
+  for (const viewport of viewports) {
     const context = await browser.newContext({
         viewport,
         isMobile: viewport.width < 1000,
@@ -304,6 +307,122 @@ try {
     if (botanist.working) assert.equal(botanist.task, 0);
     else assert.equal(botanist.task, 255);
     assert.deepEqual(botanist.errors, []);
+    // --- Krell: real unlock order, Mule production and herding to the zone.
+    const CELLS = [
+      [4.5, 58.5], [5.5, 58.5], [6.5, 58.5], [4.5, 59.5], [6.5, 59.5],
+      [5.5, 59.5], [4.5, 57.5], [6.5, 57.5], [3.5, 58.5], [7.5, 58.5],
+    ];
+    const readyEngineer = async () => {
+      for (let i = 0; i < 25; i++) {
+        const ready = await page.evaluate(() => {
+          const w = window.CR.inspect().campaign.world;
+          const e = w.actors.find(
+            (a) => w.players[a.owner].blueprints[a.blueprintIndex].category === 0,
+          );
+          return !!e && !!e.ready;
+        });
+        if (ready) return true;
+        await page.evaluate(() => window.CR.advanceCampaign(100));
+      }
+      return false;
+    };
+    const buildKrell = async (label, selector) => {
+      if (!(await readyEngineer())) return "no-engineer";
+      if (viewport.width < viewport.height)
+        await page.getByRole("button", { name: "Units", exact: true }).click();
+      await page.getByRole("button", { name: /Engineer · skill/ }).click();
+      if (viewport.width < viewport.height)
+        await page.getByRole("button", { name: "Build", exact: true }).click();
+      const enabled = await page.evaluate((name) => {
+        const buttons = [...document.querySelectorAll("#campaign-build button")];
+        const b = buttons.find((n) => n.textContent.startsWith(name + " · "));
+        return !!b && !b.disabled;
+      }, label);
+      if (!enabled) return "locked";
+      for (const [x, y] of CELLS) {
+        if (viewport.width < viewport.height)
+          await page.getByRole("button", { name: "Build", exact: true }).click();
+        await page
+          .getByRole("button", { name: new RegExp(`^${label} ·`) })
+          .click();
+        const at = await page.evaluate(([px, py]) => window.CR.project(px, py), [x, y]);
+        if (!at) continue;
+        if (viewport.width < 1000) await page.touchscreen.tap(at.x, at.y);
+        else await page.mouse.click(at.x, at.y);
+        for (let i = 0; i < 32; i++) {
+          await page.evaluate(() => window.CR.advanceCampaign(100));
+          const done = await page.evaluate(
+            (s) => window.CR.inspect().campaign.world.players[0].completed[s],
+            selector,
+          );
+          if (done > 0) return "built";
+        }
+      }
+      return "no-site";
+    };
+    const krellSteps = [];
+    for (const [label, selector] of [
+      ["Extractor", 11],
+      ["First Stage Distributor", 3],
+      ["Photon Processor", 6],
+      ["Genepod", 0],
+    ]) {
+      const outcome = await buildKrell(label, selector);
+      krellSteps.push({ label, selector, outcome });
+      if (outcome === "locked") break;
+    }
+    let krellVictory = null;
+    for (let round = 0; round < 16; round++) {
+      const state = await page.evaluate(() => {
+        const w = window.CR.inspect().campaign.world;
+        const raw = w.players[0].raw[13];
+        return {
+          result: w.result.phase,
+          funds: w.players[0].funds,
+          score: raw < 0 ? raw + 256 : raw,
+          mules: w.ecology.mules
+            .filter(
+              (m) =>
+                m.native[6] === 1 && m.native[24] === 0 && m.native[0x5e] < 24,
+            )
+            .map((m) => ({
+              x: (m.native[7] | (m.native[8] << 8)) / 256,
+              y: (m.native[9] | (m.native[10] << 8)) / 256,
+            })),
+        };
+      });
+      if (state.result !== "running") {
+        krellVictory = state;
+        break;
+      }
+      const produce = page.getByRole("button", { name: /^Produce Mule/ });
+      if ((await produce.count()) > 0 && state.funds > 150) {
+        if (viewport.width < 1000) await produce.first().tap();
+        else await produce.first().click();
+        await page.evaluate(() => window.CR.advanceCampaign(420));
+      }
+      const zone = await page.evaluate(() => window.CR.project(1, 95));
+      for (const mule of state.mules.slice(0, 6)) {
+        const at = await page.evaluate(
+          ([x, y]) => window.CR.project(x, y),
+          [mule.x, mule.y],
+        );
+        if (!at || !zone) continue;
+        if (viewport.width < 1000) {
+          await page.touchscreen.tap(at.x, at.y);
+          await page.touchscreen.tap(zone.x, zone.y);
+        } else {
+          await page.mouse.click(at.x, at.y);
+          await page.mouse.click(zone.x, zone.y);
+        }
+        await page.evaluate(() => window.CR.advanceCampaign(20));
+      }
+      await page.evaluate(() => window.CR.advanceCampaign(500));
+    }
+    console.log(JSON.stringify({ krellSteps, krellVictory }));
+    assert.ok(krellVictory, `Krell did not reach a result: ${JSON.stringify(krellSteps)}`);
+    assert.equal(krellVictory.result, "victory-notification", JSON.stringify(krellVictory));
+    assert.ok(krellVictory.score >= 1000, JSON.stringify(krellVictory));
     await page.screenshot({
       path: resolve(out, `${viewport.width}-krell.png`),
     });
