@@ -416,7 +416,9 @@ export function queryMuleMaterial(
 function failed(n: HaulingNative, c: MuleHaulingContext, base = 10, mod = 20) {
   c.idle(base + (nextRandom(c.rng) % mod));
 }
-/**Source work decision after food/hostile/mating have declined. */
+/**Source work decision after food/hostile/mating have declined.
+ * Returns the actual DL work-success flag. False joins commonChoice at64CEF,
+ * after preserving this work body's wait/drop/cancellation afterimages. */
 export function stepMuleMaterialWork(
   n: HaulingNative,
   c: MuleHaulingContext,
@@ -530,8 +532,7 @@ export function stepMuleMaterialWork(
   }
   if (worked) n[95] = 1;
   else if (haulingByte(n, 120) === 0) n[95] = 0;
-  //A selected carrier family consumes the work slot even on its idle fallback.
-  return true;
+  return worked;
 }
 /**653C8 positive-timer pending1 dispatch. */
 export function stepMuleMaterialTravel(

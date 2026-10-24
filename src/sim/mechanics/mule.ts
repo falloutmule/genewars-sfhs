@@ -2978,7 +2978,11 @@ function action(
           (w(b.native, 0x31) & 0x141) === 1,
       );
       if (c.materialRuntime) {
-        if (stepMuleMaterialWork(n, c.materialRuntime(mule))) return;
+        //64CE7 consumes the actual work result in DL. Failed work has already
+        //performed its source idle wait and joins commonChoice exactly once.
+        if (!stepMuleMaterialWork(n, c.materialRuntime(mule)))
+          commonChoice(state, mule, random, c, events);
+        return;
       } else if (possible || n[95] !== 0 || n[96]! & 2)
         throw new Error(
           "Owned Mule selected a processing building action: actual material services required",
