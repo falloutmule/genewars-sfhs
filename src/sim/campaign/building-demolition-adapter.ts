@@ -246,7 +246,18 @@ export function clearStagedCampaignBuildingProcessingFront(
       w.ecology.plants[e.index].plantFlags = e.native[46]!;
       cleared.push(e.id);
     } else if (selector === 4 && e.kind === 1 && e.native[94]! >= 24) {
+      //JSON saves preserve both serialized images, not their object alias.
+      //Validate the actual current binding before clearing only this source
+      //bit in each held image; never copy other possibly stale fields.
+      const canonical = w.creatureNative[e.index];
+      if (
+        !canonical ||
+        canonical.length !== e.native.length ||
+        canonical.some((v, i) => v !== e.native[i])
+      )
+        throw Error("Processing-front creature native images differ");
       e.native[96] = e.native[96]! & 223;
+      canonical[96] = canonical[96]! & 223;
       cleared.push(e.id);
     }
     id = node.next;

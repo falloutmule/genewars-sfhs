@@ -1077,6 +1077,30 @@ export function queueCampaign(
   });
   return { ok: true, reason: null };
 }
+/** The atomic ecology command replaces every ecology native. Publish its
+ * successful writes before zones or another whole-host command reads the
+ * canonical pool, retaining native records already held by host services. */
+function requestCampaignOwnedMuleMove(
+  w: CampaignWorld,
+  index: number,
+  point: [number, number],
+  selectedPanelRefresh: boolean,
+) {
+  const result = requestOwnedMuleMove(w.ecology, index, point, {
+    callerOwner: w.selectedPlayer,
+    callerIsSelected: true,
+    selectedPanelRefresh,
+  });
+  if (!result.committed)
+    throw new Error(result.reason ?? "Mule move rejected");
+  if (result.outcome === "installed")
+    for (const mule of w.ecology.mules) {
+      const native = w.creatureNative[mule.index];
+      native.splice(0, native.length, ...mule.native);
+      mule.native = native;
+    }
+  return result;
+}
 function issue(w: CampaignWorld, c: CampaignCommand, pack: Pack): void {
   if (c.type === "move-mule") {
     const m = w.ecology.mules.find((m) => m.index === c.muleIndex);
@@ -1086,13 +1110,7 @@ function issue(w: CampaignWorld, c: CampaignCommand, pack: Pack): void {
       (w.muleQueues[c.muleIndex] ??= []).push(c.point);
     } else {
       if (!c.queued) w.muleQueues[c.muleIndex] = [];
-      const result = requestOwnedMuleMove(w.ecology, c.muleIndex, c.point, {
-        callerOwner: w.selectedPlayer,
-        callerIsSelected: true,
-        selectedPanelRefresh: true,
-      });
-      if (!result.committed)
-        throw new Error(result.reason ?? "Mule move rejected");
+      const result = requestCampaignOwnedMuleMove(w, c.muleIndex, c.point, true);
       notice(
         w,
         result.outcome === "installed"
@@ -2051,13 +2069,7 @@ export function stepCampaign(w: CampaignWorld, pack: Pack): void {
       if (!mule || mule.native[6] === 0) continue;
       const queued = w.muleQueues[muleIndex];
       if (queued?.length && !(mule.native[0x61]! & 0x80)) {
-        const result = requestOwnedMuleMove(w.ecology, muleIndex, queued[0], {
-          callerOwner: w.selectedPlayer,
-          callerIsSelected: true,
-          selectedPanelRefresh: false,
-        });
-        if (!result.committed)
-          throw new Error(result.reason ?? "Queued Mule move rejected");
+        const result = requestCampaignOwnedMuleMove(w, muleIndex, queued[0], false);
         if (result.outcome === "installed") queued.shift();
         mule = w.ecology.mules.find((m) => m.index === muleIndex)!;
       }

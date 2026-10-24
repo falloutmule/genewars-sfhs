@@ -20,6 +20,7 @@ import { cleanupCampaignReferences } from "./cleanup";
 import { unlinkSpatial } from "./spatial";
 import { requestAudio, type AudioRequest } from "../mechanics/audio";
 import { i16, u16, u32, put16 } from "./bytes";
+import { clearStagedCampaignBuildingProcessingFront } from "./building-demolition-adapter";
 
 export interface CampaignBuildingDamageServices {
   /** Real recursive blast/damage services bound to the current staged world. */
@@ -45,6 +46,7 @@ export interface CampaignBuildingDamageReceipt extends BuildingDamageReceipt {
   cancelledActorIds: number[];
   detachedPacketIds: number[];
   cleanedReferenceBytes: number;
+  clearedFrontReferences: SourceEntityId[];
   audioRequests: AudioRequest[];
 }
 /** Read native/raw state into its projections; never serialize stale host
@@ -134,6 +136,7 @@ export function damageCampaignBuilding(
     cancelledActorIds: [] as number[],
     detachedPacketIds: [] as number[],
     cleanedReferenceBytes: 0,
+    clearedFrontReferences: [] as SourceEntityId[],
     audioRequests: [] as AudioRequest[],
   };
   const result = damageNativeBuilding(
@@ -170,6 +173,11 @@ export function damageCampaignBuilding(
         const collapse = createCollapse(current, request);
         details.collapseAllocation = { request, slot: collapse };
         return collapse;
+      },
+      clearProcessingFront(current, dyingSlot) {
+        details.clearedFrontReferences.push(
+          ...clearStagedCampaignBuildingProcessingFront(current, dyingSlot, pack),
+        );
       },
       createCrater(current, request) {
         // The numeric constructor stages its argument. Supply only its three

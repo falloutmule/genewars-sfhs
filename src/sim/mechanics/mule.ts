@@ -1018,11 +1018,9 @@ function physics(
     oldGround = d(n, 0x11),
     wasGrounded = d(n, 0x27) <= oldGround;
   const corpse =
-    n[0x5e]! >= 24 &&
+    [24, 25, 26, 27].includes(n[0x5e]!) &&
     w(n, 0x3f) === -1 &&
-    n[0x15]! & 0x80 &&
-    wasGrounded &&
-    [0x33, 0x35, 0x37].every((at) => w(n, at) === 0);
+    !!(n[0x15]! & 0x80);
   if (
     n[0x16]! & 9 ||
     n[0x15]! & 0x20 ||
@@ -1102,7 +1100,9 @@ function physics(
       const normal = terrainNormal(c.terrain, ...candidate),
         cls = ecologyTerrainClass(c.terrain, candidate),
         vz = w(n, 0x31);
-      if (Math.trunc((vz >> 6) / 16) > 0 || c.bounce.length !== 8)
+      //6E3E1 calls virtual34 only for a positive impact.5B9F0 immediately
+      //returns for state>=24: no damage, audio, RNG or lifecycle mutation.
+      if ((!corpse && Math.trunc((vz >> 6) / 16) > 0) || c.bounce.length !== 8)
         throw new Error("Mule contact bounce requires an admitted coefficient");
       const bounced = signed((Math.abs(vz) * c.bounce[cls]) >> 8);
       put(n, 0x31, bounced);
@@ -1122,6 +1122,12 @@ function physics(
     }
     put32(n, 0x27, Math.max(candidateHeight, 0));
     angles(n, c);
+    //6E620..6E757 caps free airborne speed after deriving its angles. The
+    //negative desired speed does not freeze a corpse or invoke living contact.
+    if (corpse && w(n, 0x3d) > 19200) {
+      put(n, 0x3d, 12800);
+      setVelocity(n, c.tables);
+    }
   }
   const newCell = worldCell(...point(n));
   if (newCell !== oldCell) {
@@ -1184,7 +1190,8 @@ function physics(
     if (
       d(n, 0x27) === 0 &&
       ecologyTerrainClass(c.terrain, point(n)) === 0 &&
-      n[0x53]! & 1
+      n[0x53]! & 1 &&
+      !corpse //The reached self-water virtual34 is the same dead-target no-op.
     )
       events.push({
         kind: "mule-water-damage",
@@ -3001,6 +3008,9 @@ function stepMule(
     reveal(staged, mule, phase, c, events);
     if (dead) {
       mortality(staged, mule, phase, c, events);
+      //5ED20's odd-phase corpse body joins6A290 before its shared tail.
+      //Even-phase callbacks return earlier at5EED4 and preserve these bits.
+      if (phase & 1) n[0x4a] = n[0x4a]! & 0xfc;
       Object.assign(state, staged);
       Object.assign(rng, random);
       Object.assign(context.terrain, terrain);

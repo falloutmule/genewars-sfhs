@@ -49,6 +49,11 @@ bit4; operation1 (selector4) also clears Mule96 bit20 when unsigned state94
 is at least24. It uses current cell head→next order with no owner, health,
 species, distance, or corpse-eligibility filter.
 
+JSON may restore separate equal Mule native arrays in ecology and the retained
+creature pool. The shared helper validates their current numeric images agree,
+then clears only96bit20 in both held arrays. A mismatch rejects explicitly;
+the helper never copies stale movement, command or health fields between them.
+
 Selector13 subtracts unsigned native54 from raw Goop4A7 after the signed
 demolition timer write. This source quirk can increase the balance when
 the terminal timer is negative. Then selection presentation is cleared,

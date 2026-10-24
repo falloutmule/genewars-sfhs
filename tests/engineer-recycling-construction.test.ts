@@ -366,7 +366,7 @@ describe("native Engineer selector4 Recycling Plant construction", () => {
       ),
     ).toBe(checksum(w));
   });
-  it("keeps source44380 selector4 front-cell cleanup explicit before combat admission", () => {
+  it("admits the constructed selector4 nonlethal damage path without invoking retirement services", () => {
     const w = structuredClone(start.world),
       pack = structuredClone(start.pack);
     pack.rules!.tables.buildingNameIndices = Array(14).fill(0);
@@ -378,16 +378,24 @@ describe("native Engineer selector4 Recycling Plant construction", () => {
       height: 2048,
     });
     progressCampaignEngineerBuilding(w, start.pack, 0, 90, start.services);
-    const before = checksum(w);
-    expect(() =>
-      damageCampaignBuilding(w, pack, 0, 1, null, {
+    //The ordinary owner/slot pass publishes the newly constructed economy row.
+    stepCampaign(w, pack);
+    const health = w.buildings[0].health, count = w.players[0].completed[4],
+      stored = u32(w.buildingNative[0] as number[], 54), goop = w.players[0].goop;
+    const receipt = damageCampaignBuilding(w, pack, 0, 0, null, {
         effectOptions: () => ({
           gravity: 512,
           obstacleAt: () => false,
           cleanupReferences: cleanupCampaignReferences,
         }),
-      }),
-    ).toThrow(/Unadmitted source building damage/);
-    expect(checksum(w)).toBe(before);
+      });
+    expect(receipt.destroyed).toBe(false);
+    expect(receipt.clearedFrontReferences).toEqual([]);
+    expect(receipt.effectAllocations).toEqual([]);
+    expect(w.buildings[0].health).toBe(health);
+    expect(w.players[0].completed[4]).toBe(count);
+    expect(u32(w.buildingNative[0] as number[], 54)).toBe(stored);
+    expect(w.players[0].goop).toBe(goop);
+    expect(w.buildingNative[0][48]).toBe(11);
   });
 });

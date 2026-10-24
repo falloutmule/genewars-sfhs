@@ -55,6 +55,20 @@ Existing private complete callback fixtures match eighteen owned callbacks, incl
 
 Synthetic tests cover command authority, ignored versus rejected outcomes, atomic attachment failure, distinct plant reservation release masks, explicit target draw count, even-phase timers, fixed physics, operator-dependent food thresholds, negative-stage peer selection, natural birth retention, capacity failure and raw-height boundary/first-candidate behavior.
 
+The ordinary campaign now publishes a successful atomic ecology move into
+every retained canonical creature record immediately, then rebinds each
+ecology Mule to that record. This includes peer cleanup writes; the atomic
+wrapper clones the entire ecology, not just the commanded Mule. Cloned plant
+reservation changes stay installed as well. Both direct orders and queued
+waypoints use this host boundary. The move mechanics themselves are unchanged.
+Previously the following zone pass could adopt stale canonical bytes over the
+new order while the UI still reported success. Six host regressions cover real
+zone projection/adoption, both same-frame specialist command orders, peer
+cleanup, a later zone failure, atomic command rejection, queued continuation,
+JSON saves and full recorded-command replay. The existing failed private
+strategy and frozen runtime remain preserved; new-runtime continuation is
+reported separately. This fix does not establish canonical acceptance.
+
 The corpse extension adds eighteen complete existing source callback comparisons, including final retirement, with15,416 compared numeric bytes, matching RNG and matching terrain effects. Synthetic tests additionally cover rich-corpse nutrition and the code32 shared-pool factory. Its scope and fixture limits are recorded in [CORPSE_FEEDING.md](CORPSE_FEEDING.md).
 
 Explicit remaining boundaries: live hostile acquisition/combat/reaction and non-Mule species scorers; carrier/flight attachments; low-temperature damage/effect continuation; code11 effect escape; and the owned processing-building action when an actual completed selector2 or4 is found. These branches remain reason-bearing atomic failures. They are required before any run encountering them can pass. The implemented ordinary family and fixture comparisons do not establish whole Krell or all24 mission acceptance.

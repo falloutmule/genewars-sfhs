@@ -69,13 +69,12 @@ execution remains false:
 
 ## Explicit remaining boundaries
 
-Source44380 has a selector4-specific8B2A0(type1) front-cell cleanup before
-generic unlink/reference/count/mean retirement. The existing damage module
-still rejects selector4 before mutation. Construction and normal grade0
-processing are admitted; combat/destruction of this selector is not claimed.
-Neither the constructor43E30/44FF0 nor completion43F60 introduces that cleanup
-as a creation-side write. Higher-grade automatic collectors retain their
-existing required source factory boundary.
+Source44380's selector4-specific8B2A0(type1) front-cell cleanup is now bound at
+the actual damage retirement point before generic unlink/reference/count/mean
+retirement. [Selector4 damage](RECYCLING_DAMAGE.md) documents its separate
+source comparison and full host tests. Neither the constructor43E30/44FF0 nor
+completion43F60 introduces that cleanup as a creation-side write. Higher-grade
+automatic collectors retain their existing required source factory boundary.
 
 The source51E80 cancellation byte-decrements the shared job count even if the
 job has already retired in79220 while the actor still holds stage1/2. A cancel
