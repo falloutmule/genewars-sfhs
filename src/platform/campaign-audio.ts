@@ -1,5 +1,5 @@
 import type { Pack } from "../content/types";
-import type { AudioEventRequest } from "../sim/mechanics/audio";
+import type { AudioEventRequest, AudioRequest } from "../sim/mechanics/audio";
 import {
   allocateSourceAudioDescriptor,
   createSourceAudioAllocator,
@@ -76,44 +76,81 @@ export class CampaignAudio {
           this.applyRate(old.audio, r.ratePercent);
         continue;
       }
-      if (r.mode === 4) {
-        if (old) this.remove(old, true);
+      if (r.type === "if-playing-stop-play") {
+        //One97830 device snapshot controls both actions. Stop must not make
+        //a second query suppress the following play, or resolve into the journal.
+        if (
+          this.enabled &&
+          !this.suspended &&
+          old &&
+          !old.audio.ended &&
+          !old.audio.paused
+        ) {
+          this.consumePlay({
+            entity: r.entity,
+            cue: r.cue,
+            mode: 4,
+            parameter: 0,
+            range: null,
+            gain: 1,
+          });
+          this.consumePlay({
+            entity: r.entity,
+            cue: r.nextCue,
+            mode: 2,
+            parameter: r.nextParameter,
+            range: r.nextRange,
+            gain: r.nextGain,
+            ...(r.nextInitialRatePercent === undefined
+              ? {}
+              : { initialRatePercent: r.nextInitialRatePercent }),
+          });
+        }
         continue;
       }
-      if (!this.enabled || r.mode !== 2 || r.cue === 99) continue;
-      const sample = this.pack.audioProfile?.records.find(
-          (s) =>
-            s.cue === r.cue &&
-            s.formatIndex === this.pack.audioProfile!.preferredFormatIndex,
-        ),
-        src = sample ? this.pack.sounds[sample.key] : undefined;
-      if (!src || !sample) continue;
-      if (old && !old.audio.ended && (!old.audio.paused || this.suspended))
-        continue;
-      if (old) this.remove(old, true);
-      let slot: number | null = null;
-      if (this.classes) {
-        const descriptor: SourceAudioDescriptor = {
-          entity: r.entity,
-          cue: r.cue,
-          comparisonByte: Math.max(0, Math.min(127, Math.round(r.gain * 127))),
-          parameterByte: r.parameter & 255,
-          modeByte: r.mode & 255,
-          ratePercent: r.initialRatePercent ?? 100,
-          flags: 64,
-          mediaKey: sample.key,
-        };
-        slot = this.allocate(descriptor);
-        if (slot === null) continue;
-      }
-      this.start(
-        key,
-        src,
-        slot,
-        this.effectsVolume * r.gain,
-        r.initialRatePercent,
-      );
+      this.consumePlay(r);
     }
+  }
+  private consumePlay(r: Omit<AudioRequest, "sequence" | "frame">): void {
+    const key = r.entity + ":" + r.cue,
+      old = this.active.get(key);
+    if (r.mode === 4) {
+      if (old) this.remove(old, true);
+      return;
+    }
+    if (!this.enabled || r.mode !== 2 || r.cue === 99) return;
+    const sample = this.pack.audioProfile?.records.find(
+        (s) =>
+          s.cue === r.cue &&
+          s.formatIndex === this.pack.audioProfile!.preferredFormatIndex,
+      ),
+      src = sample ? this.pack.sounds[sample.key] : undefined;
+    if (!src || !sample) return;
+    if (old && !old.audio.ended && (!old.audio.paused || this.suspended))
+      return;
+    if (old) this.remove(old, true);
+    let slot: number | null = null;
+    if (this.classes) {
+      const descriptor: SourceAudioDescriptor = {
+        entity: r.entity,
+        cue: r.cue,
+        comparisonByte: Math.max(0, Math.min(127, Math.round(r.gain * 127))),
+        parameterByte: r.parameter & 255,
+        modeByte: r.mode & 255,
+        ratePercent: r.initialRatePercent ?? 100,
+        flags: 64,
+        mediaKey: sample.key,
+      };
+      slot = this.allocate(descriptor);
+      if (slot === null) return;
+    }
+    this.start(
+      key,
+      src,
+      slot,
+      this.effectsVolume * r.gain,
+      r.initialRatePercent,
+    );
   }
   consumeVoices(
     entries: readonly CampaignVoiceEntry[],

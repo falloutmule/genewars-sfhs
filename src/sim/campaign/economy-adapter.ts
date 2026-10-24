@@ -31,6 +31,12 @@ import {
   resetStagedCampaignPowerGenerated,
   stepStagedCampaignPowerProducer,
 } from "./power-producer-adapter";
+import {
+  hasNativeExtractorProfile,
+  refreshStagedCampaignExtractor,
+  stepStagedCampaignExtractor,
+  type ExtractorPresentationRequest,
+} from "./extractor-adapter";
 import { synchronizeCampaignLinks } from "./entity-view";
 import { i16, put16, put32, u16, u32 } from "./bytes";
 
@@ -107,7 +113,7 @@ function syncPlayers(w: CampaignWorld, state: EconomyState): void {
 }
 /** Mirror only the numeric fields actually owned by generic economy. Preserve
  * unrelated flags, incomplete native ANB and selector4 pending material51. */
-function syncBuilding(w: CampaignWorld, b: EconomyBuilding): void {
+function syncBuilding(w: CampaignWorld, b: EconomyBuilding, nativeExtractor = false): void {
   const slot = b.owner * 64 + b.slot,
     n = w.buildingNative[slot],
     physical = w.buildings.find((v) => v.slot === slot);
@@ -128,7 +134,7 @@ function syncBuilding(w: CampaignWorld, b: EconomyBuilding): void {
   if (b.selector === 11 && b.depleted) flags |= 0x300;
   put16(n as number[], 49, flags);
   physical.energy = b.energy;
-  if (!(flags & 0x800) && b.complete && b.extractor) {
+  if (!(flags & 0x800) && b.complete && b.extractor && !nativeExtractor) {
     const a = b.extractor;
     n[25] = b.grade + 1;
     n[26] = a.hold;
@@ -190,18 +196,29 @@ function syncOwnerStorage(
  * packet factory rolls back earlier deposits, retirement, RNG, audio and links.
  * The caller supplies real Genepod/incomplete callbacks through dispatchBuilding.
  * Do not run the former prefix/consumer/contact loop a second time. */
+export interface CampaignEconomyReceipt extends EconomyReceipt {
+  /** Ordered source requests; renderer admission/selection is not fabricated. */
+  nativeExtractorPresentations?: ExtractorPresentationRequest[];
+}
 export function stepCampaignEconomyBuildings(
   w: CampaignWorld,
   pack: Pack,
   services: CampaignRecyclingServices,
   contacts: CampaignEconomyContacts = {},
-): EconomyReceipt {
+): CampaignEconomyReceipt {
   if (!pack.economyRules || !pack.rules)
     throw Error("Original campaign economy rules required");
   const hooks = hooksFor(services.effectOptions(w)),
     staged = cloneEffectHost(w, hooks);
   const resolved = new Set(contacts.resolvedIds ?? []);
   const appliedProducerFactories = new Set<number>();
+  const nativeExtractor = hasNativeExtractorProfile(pack),
+    nativeExtractorPresentations: ExtractorPresentationRequest[] = [];
+  // Native upgrade/disable priors must also precede generic capacity admission.
+  if (nativeExtractor)
+    for (const b of staged.economy.buildings)
+      if (b.selector === 11)
+        refreshStagedCampaignExtractor(staged, b.owner * 64 + b.slot);
   const result = stepEconomyBuildings(
     staged.economy,
     {
@@ -209,6 +226,7 @@ export function stepCampaignEconomyBuildings(
       solarGeneration: staged.source.source.terrain.solarGeneration,
       packetSamples: [],
       contactResolvedBuildingIds: [...resolved],
+      ...(nativeExtractor ? { nativeExtractorCallbacks: true as const } : {}),
       services: {
         contactResolved: (_state, b) => resolved.has(b.id),
         beforeOwner(state, player) {
@@ -220,13 +238,15 @@ export function stepCampaignEconomyBuildings(
           syncPlayers(staged, state);
           if ([3, 6].includes(b.selector))
             refreshStagedCampaignPowerProducer(staged, b.owner * 64 + b.slot);
-          syncBuilding(staged, b);
+          if (nativeExtractor && b.selector === 11)
+            refreshStagedCampaignExtractor(staged, b.owner * 64 + b.slot);
+          syncBuilding(staged, b, nativeExtractor && b.selector === 11);
           //451F0 branches on0800 before producer work, upkeep or contacts.
           //The complete common callback is dispatched below in this same slot.
           if (u16(staged.buildingNative[b.owner * 64 + b.slot] as number[], 49) & 0x800)
             return;
           if (
-            extractorNeedsContact(
+            !nativeExtractor && extractorNeedsContact(
               b,
               player.goop,
               player.capacity,
@@ -265,6 +285,14 @@ export function stepCampaignEconomyBuildings(
           if (common) return true;
           if (u16(staged.buildingNative[b.owner * 64 + b.slot] as number[], 49) & 0x800)
             throw Error("Actual451F0 timed demolition callback is required");
+          if (nativeExtractor && b.selector === 11) {
+            const receipt = stepStagedCampaignExtractor(staged, b.owner * 64 + b.slot, pack, services);
+            if (!receipt.factoriesAlreadyApplied || !receipt.terrainAlreadyApplied)
+              throw Error("Native Extractor must publish its actual factories/terrain inline");
+            events.push(...receipt.events.filter(event => event.type !== "power-restored" && event.type !== "power-lost"));
+            nativeExtractorPresentations.push(...receipt.presentationRequests);
+            return true;
+          }
           if ([3, 6].includes(b.selector)) {
             const receipt = stepStagedCampaignPowerProducer(
               staged,
@@ -312,6 +340,8 @@ export function stepCampaignEconomyBuildings(
           }
           if ([3, 6].includes(b.selector))
             refreshStagedCampaignPowerProducer(staged, slot);
+          if (nativeExtractor && b.selector === 11)
+            refreshStagedCampaignExtractor(staged, slot);
           if (!b.complete && b.producer && ![3, 6].includes(b.selector)) {
             const n = staged.buildingNative[b.owner * 64 + b.slot];
             if (n.slice(25, 31).some((v) => v === null))
@@ -325,7 +355,7 @@ export function stepCampaignEconomyBuildings(
               counter: (n[30]! << 24) >> 24,
             };
           }
-          syncBuilding(staged, b);
+          syncBuilding(staged, b, nativeExtractor && b.selector === 11);
           syncPlayers(staged, state);
           const launches = events.filter((e) => e.type === "packet-launched");
           if (launches.length && !appliedProducerFactories.has(b.id)) {
@@ -363,5 +393,5 @@ export function stepCampaignEconomyBuildings(
     staged.terrain.bytes[cell * 14 + 13] = staged.economy.resources[cell];
   synchronizeCampaignLinks(staged);
   commitEffectHost(w, staged, hooks);
-  return result.receipt;
+  return nativeExtractor ? { ...result.receipt, nativeExtractorPresentations } : result.receipt;
 }

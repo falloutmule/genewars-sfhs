@@ -3,6 +3,7 @@ import type { Pack } from "../../content/types";
 import { campaignEntity } from "./entity-view";
 import type { SourceEntityId } from "./source-pools";
 import { stepCampaignEconomyBuildings } from "./economy-adapter";
+import { hasNativeExtractorProfile } from "./extractor-adapter";
 import {
   initializeCampaignBuildings,
   campaignBuildingAsset,
@@ -2026,7 +2027,7 @@ function specialistServices(pack: Pack): CampaignEngineerServices {
     },
   };
 }
-function syncNativeBindings(w: CampaignWorld): void {
+function syncNativeBindings(w: CampaignWorld, pack: Pack): void {
   // JSON saves preserve values, not object identity. Construction and ordinary
   // specialist travel must share the current motion explicitly after reload.
   for (const builder of w.builders)
@@ -2067,7 +2068,7 @@ function syncNativeBindings(w: CampaignWorld): void {
     native[63] = b.extraDrain;
     const flags = u16(native as number[], 49);
     put16(native as number[], 49, b.powered ? flags | 4 : flags & ~4);
-    if (!(flags & 0x800) && b.complete && b.extractor) {
+    if (!(flags & 0x800) && b.complete && b.extractor && !hasNativeExtractorProfile(pack)) {
       native[25] = 1;
       native[26] = b.extractor.hold;
       native[27] = b.extractor.frame;
@@ -2105,7 +2106,7 @@ export function stepCampaign(w: CampaignWorld, pack: Pack): void {
     //70B00/37870 runs on the current frame before1C120 consumes queued
     //commands and before the actor/economy/effect callbacks below.
     if (w.flags & 4) stepCampaignStrategy(w, pack, specialistServices(pack));
-    syncNativeBindings(w);
+    syncNativeBindings(w, pack);
     const ready = w.pending
       .filter((p) => p.frame <= w.frame)
       .sort((a, b) => a.sequence - b.sequence);
@@ -2222,7 +2223,7 @@ export function stepCampaign(w: CampaignWorld, pack: Pack): void {
         },
       },
     );
-    syncNativeBindings(w);
+    syncNativeBindings(w, pack);
     for (const e of economyReceipt.events)
       if (e.type === "audio") {
         const cue = {
@@ -2689,7 +2690,7 @@ export function stepCampaign(w: CampaignWorld, pack: Pack): void {
     for (const mule of w.ecology.mules)
       if (mule.native[6] !== 0)
         copySpatialLinks(w.spatial, mule.id, mule.native);
-    syncNativeBindings(w);
+    syncNativeBindings(w, pack);
     {
       w.result.players = w.players.map((p) => p.raw.slice());
       Object.assign(w.result.context, {

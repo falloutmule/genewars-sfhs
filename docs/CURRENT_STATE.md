@@ -1,5 +1,22 @@
 # Current direct-conversion state — 24 October 2026
 
+## Checkpoint — complete Extractor family and conditional audio proof (Hermes, DeepSeek V4.1 Flash 1017)
+
+Interrupted-after-Codex work resumed and completed. **Canonical acceptance remains 0/24.**
+
+**Extractor11 is now one complete reusable mechanic family.** Additive `extractorRules` profile (schema-versioned, `contactOffset`, per-grade `frameHolds`, provenance with executable hash and per-grade ANB geometry) admits the full native callback; grade-zero/older packs keep their separately bounded legacy profile and no new profile is synthesized. The callback owns, in source order, upkeep/energy drain, powered-state and warning transitions, ordered conditional work audio, cycle counting, grade resource harvest, terrain byte13 depletion through the standalone mineral pass with row-major dirty points, foreign-before-own contact chains with alliance masks and `virtual+68` exclusion, in-place contact damage, smoke6 publication with retained native priors, capacity refresh, exhaustion/empty handling with footprint-keyed cue pitch, and building-queue and terrain-dirty presentation requests. `nativeExtractorCallbacks` marks explicit native11 ownership so the legacy economy validator no longer double-admits the row, and a missing handler fails closed.
+
+**Fixture correction, disclosed:** the new extractor fixture inherited the synthetic grade-zero `workDelay: 1`, which the admitted callback rejects because `base − grade` must stay positive for grade 2. It now uses `5`, the value `tools/import-original/economy_profile.py` actually emits, cited in the fixture. No assertion, expected hash or skip was changed.
+
+**Conditional audio proof:** playback-device availability stays outside authoritative simulation state. Ordered `if-playing-stop-play` requests are presentation-only; the proof covers live, missing and already-ended consumers and asserts identical authoritative state, RNG, saves and the headless sealed replay in every case.
+
+**Verification at this checkpoint:** Extractor-focused 34/34 (adapter 9 including grade0/1/2 priors, contact chains, alliance masks, smoke and ordered journal, late-mineral rollback with alias preservation, running/empty save continuation, absent-profile refusal; material 3; native 11; profile 11). Conditional audio 10/10. Full TypeScript suite **1637 tests across 152 suites, all passing** (previous baseline 1593/146 — increased, not decreased). Importer **116 tests OK, 3 skipped** (baseline 109). `tsc --noEmit` clean. Leak check pass: 504 public files scanned, 255 private hashes compared, no failures. Single heavyweight job at a time; no browser or campaign job ran concurrently.
+
+**Unchanged and preserved:** the sealed frame-15,585 save, the frame-20,933 valid prefix and its separately preserved failed attempted world, all `.private` receipts. Nothing was reset, cleaned, stashed or pushed.
+
+**Next executable task:** resolve the frame-20,933 Mule mortality cleanup guard as a reusable creature lifecycle/cleanup family, then resume the sealed campaign continuation to a new child artifact.
+
+
 ## Active continuous conversion
 
 **Canonical acceptance remains 0/24.** Work continues in the existing repository from preserved baseline `34bc4b2`. Local importer commits `989591c` and `f28bf46` precede campaign checkpoint `720fe18`. No original assets or private builds are committed; nothing has been pushed or published. The preservation archive remains read-only evidence.

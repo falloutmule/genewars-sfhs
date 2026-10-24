@@ -166,6 +166,9 @@ export interface EconomyContext {
   /** Contact queries/damage are host work. Every harvesting callback must have
    * its ordered contact pass resolved before this family can commit. */
   contactResolvedBuildingIds: readonly number[];
+  /** Explicit full native11 ownership. Its callback must handle every11 row;
+   * the separately admitted native profile replaces legacy ANB validation. */
+  nativeExtractorCallbacks?: true;
   /** Already-isolated host services. They receive this callback's mutable
    * economy afterimage; they must not publish it before the family succeeds. */
   services?: EconomyPhaseServices;
@@ -412,7 +415,7 @@ function invalidInput(
       return "invalid-economy-building";
     ids.add(b.id);
     slots.add(key);
-    if (admitBuildingCallbacks && b.selector === 11 && b.complete) {
+    if (admitBuildingCallbacks && b.selector === 11 && b.complete && !context.nativeExtractorCallbacks) {
       const a = b.extractor;
       const holds = rules.extractor.frameHolds[b.grade];
       if (
@@ -565,7 +568,10 @@ function runEconomyPhase(
       const eventStart = events.length;
       context.services?.beforeBuilding?.(state, building, player);
       let reason: EconomyReason;
-      if (context.services?.buildingCallback?.(state, building, player, events))
+      const handled = context.services?.buildingCallback?.(state, building, player, events);
+      if (context.nativeExtractorCallbacks && building.selector === 11 && !handled)
+        throw Error("Admitted native Extractor callback must handle its complete row");
+      if (handled)
         reason = "host-consumer-callback-complete";
       else if (!building.complete) reason = "under-construction";
       else if (building.selector === 3 || building.selector === 6) {

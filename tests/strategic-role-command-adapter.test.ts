@@ -224,7 +224,7 @@ describe("staged strategic specialist command host", () => {
     expect(
       w.audio.requests
         .filter((r) => r.sequence >= sequence)
-        .map((r) => (r.type === "playback-rate" ? -1 : [r.cue, r.mode])),
+        .map((r) => (r.type === undefined || r.type === "play" ? [r.cue, r.mode] : r.type)),
     ).toEqual([
       [87, 4],
       [86, 4],

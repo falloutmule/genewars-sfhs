@@ -37,7 +37,7 @@ import {
   synchronizeCampaignLinks,
 } from "./entity-view";
 import { synchronizeCampaignPlantCounts } from "./ecology-adapter";
-import { requestAudio } from "../mechanics/audio";
+import { requestAudio, type AudioRequest } from "../mechanics/audio";
 import { animationProfile } from "../mechanics/animation";
 import { worldCell } from "../mechanics/terrain";
 import { i16, put16 } from "./bytes";
@@ -243,12 +243,12 @@ export function campaignBotanistContext(
       const last = [...s.audio.requests]
         .reverse()
         .find(
-          (r) =>
-            r.type !== "playback-rate" &&
+          (r): r is AudioRequest =>
+            (r.type === undefined || r.type === "play") &&
             r.entity === `source:2:${index}` &&
             r.cue === cue,
         );
-      return last?.type !== "playback-rate" && last?.mode === 2;
+      return last?.mode === 2;
     },
   };
 }

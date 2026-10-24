@@ -17,6 +17,7 @@ import { insertSpatial, validateSpatial } from "../src/sim/campaign/spatial";
 import { put16, put32, u16, u32 } from "../src/sim/campaign/bytes";
 import { worldCell } from "../src/sim/mechanics/terrain";
 import { checksum } from "../src/sim/checksum";
+import type { AudioRequest } from "../src/sim/mechanics/audio";
 import {
   loadCampaign,
   saveCampaign,
@@ -177,7 +178,7 @@ describe("owned scheduled plant reproduction", () => {
     expect(f.w.powerEffects.slots.filter((s) => s.occupied)).toHaveLength(2);
     expect(
       f.w.audio.requests
-        .filter((q) => q.type !== "playback-rate")
+        .filter((q): q is AudioRequest => q.type === undefined || q.type === "play")
         .map((q) => [
           q.entity,
           q.cue,

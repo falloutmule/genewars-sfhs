@@ -12,6 +12,7 @@ from sources import Source, digest, sha
 from startup import parse_startup, validate_blueprint_names
 from rules import import_rules
 from economy_profile import import_economy_rules, SOURCE_VERSION
+from extractor_profile import import_extractor_rules
 from ecology_profile import import_ecology_rules
 from packed4 import anb_packed4
 from audio_profile import import_audio_profile, extract_audio_waves
@@ -98,9 +99,11 @@ def run(source_path, out_path):
         texts = codec.unpack(read(source.find('DATA/TEXT/ENG/TEXT.DAT'))).split(b'\0')
         decoded_texts = [text.decode('cp437') for text in texts[:604]]
         validate_blueprint_names(texts[:128])
+        decoded_bmine = codec.unpack(read(source.find('DATA/BUILDING/BMINE.ANB')))
         economy_rules = import_economy_rules(
-            codec.unpack(read(source.find('DATA/BUILDING/BMINE.ANB'))),
+            decoded_bmine,
             executable_sha256=exe_hash, source_version=SOURCE_VERSION)
+        extractor_rules = import_extractor_rules(source.read(executable), decoded_bmine)
         if len(decoded_texts) != 604:
             raise ValueError('English text table must contain at least 604 entries')
         for number in range(1, 25):
@@ -159,7 +162,7 @@ def run(source_path, out_path):
         unknown += [{'path': 'campaign', 'reason': '24 maps imported; mission runtime predicates, AI, carry and acceptance incomplete'},
                     {'path': 'music', 'reason': 'CD audio tracks are not yet extracted'},
                     {'path': 'fonts', 'reason': 'font glyph import not yet integrated; readable system UI font used'}]
-        pack = {'schemaVersion': 2, 'importerVersion': VERSION, 'kind': 'original-private', 'rules': rules, 'economyRules': economy_rules, 'ecologyRules': ecology_rules,
+        pack = {'schemaVersion': 2, 'importerVersion': VERSION, 'kind': 'original-private', 'rules': rules, 'economyRules': economy_rules, 'extractorRules': extractor_rules, 'ecologyRules': ecology_rules,
                 'source': {'variant': 'QA BETA V5 candidate; retail equivalence unresolved', 'sha256': source.source_hash,
                            'executableSha256': exe_hash},
                 'manifest': sorted(manifest, key=lambda x: x['path']), 'missions': missions,

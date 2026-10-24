@@ -8,6 +8,7 @@ import { CreatureCommandRulesSchema } from "./creature-command";
 import { SpecialistRecruitmentRulesSchema } from "./specialist-recruitment";
 import { ShepherdRulesSchema } from "./shepherd";
 import { EconomyRulesSchema } from "./economy";
+import { ExtractorRulesSchema } from "./extractor";
 import { EcologyRulesSchema } from "./ecology";
 import { AudioProfileSchema } from "./audio";
 import { SpecialistVoiceProfileSchema } from "./specialist-voice";
@@ -117,6 +118,7 @@ export const PackSchema = z
     specialistRecruitmentRules: SpecialistRecruitmentRulesSchema.optional(),
     shepherdRules: ShepherdRulesSchema.optional(),
     economyRules: EconomyRulesSchema.optional(),
+    extractorRules: ExtractorRulesSchema.optional(),
     ecologyRules: EcologyRulesSchema.optional(),
     effectRules: z
       .object({
