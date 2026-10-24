@@ -7,7 +7,7 @@
  * Usage: node tests/browser/madami.mjs [saveFile]
  */
 import { chromium } from "playwright-core";
-import { existsSync, mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -159,7 +159,9 @@ if (process.env.MADAMI_PLAY) {
         .getByRole("button", { name: new RegExp(`^${label} ·`) })
         .click();
       const at = await page.evaluate(([px, py]) => window.CR.project(px, py), [x, y]);
-      if (!at) continue;
+      // An off-canvas projection cannot be tapped; skip it rather than tap void.
+      if (!at || at.x < 0 || at.x > viewport.width || at.y < 0 || at.y > viewport.height)
+        continue;
       if (viewport.width < 1000) await page.touchscreen.tap(at.x, at.y);
       else await page.mouse.click(at.x, at.y);
       const notice = await page.evaluate(
@@ -178,67 +180,99 @@ if (process.env.MADAMI_PLAY) {
     return "no-site";
   };
 
-  // The base sits at cell (64.5, 109.5) on a 128x128 map. First build the
-  // Recycling Plants that raise capacity and income, then Extractors.
+  // The cells immediately around the base (64.5, 109.5) are too cramped for a
+  // plant footprint: the order is accepted and the Engineer walks out, then the
+  // task is dropped silently (n130 0, n126 255, no job, no funds charged).
+  // Open ground to the north-east works: measured at (80.5, 90.5) the build
+  // starts (stage 5), charges 238 of 800 funds and completes. Candidates are
+  // therefore spread over open terrain, nearest-usable first.
   const RECYCLE_SITES = [
-    [64.5, 108.5], [65.5, 108.5], [64.5, 107.5], [65.5, 107.5],
-    [63.5, 108.5], [66.5, 108.5], [63.5, 107.5], [66.5, 107.5],
+    [80.5, 90.5], [82.5, 88.5], [78.5, 88.5], [82.5, 92.5],
+    [78.5, 92.5], [84.5, 90.5], [76.5, 90.5], [80.5, 86.5],
+    [80.5, 94.5], [72.5, 100.5],
   ];
   const EXTRACTOR_SITES = [
-    [67.5, 108.5], [67.5, 107.5], [62.5, 108.5], [62.5, 107.5],
+    [84.5, 86.5], [76.5, 86.5], [84.5, 94.5], [76.5, 94.5],
+    [72.5, 104.5], [88.5, 90.5],
   ];
 
-  const steps = [];
-  for (let i = 0; i < 4; i++) {
-    steps.push({
-      label: "Recycling Plant",
-      selector: 4,
-      outcome: await buildAt("Recycling Plant", 4, RECYCLE_SITES, i + 1),
-    });
-  }
-  for (let i = 0; i < 2; i++) {
-    steps.push({
-      label: "Extractor",
-      selector: 11,
-      outcome: await buildAt("Extractor", 11, EXTRACTOR_SITES, i + 1),
-    });
-  }
-
-  // Let the economy run: construction completes and GOOP accumulates.
-  await page.evaluate(() => window.CR.advanceCampaign(2400));
-  const after = await readState();
-  console.log(JSON.stringify({ steps, after, errors }));
-
-  // Export the segment save for the next run, the way a player would.
-  await page.getByRole("button", { name: "Save / load", exact: true }).click();
-  await page.evaluate(() => {
-    const original = URL.createObjectURL.bind(URL);
-    URL.createObjectURL = (blob) => {
-      if (blob.type === "application/json") window.__madamiSaveText = blob.text();
-      return original(blob);
-    };
-  });
-  const saveDownload = page.waitForEvent("download").catch(() => null);
-  await page
-    .getByRole("button", { name: "Export campaign save", exact: true })
-    .click();
-  const saveEvent = await saveDownload;
-  const saveFailure = saveEvent ? await saveEvent.failure() : "no-event";
   const outPath = resolve(
     process.env.MADAMI_OUT || resolve(out, "915-madami-segment1.json"),
   );
-  if (saveEvent && saveFailure === null) await saveEvent.saveAs(outPath);
-  else writeFileSync(outPath, await page.evaluate(() => window.__madamiSaveText));
-  const saved = JSON.parse(readFileSync(outPath, "utf8"));
-  console.log(
-    JSON.stringify({
-      madamiSave: outPath,
-      saveFailure,
-      bytes: readFileSync(outPath).length,
-      missionId: saved.missionId ?? saved.world?.missionId ?? null,
-      goop: saved.world?.players?.[0]?.goop ?? saved.players?.[0]?.goop ?? null,
-    }),
-  );
+  // Export after every completed build: a 420s run can die mid-segment and a
+  // fresh browser context has no IndexedDB, so an unexported build is lost.
+  const exportSave = async (tag) => {
+    await page.getByRole("button", { name: "Save / load", exact: true }).click();
+    await page.evaluate(() => {
+      const original = URL.createObjectURL.bind(URL);
+      URL.createObjectURL = (blob) => {
+        if (blob.type === "application/json") window.__madamiSaveText = blob.text();
+        return original(blob);
+      };
+    });
+    const download = page.waitForEvent("download").catch(() => null);
+    await page
+      .getByRole("button", { name: "Export campaign save", exact: true })
+      .click();
+    const evt = await download;
+    const failure = evt ? await evt.failure() : "no-event";
+    if (evt && failure === null) await evt.saveAs(outPath);
+    else writeFileSync(outPath, await page.evaluate(() => window.__madamiSaveText));
+    const saved = JSON.parse(readFileSync(outPath, "utf8"));
+    console.log(
+      JSON.stringify({
+        exported: tag,
+        path: outPath,
+        failure,
+        bytes: readFileSync(outPath).length,
+        missionId: saved.missionId ?? saved.world?.missionId ?? null,
+        goop: saved.world?.players?.[0]?.goop ?? saved.players?.[0]?.goop ?? null,
+        completed: saved.world?.players?.[0]?.completed ?? saved.players?.[0]?.completed ?? null,
+      }),
+    );
+    // Close the dialog so the next build can continue: the open dialog's
+    // backdrop intercepts pointer events and every later click times out.
+    const dialog = page.getByRole("dialog").first();
+    await dialog
+      .getByRole("button", { name: "Resume", exact: true })
+      .first()
+      .click()
+      .catch(async () => {
+        await page.keyboard.press("Escape").catch(() => {});
+      });
+    // Verify the backdrop is gone before returning.
+    await page
+      .locator("div[role=dialog]")
+      .first()
+      .waitFor({ state: "hidden", timeout: 10000 })
+      .catch(() => {});
+  };
+
+  const steps = [];
+  const plantCeiling = Number(process.env.MADAMI_PLANTS || 4);
+  for (let i = 0; i < plantCeiling; i++) {
+    const outcome = await buildAt("Recycling Plant", 4, RECYCLE_SITES, i + 1);
+    steps.push({ label: "Recycling Plant", selector: 4, outcome });
+    if (outcome === "built" || outcome === "already-built") await exportSave(`plant-${i + 1}`);
+    if (outcome === "locked" || outcome === "no-site" || outcome === "no-engineer") break;
+    if (process.env.MADAMI_PLANTS_ONLY) continue;
+  }
+  // Extractors cost 650 and the plants only leave ~86 funds, so they are
+  // deferred until recycling income accrues in a later segment.
+  if (!process.env.MADAMI_PLANTS_ONLY) {
+    for (let i = 0; i < 2; i++) {
+      const outcome = await buildAt("Extractor", 11, EXTRACTOR_SITES, i + 1);
+      steps.push({ label: "Extractor", selector: 11, outcome });
+      if (outcome === "built") await exportSave(`extractor-${i + 1}`);
+      if (outcome === "locked" || outcome === "no-site" || outcome === "no-engineer") break;
+    }
+  }
+
+  // Let the economy run: construction completes and GOOP accumulates.
+  await page.evaluate(() => window.CR.advanceCampaign(1200));
+  const after = await readState();
+  console.log(JSON.stringify({ steps, after, errors }));
+  await exportSave("final");
 }
 
 await context.close();
