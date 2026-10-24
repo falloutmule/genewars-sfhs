@@ -25,21 +25,16 @@ import {
 } from "../mechanics/specialist-motion";
 import { ecologyTerrainClass } from "../mechanics/ecology";
 import { nextRandom } from "../mechanics/random";
-import { createLanding } from "../mechanics/landing";
 import { groundHeight, worldCell } from "../mechanics/terrain";
 import { effectTerrainShade } from "../mechanics/power-motion";
-import { animationProfile } from "../mechanics/animation";
-import { requestAudio } from "../mechanics/audio";
 import {
   bindCampaignStrategicState,
   publishCampaignStrategicState,
 } from "./strategic-state";
 import { campaignQueryEntities, synchronizeCampaignLinks } from "./entity-view";
 import { insertSpatial } from "./spatial";
-import {
-  allocateStagedSharedEffect,
-  publishStagedSharedEffect,
-} from "./effect-scheduler";
+import { createStagedCampaignRecruitmentLanding } from "./recruitment-landing-adapter";
+import type { HumanLandingRequest } from "../mechanics/human-roster";
 import {
   campaignSpecialistMotionContext,
   cancelStagedCampaignSpecialistWork,
@@ -81,7 +76,7 @@ function checkHost(w: CampaignWorld, s: StrategicAIState): void {
       "Strategic recruit requires the actual retained campaign state",
     );
 }
-function project(
+export function projectCampaignSpecialist(
   w: CampaignWorld,
   slot: number,
   ready: boolean,
@@ -161,15 +156,29 @@ function create(
   pack: Pack,
 ) {
   checkHost(w, s);
+  createStagedCampaignSpecialist(w, request, pack);
+  s.specialists[request.slot].blueprint = {
+    player: request.player,
+    index: request.blueprint,
+  };
+  return request;
+}
+/**Actual4FD30 only; shared by explicit human packets and the AI wrapper.
+ * Caller owns BP bit/roster append and any subsequent80830/56E20 writes. */
+export function createStagedCampaignSpecialist(
+  w: CampaignWorld,
+  request: StrategicSpecialistFactoryRequest,
+  pack: Pack,
+) {
   if (!pack.rules)
     throw Error("Original strategic specialist resource tables required");
-  const held = s.specialists[request.slot].native;
+  const held = w.specialists.records[request.slot];
   if (aiByte(held, 6) !== 0)
     throw Error("Strategic specialist factory slot is already active");
   const point = w.specialistOrigin,
     result = initializeSpecialistNative(
       held,
-      s.players[request.player],
+      w.players[request.player].raw,
       {
         slot: request.slot,
         blueprintIndex: request.blueprint,
@@ -184,11 +193,7 @@ function create(
   ensureResource(pack, result.binding.assetKey);
   held.splice(0, held.length, ...result.native);
   w.specialists.bindings[request.slot] = result.binding;
-  s.specialists[request.slot].blueprint = {
-    player: request.player,
-    index: request.blueprint,
-  };
-  project(w, request.slot, false);
+  projectCampaignSpecialist(w, request.slot, false);
   return request;
 }
 function placement(
@@ -297,7 +302,7 @@ export function activateStagedCampaignSpecialists(
     raw[bp + 32] = aiByte(raw, bp + 32) | 2;
     put32(raw, bp + 28, (u32(raw, bp + 28) + 1) >>> 0);
     if (u32(raw, bp + 28) === 1 && aiByte(raw, bp + 22) === 1) n[114] = 40;
-    project(w, slot, true);
+    projectCampaignSpecialist(w, slot, true);
     activated.push(slot);
   }
   put32(raw, 0x49d, (u32(raw, 0x49d) + 1) >>> 0);
@@ -315,15 +320,95 @@ function landing(
   events: CampaignRecruitEvent[],
 ) {
   checkHost(w, s);
+  createStagedCampaignRosterLanding(
+    w,
+    {
+      routine: 0x80830,
+      player: request.player,
+      deployment: 1,
+      associatedBuilding: null,
+    },
+    pack,
+    services,
+    events,
+  );
+  for (let slot = request.player * 5; slot < request.player * 5 + 5; slot++) {
+    const binding = w.specialists.bindings[slot];
+    s.specialists[slot].blueprint = binding
+      ? { player: binding.owner, index: binding.blueprintIndex }
+      : null;
+  }
+  return request;
+}
+/**Actual80830, shared by AI and explicit human10. No AI selection/admission.
+ * Its prefix commits on a genuine capacity false; a missing concrete service
+ * throws to the enclosing full-host transaction. */
+/**20880/80830's actual signed-word addition; profile required only on use. */
+export function campaignAssociatedRecruitmentPoint(
+  w: CampaignWorld,
+  slot: number,
+  pack: Pack,
+): Point {
+  const building = w.buildingNative[slot],
+    profile = pack.specialistRecruitmentRules;
+  if (!building || aiByte(building, 6) !== 4)
+    throw Error("Actual recruitment associated building required");
+  if (
+    !profile ||
+    profile.schemaVersion !== 1 ||
+    profile.provenance.originalExecution !== false ||
+    !profile.provenance.executableSha256.trim() ||
+    profile.associatedLandingOffset.length !== 2 ||
+    profile.associatedLandingOffset.some(
+      (v) => !Number.isInteger(v) || v < -32768 || v > 32767,
+    )
+  )
+    throw Error(
+      "Actual associated recruitment landing offset/profile required",
+    );
+  return [
+    ((aiSWord(building, 7) + profile.associatedLandingOffset[0]) << 16) >> 16,
+    ((aiSWord(building, 9) + profile.associatedLandingOffset[1]) << 16) >> 16,
+  ];
+}
+export function createStagedCampaignRosterLanding(
+  w: CampaignWorld,
+  request: HumanLandingRequest,
+  pack: Pack,
+  services: CampaignSpecialistServices,
+  events: CampaignRecruitEvent[] = [],
+): boolean {
   if (!pack.rules)
     throw Error("Original landing specialist resources required");
-  const raw = s.players[request.player],
-    point: Point = [aiSWord(raw, 9), aiSWord(raw, 11)];
-  //80830(-1) prefix executes even when the later48790 capacity attempt fails.
+  const raw = w.players[request.player].raw,
+    building =
+      request.associatedBuilding === null
+        ? null
+        : w.buildingNative[request.associatedBuilding];
+  if (
+    request.associatedBuilding !== null &&
+    (!building || aiByte(building, 6) !== 4)
+  )
+    throw Error("Actual80830 associated building required");
+  let associatedPoint: Point | null = null;
+  const buildingPoint = (): Point => {
+    if (associatedPoint) return associatedPoint;
+    associatedPoint = campaignAssociatedRecruitmentPoint(
+      w,
+      request.associatedBuilding!,
+      pack,
+    );
+    return associatedPoint;
+  };
+  //Prefix uses rawtarget for unassociated actors, even when7F3B0 later uses
+  //the special mission point. Associated offsets are read only when consumed.
   for (let slot = request.player * 5; slot < request.player * 5 + 5; slot++) {
-    const n = s.specialists[slot].native;
+    const n = w.specialists.records[slot];
     if (!aiByte(n, 6) || aiByte(n, 112) & 1) continue;
     n[113] = aiByte(n, 113) | 4;
+    const point: Point = building
+      ? buildingPoint()
+      : [aiSWord(raw, 9), aiSWord(raw, 11)];
     put16(n as number[], 7, point[0]);
     put16(n as number[], 9, point[1]);
     n[22] = aiByte(n, 22) | 8;
@@ -331,14 +416,10 @@ function landing(
     ensureResource(pack, initialized.binding.assetKey);
     n.splice(0, n.length, ...initialized.native);
     w.specialists.bindings[slot] = initialized.binding;
-    s.specialists[slot].blueprint = {
-      player: request.player,
-      index: initialized.binding.blueprintIndex,
-    };
     n[27] = n[29] = 0;
     n[28] = 1;
     n[25] = 8;
-    project(w, slot, false);
+    projectCampaignSpecialist(w, slot, false);
   }
   const special = aiDword(w.missionPrefix, 0x1ec2);
   if (aiByte(raw, 2) === 0 && w.frame === 0 && special !== 0) {
@@ -356,51 +437,58 @@ function landing(
       slots: out.activated,
       immediate: true,
     });
-    return request;
+    return true;
   }
-  if (aiByte(raw, 2) === 0 && special !== 0)
-    throw Error(
-      "Source7F3B0 parameter1 requires actual selector64 factory-return family",
-    );
   if (
     aiWord(w.missionPrefix, 0x3554) !==
     w.powerEffects.slots.filter((p) => p.occupied).length
   )
     throw Error("Actual48790 shared pool count differs from retained slots");
-  const heldPriors = w.powerEffects.slots.map((p) => p.nativePrior),
-    slot = allocateStagedSharedEffect(w, 49, pack, services.effectOptions(w));
-  if (slot === null) {
+  const parameter = !building && aiByte(raw, 2) === 0 && special !== 0 ? 1 : 0,
+    point: Point = building
+      ? buildingPoint()
+      : parameter
+        ? [aiSWord(w.missionPrefix, 0x1c9a), aiSWord(w.missionPrefix, 0x1c9c)]
+        : [aiSWord(raw, 9), aiSWord(raw, 11)],
+    height = building
+      ? (aiDword(building, 17) + 0x6400) | 0
+      : groundHeight(w.terrain, ...point) + 0x6400,
+    created = createStagedCampaignRecruitmentLanding(
+      w,
+      {
+        owner: request.player,
+        position: point,
+        height,
+        parameter,
+        parentBuilding: request.associatedBuilding,
+      },
+      pack,
+      services.effectOptions(w),
+    );
+  if (created === null) {
     events.push({ type: "landing-capacity", owner: request.player });
-    return request;
+    return false;
   }
-  if (!pack.assets.EFF) throw Error("Original EFF landing resource required");
-  animationProfile(pack.assets.EFF, 49);
-  const prior = w.powerEffects.slots[slot].nativePrior!,
-    held = heldPriors[slot]!,
-    created = createLanding(request.player, point, w.terrain, slot, prior);
-  if (!created.native)
-    throw Error("Actual landing factory native afterimage required");
-  publishStagedSharedEffect(w, slot, created.native);
-  //The allocator/publisher can hold prior aliases: retain this slot record too.
-  held.splice(0, held.length, ...w.powerEffects.slots[slot].nativePrior!);
-  w.powerEffects.slots[slot].nativePrior = held;
-  created.native = held;
-  w.landings.push(created);
-  requestAudio(w.audio, {
-    frame: w.frame,
-    entity: `source:4:${slot}`,
-    cue: 0x50,
-    mode: 2,
-    parameter: 255,
-    gain: 127,
-    range: 180,
-  });
-  put16(raw, 0x496, slot);
-  raw[0x498] = 5;
-  if (request.player === w.selectedPlayer) revealCampaignRadius(w, point, 4096);
+  put16(raw, 0x496, created.returned.slot);
+  raw[0x498] = created.returned.kind;
+  const carrier = w.powerEffects.slots[created.returned.slot].nativePrior!;
+  if ((building ? aiByte(building, 24) : request.player) === w.selectedPlayer)
+    revealCampaignRadius(w, [aiSWord(carrier, 7), aiSWord(carrier, 9)], 4096);
+  if (building) {
+    const owner = aiByte(building, 24),
+      target = w.players[owner]?.raw;
+    if (!target)
+      throw Error("Actual associated building owner player required");
+    put16(target, 9, point[0]);
+    put16(target, 11, point[1]);
+  }
   synchronizeCampaignLinks(w);
-  events.push({ type: "landing-created", owner: request.player, slot });
-  return request;
+  events.push({
+    type: "landing-created",
+    owner: request.player,
+    slot: created.returned.slot,
+  });
+  return true;
 }
 /**Install inside the same staged host as bindCampaignStrategicState. */
 export function campaignStrategicRecruitServices(

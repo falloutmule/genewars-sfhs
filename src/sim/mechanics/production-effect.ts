@@ -24,6 +24,7 @@ import {
   validateEffectNativePrior,
   type EffectNativePrior,
 } from "./power-motion";
+import type { DestructionChildRequest } from "./destruction-effect";
 
 export interface ProductionEffectContext {
   frame: number;
@@ -42,7 +43,7 @@ export type ProductionEffectQuery =
       type: "water-material";
       point: [number, number];
       material: number;
-      response: false | null;
+      response: boolean | null;
     };
 export interface ProductionEffectUpdate {
   native: EffectNativePrior;
@@ -124,11 +125,25 @@ export function stepEconomyEffectRecord(
 ): ProductionEffectUpdate {
   return stepCommonEffectRecord(before, terrain, c, code);
 }
+/** Selector64/0x40 uses the same flags0 numeric motion as32, with the
+ * concrete movable/water virtuals. Its mode6 retirement belongs to its caller. */
+export interface RecruitmentMarkerMotionContext extends ProductionEffectContext {
+  obstacleTarget?(point: [number, number], height: number):
+    { position: [number, number]; ground: number } | null;
+  child?(request: DestructionChildRequest, parent: EffectNativePrior): boolean;
+}
+export function stepRecruitmentMarkerMotion(
+  before: readonly (number | null)[],
+  terrain: TerrainState,
+  c: RecruitmentMarkerMotionContext,
+): ProductionEffectUpdate {
+  return stepCommonEffectRecord(before, terrain, c, 64);
+}
 function stepCommonEffectRecord(
   before: readonly (number | null)[],
   terrain: TerrainState,
   c: ProductionEffectContext,
-  code: 7 | 8 | 10 | 26 | 32 | 51 | 60 | 61,
+  code: 7 | 8 | 10 | 26 | 32 | 51 | 60 | 61 | 64,
 ): ProductionEffectUpdate {
   validateEffectNativePrior(before);
   if (
@@ -168,7 +183,7 @@ function stepCommonEffectRecord(
   if (
     p.flags !== 0 ||
     p.holds.length !== frames ||
-    p.holds.some((h) => h !== (code === 26 ? 1 : 0)) ||
+    p.holds.some((h) => h !== (code === 26 || code === 64 ? 1 : 0)) ||
     p.last - p.first !== frames - 1
   )
     throw new Error(
@@ -186,7 +201,7 @@ function stepCommonEffectRecord(
   if (
     byte(n, 6) !== 5 ||
     byte(n, 69) !== code ||
-    (word(n, 21) & ~1) !== (code === 32 ? 0 : 0x20) ||
+    (word(n, 21) & ~1) !== (code === 32 || code === 64 ? 0 : 0x20) ||
     word(n, 63) !== -1 ||
     word(n, 51) !== 0 ||
     word(n, 53) !== 0 ||
@@ -204,7 +219,7 @@ function stepCommonEffectRecord(
     vy = word(before, 47),
     vz = wrap16(
       word(before, 49) +
-        wrap16(word(before, 55) - (code === 32 ? c.gravity : 0)),
+        wrap16(word(before, 55) - (code === 32 || code === 64 ? c.gravity : 0)),
     );
   const fixed = (axis: number, speed: number) =>
     (((axis ? y : x) << 16) + (fractions[axis] << 8) + (speed << 10)) | 0;
@@ -302,14 +317,32 @@ function stepCommonEffectRecord(
     (c.frame + (id & 255)) & 1 &&
     ((dword(n, 39) - dword(n, 17)) | 0) > 0
   ) {
-    if (!c.obstacleAt)
+    const marker = c as RecruitmentMarkerMotionContext;
+    if (code === 64 && !marker.obstacleTarget)
+      throw new Error("Recruitment64 source74270 target query required");
+    if (code !== 64 && !c.obstacleAt)
       throw new Error("Production effect source74270 obstacle query required");
+    const target = code === 64 ? marker.obstacleTarget!([...at], dword(n, 39)) : null;
     queries.push({
       type: "obstacle",
       point: [...at],
       mask: 1,
-      found: c.obstacleAt([...at]),
+      found: code === 64 ? target !== null : c.obstacleAt!([...at]),
     });
+    if (target) {
+      const dx = wrap16((word(n, 7) - target.position[0]) * 2),
+        dy = wrap16((word(n, 9) - target.position[1]) * 2),
+        xy = integerSqrt((Math.imul(dx >> 1, dx >> 1) + Math.imul(dy >> 1, dy >> 1)) >>> 0),
+        m = createMotion(0, 0, 0, 0);
+      m.yaw = originalAngle(dx, dy, c.tables.atan);
+      m.pitch = originalAngle(xy, ((target.ground - dword(n, 39)) | 0) >> 3, c.tables.atan);
+      m.speed = word(n, 61) >> 1;
+      velocity(m, c.tables);
+      putEffectWord(n, 45, word(n, 45) + m.vx);
+      putEffectWord(n, 47, word(n, 47) + m.vy);
+      putEffectWord(n, 49, word(n, 49) + m.vz);
+      orient(word(n, 45), word(n, 47), word(n, 49));
+    }
   }
   if (
     ((c.frame + id) & 3) === 3 &&
@@ -320,8 +353,18 @@ function stepCommonEffectRecord(
       type: "water-material",
       point: [...at],
       material,
-      response: material <= 1 ? false : null,
+      response: material <= 1 ? code === 64 : null,
     });
+    if (code === 64 && material <= 1 && word(n, 61) >= 128) {
+      const marker = c as RecruitmentMarkerMotionContext;
+      if (!marker.child) throw Error("Recruitment64 real water factory required");
+      const submerged = oldHeight >>> 0 <= c.water >>> 0 &&
+        dword(n, 39) >>> 0 < (c.water - 512) >>> 0;
+      marker.child({code: submerged ? 21 : 48, owner: 0, position: point(n),
+        height: submerged ? dword(n, 39) : Math.max(dword(n, 17), c.water),
+        angles: submerged ? [0, 0, 128] : [0, 0, 0], parameter: 0, delay: 0,
+        newborn: false}, n);
+    }
   }
   putEffectWord(n, 7, word(n, 7) & 32767);
   putEffectWord(n, 9, word(n, 9) & 32767);
@@ -344,7 +387,7 @@ function stepCommonEffectRecord(
   n[30] = a.counter & 255;
   return {
     native: n,
-    retirementRequired: word(n, 74) < 0 && animationFinished(a, p),
+    retirementRequired: code !== 64 && word(n, 74) < 0 && animationFinished(a, p),
     samples,
     queries,
   };

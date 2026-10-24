@@ -7,6 +7,7 @@ import {
   type LandingEvent,
   type LandingState,
   type LandingParticle,
+  type LandingBuildingRequest,
   createSourceParticle,
 } from "../mechanics/landing";
 import {
@@ -81,6 +82,7 @@ import {
 import type { SpecialistCorpseRequest } from "../mechanics/specialist-damage";
 import type { EngineerChargeUpdate } from "../mechanics/engineer-charge";
 import type { SalvageEffectUpdate } from "../mechanics/salvage-effect";
+import type { RecruitmentEffectUpdate } from "../mechanics/recruitment-effect";
 import {
   stepBotanistWorkEffectRecord,
   stepBotanistEconomyEffectRecord,
@@ -121,6 +123,7 @@ export interface EffectSchedulerOptions<
     event: LandingEvent,
     context: LandingContext,
   ) => void;
+  landingBuilding?: (world: W, request: LandingBuildingRequest) => void;
   stageHost?: (original: W, staged: W) => void;
   commitHost?: (target: W, staged: W) => void;
   rewardTarget?: (
@@ -174,6 +177,8 @@ export interface EffectSchedulerOptions<
   ) => EngineerChargeUpdate;
   /** Actual demolition salvage45/0x2D owner9, including common physics. */
   salvageEffect?: (world: W, slot: number, receipt: EffectSchedulerReceipt) => SalvageEffectUpdate;
+  /** Actual64/0x40 mode6 marker and generic51/0x33 feedback. */
+  recruitmentEffect?: (world: W, slot: number, receipt: EffectSchedulerReceipt) => RecruitmentEffectUpdate;
 }
 export interface EffectSchedulerReceipt {
   callbacks: { phase: "primary" | "newborn"; slot: number; code: number }[];
@@ -321,6 +326,13 @@ function landingContext<W extends EffectSchedulerWorld>(
     water: w.source.source.terrain.loadedPhysicalWaterHeight,
     gravity: options.gravity,
     frame: w.frame,
+    playerActorCount(owner) {
+      const raw = (w.players as {raw: number[]}[] | undefined)?.[owner]?.raw,
+        count = raw?.[3];
+      if (count === undefined || !Number.isInteger(count)) throw Error("Actual landing player byte3 required");
+      return (count << 24) >> 24;
+    },
+    building: options.landingBuilding ? (request) => options.landingBuilding!(w, request) : undefined,
     obstacle: options.destructionObstacle
       ? (point, height) => options.destructionObstacle!(w, point, height)
       : undefined,
@@ -836,13 +848,40 @@ export function stepEffectScheduler<W extends EffectSchedulerWorld>(
       if (!landing || !landing.native)
         throw new Error("Source landing callback binding is missing");
       const existing = new Set(landing.particles.map((p) => p.slot)),
-        c = landingContext(s, pack, options),
-        events = stepLandingMain(landing, s.rng, c);
+        c = landingContext(s, pack, options);
+      const publishedParticles = new Set<LandingParticle>();
+      c.particleFactory = (request, rng, current) => {
+        publishStagedSharedEffect(s, slot, current.native!);
+        const heldPriors = s.powerEffects.slots.map((p) => p.nativePrior!),
+          childSlot = allocateStagedSharedEffect(s, request.code, pack, options, out);
+        if (childSlot === null) return null;
+        if (childSlot === slot) throw Error("Landing particle replaced its executing parent");
+        const child = createSourceParticle(request, rng, landingContext(s, pack, options));
+        if (!child?.native || child.slot !== childSlot)
+          throw Error("Source landing particle allocation differs");
+        publishStagedSharedEffect(s, childSlot, child.native);
+        heldPriors[childSlot].splice(0, 81, ...s.powerEffects.slots[childSlot].nativePrior!);
+        s.powerEffects.slots[childSlot].nativePrior = child.native = heldPriors[childSlot];
+        current.native!.splice(0, 81, ...s.powerEffects.slots[slot].nativePrior!);
+        publishedParticles.add(child);
+        return child;
+      };
+      if (options.onLandingEvent) c.onEvent = (current, event) => {
+        publish(s, slot, current.native!);
+        links(s);
+        options.onLandingEvent!(s, current, event, c);
+      };
+      const events = stepLandingMain(landing, s.rng, c);
       const current = landing.native.slice();
       current[6] = 5;
       publish(s, slot, current);
       for (const p of landing.particles)
-        if (!existing.has(p.slot)) {
+        if (publishedParticles.has(p)) {
+          if (!p.native || !(p.native[21]! & 1) ||
+            !s.powerEffects.slots[p.slot].occupied)
+            throw Error("Source landing newborn publication differs");
+          created++;
+        } else if (!existing.has(p.slot)) {
           if (!p.native || !(p.native[21]! & 1))
             throw new Error("Source landing factory did not mark its newborn");
           if (s.powerEffects.slots[p.slot].occupied)
@@ -860,7 +899,6 @@ export function stepEffectScheduler<W extends EffectSchedulerWorld>(
           !options.onLandingEvent
         )
           throw new Error("Source landing event needs its host callback");
-        options.onLandingEvent?.(s, landing, event, c);
       }
       if (landing.phase === 4) retire(s, slot, landing.native, out, options);
       else publish(s, slot, landing.native);
@@ -929,6 +967,15 @@ export function stepEffectScheduler<W extends EffectSchedulerWorld>(
       publishStagedSharedEffect(s, slot, result.native);
       if (result.retirementRequired)
         retireStagedSharedEffect(s, slot, options, out);
+    } else if (code === 64 || (code === 51 && options.recruitmentEffect)) {
+      if (!options.recruitmentEffect) throw Error("Original recruitment64 callback service is required");
+      const result = options.recruitmentEffect(s, slot, out);
+      if (!result || typeof result.retirementRequired !== "boolean" ||
+        !Number.isInteger(result.newborns) || result.newborns < 0 || result.newborns > 1)
+        throw Error("Original recruitment callback receipt is invalid");
+      publishStagedSharedEffect(s, slot, result.native);
+      created = result.newborns;
+      if (result.retirementRequired) retireStagedSharedEffect(s, slot, options, out);
     } else if (code === 45) {
       if (!options.salvageEffect) throw Error("Original salvage45 callback service is required");
       const result = options.salvageEffect(s, slot, out);

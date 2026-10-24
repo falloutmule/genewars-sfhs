@@ -31,8 +31,8 @@ cleared. This behavior is covered without a same-slot condition.
   then sets49D to1. It does not allocate a landing carrier.
 - Human creation at a later frame with nonzero1EC2 uses parameter1, the mission
   center rather than raw-player9, and source48CA4..48CE2's selector64 scan and
-  returned-reference changes. That family remains explicitly rejected by the
-  recruitment adapter. It is not represented by an ordinary code49 substitute.
+  returned-reference changes. The concrete family is now bound through the
+  shared recruitment landing adapter; see `HUMAN_RECRUITMENT_EFFECT.md`.
 
 ## Verification
 
@@ -62,11 +62,11 @@ are read-only evidence. Original native code was never executed.
 
 ## Remaining landing environment boundaries
 
-Existing `landing.ts` explicitly rejects water contact (`ground <= water + 320`)
-and does not implement full-pool smoke replacement. Its main factory does
-support the real shared priority allocator and cleanup. A follow-up source
+Existing `landing.ts` explicitly rejects water contact (`ground <= water + 320`).
+The scheduler now performs immediate smoke/departure priority allocation,
+publication and cleanup, including normal capacity false. A follow-up source
 audit has now replaced the preservation Rust31 model's null-obstacle restriction
 with the actual74270 parity/height query and code49's immovable4AF40 response;
-see `LANDING_OBSTACLE.md`. Optional referenced-building children and the
-selector64 parameter1 lifecycle remain outside this integration. Canonical
+see `LANDING_OBSTACLE.md`. Referenced-building status/75240 and the selector64
+parameter1 lifecycle are documented in `HUMAN_RECRUITMENT_EFFECT.md`. Canonical
 campaign acceptance remains0/24.

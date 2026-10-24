@@ -161,8 +161,8 @@ export function bootstrapCampaign(
     throw new Error("Original campaign requires a version2 source import");
   if (!retained && missionId !== 1)
     throw new Error("Campaign carry is required for this mission");
-  if (s.context.specialActivation !== 0)
-    throw new Error("Immediate mission activation is not implemented");
+  if (s.context.specialActivation !== u32(decodeBytes(s.missionPrefixBase64), 0x1ec2))
+    throw new Error("Immediate mission activation metadata differs from its retained source bytes");
   if (!s.terrain.atlasResource)
     throw new Error("Unsupported mission terrain atlas");
   const selected = retained?.selectedPlayer ?? 0,

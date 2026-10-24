@@ -66,6 +66,21 @@ export interface LandingContext {
   water: number;
   gravity: number;
   frame: number;
+  /** Raw signed player byte3, required only by parameter1's payload3 wait. */
+  playerActorCount?(owner: number): number;
+  /** Actual associated building writes/75240, inside the caller's transaction. */
+  building?(request: LandingBuildingRequest): void;
+  /** Source80AE0/retirement and presentation events, at their actual position
+   * before the associated75240 tail. Scheduler publishes parent first. */
+  onEvent?(landing: LandingState, event: LandingEvent): void;
+  /** Real48790 allocation/publication, including priority replacement. Null is
+   * source capacity failure and consumes no factory delay draw. The main
+   * image is synchronized before this call so recursive cleanup sees it. */
+  particleFactory?(
+    input: SourceParticleInput,
+    rng: GeneRng,
+    parent: LandingState,
+  ): LandingParticle | null;
   /** Actual74270(mask1), with postphysics physical height. Required lazily
    * on the source odd-slot airborne cadence. Code49's4AF40 response reads
    * movable descriptor0, so a non-null target does not change its motion. */
@@ -82,6 +97,9 @@ export interface LandingContext {
     nativePrior?: EffectNativePrior;
   }[];
 }
+export type LandingBuildingRequest =
+  | { type: "status"; building: number; active: boolean }
+  | { type: "site"; building: number; position: [number, number]; argumentB: 0 | 1; argumentC: 0 | 1 };
 export type LandingEvent =
   | { type: "activate"; owner: number }
   | { type: "message"; index: number }
@@ -174,6 +192,11 @@ function syncLandingNative(
     if (xy) putEffectWord(n, 57, originalAngle(vx, vy, c.tables.atan));
     putEffectWord(n, 59, speed ? originalAngle(xy, -vz, c.tables.atan) : 512);
     putEffectWord(n, 61, speed);
+  } else if (oldPhase === 1 && s.phase === 2) {
+    //4D456 copies the explicit up-vector0,0,512 after ground physics.
+    putEffectWord(n, 57, 0);
+    putEffectWord(n, 59, 0);
+    putEffectWord(n, 61, 512);
   } else if (oldPhase === 1) {
     putEffectWord(n, 59, 512);
     putEffectWord(n, 61, 0);
@@ -333,15 +356,22 @@ function createParticle(
   rng: GeneRng,
   c: LandingContext,
 ): void {
-  const particle = createSourceParticle(
-    {
+  const input: SourceParticleInput = {
       code,
       owner: code === 47 ? s.owner : 0,
       position: s.point,
       height: s.height,
       angles,
       newborn: true,
-    },
+    };
+  if (c.particleFactory) {
+    syncLandingNative(s, c, s.phase);
+    const particle = c.particleFactory(input, rng, s);
+    if (particle) s.particles.push(particle);
+    return;
+  }
+  const particle = createSourceParticle(
+    input,
     rng,
     {
       ...c,
@@ -416,6 +446,19 @@ export function stepLandingMain(
   }
   const events: LandingEvent[] = [],
     g = groundHeight(c.terrain, ...s.point);
+  const building = s.native?.[73] === 4
+      ? effectPriorByte(s.native, 71) | effectPriorByte(s.native, 72) << 8 : null,
+    buildingWrite = (request: Omit<Extract<LandingBuildingRequest, {type: "status"}>, "building"> |
+      Omit<Extract<LandingBuildingRequest, {type: "site"}>, "building">) => {
+      if (building === null) return;
+      if (!c.building) throw Error("Original associated landing building service required");
+      c.building({...request, building} as LandingBuildingRequest);
+    };
+  let siteUpdated = false;
+  const emit = (event: LandingEvent) => {
+    events.push(event);
+    if (c.onEvent) { syncLandingNative(s, c, oldPhase); c.onEvent(s, event); }
+  };
   if (g <= c.water + 320)
     throw new Error(
       "Landing water contact requires its environmental callback",
@@ -439,10 +482,9 @@ export function stepLandingMain(
       s.phase = 1;
       s.timer = 150;
       s.activationFrame = c.frame;
-      events.push(
-        { type: "activate", owner: s.owner },
-        { type: "audio", channel: 0x51 },
-      );
+      buildingWrite({type: "status", active: true});
+      emit({ type: "activate", owner: s.owner });
+      emit({ type: "audio", channel: 0x51 });
     } else {
       const speed = 2560 + 64 * (nextRandom(rng) % 10),
         pitch = 1024 - (nextRandom(rng) % 128),
@@ -455,19 +497,38 @@ export function stepLandingMain(
       s.height += s.vz >> 3;
     }
     queryBuilding();
-    s.timer--;
-    if (s.phase === 1 && s.timer === 0) {
+    const payload = s.native ? effectPriorByte(s.native, 76) : 0;
+    if ((s.phase === 1 || s.phase === 2) && payload >= 3) {
+      if (!c.playerActorCount) throw Error("Actual recruitment landing player count required");
+      const count = c.playerActorCount(s.owner);
+      if (!Number.isInteger(count) || count < -128 || count > 127)
+        throw Error("Actual signed recruitment player count required");
+      if (count === 0) {
+        s.native![76] = payload <= 3 ? 2 : 1;
+        s.timer = 75;
+      }
+      buildingWrite({type: "site", position: [...s.point], argumentB: 0, argumentC: 0});
+      syncLandingNative(s, c, oldPhase);
+      return events;
+    }
+    s.timer = ((s.timer - 1) << 16) >> 16;
+    if (s.phase === 1 && s.timer <= 0) {
       s.timer = 30;
       s.phase = 2;
       s.vz = 512;
-    } else if (s.phase === 2 && s.timer === 0) {
+      buildingWrite({type: "status", active: false});
+    } else if (s.phase === 2 && s.timer <= 0) {
       s.timer = 20;
       s.phase = 3;
       s.accelerationZ = 640;
-      events.push({ type: "audio", channel: 0x52 });
-    } else if (s.phase === 3 && s.timer === 0) {
+      buildingWrite({type: "site", position: [...s.point], argumentB: 1, argumentC: 0});
+      siteUpdated = true;
+      emit({ type: "audio", channel: 0x52 });
+    } else if (s.phase === 3 && s.timer <= 0) {
+      emit({ type: "retired", owner: s.owner });
       s.phase = 4;
-      events.push({ type: "retired", owner: s.owner });
+      buildingWrite({type: "site", position: [...s.point], argumentB: 0, argumentC: 1});
+      siteUpdated = true;
     } else if (s.phase === 3) {
       const xy = integerSqrt(Math.imul(0, 0) >>> 0),
         pitch = originalAngle(xy, -s.vz, c.tables.atan),
@@ -475,10 +536,10 @@ export function stepLandingMain(
       const yaw = (1920 + nextRandom(rng)) & 2047,
         pp = (pitch + 1920 + nextRandom(rng)) & 2047;
       createParticle(s, 47, [yaw, pp, speed], rng, c);
-    } else if (s.timer < 50) {
+    } else if (s.phase === 2 || s.timer < 50) {
       if (s.phase === 1 && s.timer === 49) {
         s.messageIndex = 79 + (nextRandom(rng) % 8);
-        events.push({ type: "message", index: s.messageIndex });
+        emit({ type: "message", index: s.messageIndex });
       }
       const speed =
           (40 + (nextRandom(rng) % 10)) * 64 + (s.phase === 2 ? 1280 : 0),
@@ -487,6 +548,7 @@ export function stepLandingMain(
       createParticle(s, 6, [yaw, pitch, speed], rng, c);
     }
   }
+  if (!siteUpdated) buildingWrite({type: "site", position: [...s.point], argumentB: 0, argumentC: 0});
   syncLandingNative(s, c, oldPhase);
   return events;
 }

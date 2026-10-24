@@ -34,11 +34,14 @@ import { groundHeight } from "../sim/mechanics/terrain";
 import type { ResultAction } from "../sim/mechanics/outcome";
 import { describeMissionObjectives } from "../sim/mechanics/mission-objectives";
 import { specialistCorpseBinding } from "../sim/mechanics/specialist-corpse";
+import { campaignHumanRosterView, campaignHumanRosterAssociatedTarget, campaignHumanRosterInitialPanel } from "../sim/campaign/human-roster-adapter";
+import type { HumanRosterCommand } from "../sim/mechanics/human-roster";
 const NAMES: Record<number, string> = {
   0: "Genepod",
   1: "Turret",
   3: "First Stage Distributor",
   4: "Recycling Plant",
+  5: "Recruitment Center",
   6: "Photon Processor",
   11: "Extractor",
 };
@@ -77,6 +80,7 @@ export async function openCampaign(
     geneticistMuleTarget: number | null = null,
     shepherdTarget: string | null = null,
     botanistPlantType: number | null = null,
+    recruitmentBuilding: number | null = null,
     resultShown = "";
   let recording: CampaignReplay | null = null;
   const selected = new Set<number>(),
@@ -162,6 +166,50 @@ export async function openCampaign(
   function snapshot() {
     return saveCampaign(w, session);
   }
+  function rosterOrder(command: HumanRosterCommand): boolean {
+    const initialInput = w.initialRecruitmentPanel === "open";
+    const result = queueCampaign(w, command);
+    if (!result.ok) { say(result.reason ?? "Recruitment order rejected"); return false; }
+    recording?.commands.push({tick: w.tick, type: "command", command});
+    //1C120 consumes initial input while runflag4 holds ordinary callbacks.
+    //This host iteration never advances native frame or simulation RNG.
+    if (initialInput && !(w.flags & 4) && !(command.type === "roster-deploy" && command.deployment === 1)) tick();
+    say(session.paused && ((w.flags & 4) || w.initialRecruitmentLaunch) ? "Recruitment order queued · resume to process" : "Recruitment order queued");
+    hud();
+    return true;
+  }
+  function recruitmentPanel(parent: HTMLElement, associatedBuilding: number | null) {
+    const view = campaignHumanRosterView(w, associatedBuilding), title = document.createElement("h3"), help = document.createElement("p");
+    title.textContent = "Recruit specialists";
+    help.className = "help";
+    help.textContent = w.initialRecruitmentPanel === "open" ? "Choose up to five specialists. The mission waits until you request landing." : session.paused ? "Orders wait until you resume. Choose up to five specialists, then request landing." : "Choose up to five specialists, then request landing.";
+    parent.append(title, help);
+    for (const category of [0, 1, 2, 3]) {
+      const label = document.createElement("p"); label.textContent = ["Engineer", "Botanist", "Geneticist", "Shepherd"][category]; parent.append(label);
+      for (const card of view.cards.filter(c => c.category === category && c.blueprintIndex !== null)) {
+        const queued = w.pending.some(p => p.command.type === "roster-select" && p.command.blueprintIndex === card.blueprintIndex),
+          add = button(parent, `${card.name} · skill ${card.skill} · health ${card.health}${queued ? " · queued" : ""}`, () => {rosterOrder({type: "roster-select", blueprintIndex: card.blueprintIndex!});});
+        add.disabled = !card.canSelect || queued || w.phase !== "active";
+        if (card.reason) add.title = card.reason;
+      }
+    }
+    const pending = document.createElement("p"); pending.textContent = `Roster: ${view.pending.length}/5`; parent.append(pending);
+    for (const entry of view.pending) {
+      const bp = w.players[w.selectedPlayer].blueprints[entry.blueprintIndex], remove = button(parent,
+        `${bp.name} · ${entry.landing ? "landing" : entry.waiting ? "remove from roster" : "deployed"}`,
+        () => {rosterOrder({type: "roster-deselect", blueprintIndex: entry.blueprintIndex});});
+      remove.disabled = !entry.canDeselect || w.phase !== "active";
+      if (entry.reason) remove.title = entry.reason;
+    }
+    const deploy = button(parent, "Land selected specialists", () => {
+      if (rosterOrder({type: "roster-deploy", deployment: 1, associatedBuilding})) {recruitmentBuilding = null; hud();}
+    });
+    deploy.disabled = !view.canDeploy || w.phase !== "active";
+    if (view.deployReason) deploy.title = view.deployReason;
+    button(parent, "Close recruitment", () => {
+      if (rosterOrder({type: "roster-deploy", deployment: 0, associatedBuilding})) {recruitmentBuilding = null; hud();}
+    });
+  }
   function recovery() {
     if (recoverySaving) return;
     recoverySaving = true;
@@ -238,13 +286,14 @@ export async function openCampaign(
     hud();
   }
   async function mount() {
+    recruitmentBuilding = null;
     renderedTick = -1;
     renderErrors.length = 0;
     audio.reset(w.audio.nextSequence, w.presentation.voiceSequence ?? 0);
     input?.();
     scene?.dispose();
     app.innerHTML =
-      '<div class="game campaign-game"><header class="topbar"><strong id="campaign-title"></strong><button id="campaign-pause">Pause</button><label>Speed <select id="campaign-speed" aria-label="Campaign speed"><option value=".5">½×</option><option value="1">1×</option><option value="2">2×</option><option value="4">4×</option></select></label><button id="campaign-saves">Save / load</button><button id="campaign-restart">Restart</button><button id="campaign-menu">Menu</button></header><main class="world" id="campaign-world"><div class="overlay-label" id="campaign-phase"></div></main><aside class="sidebar"><section><h2>Mission</h2><div id="campaign-objectives"></div></section><section><h2>Specialists</h2><div id="campaign-specialists"></div><p id="campaign-selection"></p><button id="campaign-cancel">Stop selected order</button><div id="campaign-role"></div></section><section><h2>Construct</h2><div id="campaign-build"></div></section><section><h2>Power and GOOP</h2><div id="campaign-economy"></div></section><section><h2>Alerts</h2><div id="campaign-alerts"></div></section></aside><footer class="footer"><span id="campaign-resources"></span><span id="campaign-notice" role="status"></span></footer></div>';
+      '<div class="game campaign-game"><header class="topbar"><strong id="campaign-title"></strong><button id="campaign-pause">Pause</button><label>Speed <select id="campaign-speed" aria-label="Campaign speed"><option value=".5">½×</option><option value="1">1×</option><option value="2">2×</option><option value="4">4×</option></select></label><button id="campaign-saves">Save / load</button><button id="campaign-restart">Restart</button><button id="campaign-menu">Menu</button></header><main class="world" id="campaign-world"><div class="overlay-label" id="campaign-phase"></div></main><aside class="sidebar"><section><h2>Mission</h2><div id="campaign-objectives"></div></section><section><h2>Specialists</h2><div id="campaign-specialists"></div><p id="campaign-selection"></p><button id="campaign-cancel">Stop selected order</button><div id="campaign-role"></div><div id="campaign-recruitment"></div></section><section><h2>Construct</h2><div id="campaign-build"></div></section><section><h2>Power and GOOP</h2><div id="campaign-economy"></div></section><section><h2>Alerts</h2><div id="campaign-alerts"></div></section></aside><footer class="footer"><span id="campaign-resources"></span><span id="campaign-notice" role="status"></span></footer></div>';
     node("campaign-title").textContent =
       `${w.missionId.toString().padStart(2, "0")} · ${currentMission().name}`;
     scene = new Stage(node("campaign-world"), pack);
@@ -364,10 +413,11 @@ export async function openCampaign(
     badge.className = "badge";
     badge.textContent = "Campaign development · canonical acceptance0/24";
     body.append(badge);
-    button(body, "Deploy specialists", () => {
+    button(body, campaignHumanRosterInitialPanel(w).open ? "Choose specialists" : "Deploy specialists", () => {
       recording?.commands.push({ tick: w.tick, type: "enter" });
       enterCampaign(w, pack);
       body.parentElement?.remove();
+      if (w.initialRecruitmentPanel === "open") app.querySelector<HTMLButtonElement>('.campaign-tabs button:nth-child(2)')?.click();
       recovery();
       hud();
     });
@@ -516,6 +566,8 @@ export async function openCampaign(
         ? `Place ${NAMES[placing]} · tap terrain${session.paused ? " · paused" : ""}`
         : w.phase === "blocked"
           ? "A required runtime callback needs implementation; see alerts"
+          : !(w.flags & 4) && w.phase === "active"
+            ? w.initialRecruitmentLaunch ? "Landing request queued · resume to process" : w.initialRecruitmentPanel === "open" ? "Choose specialists · mission waiting" : "Recruitment closed · restart to choose specialists"
           : w.landings.some((l) => l.phase < 1)
             ? "Landing specialists…"
             : session.paused
@@ -592,6 +644,17 @@ export async function openCampaign(
     node("campaign-selection").textContent = a
       ? a.reason
       : "Tap a specialist, then a destination. Drag to pan; pinch or scroll to zoom.";
+    const recruitment = node("campaign-recruitment"), recruitmentView = campaignHumanRosterView(w);
+    recruitment.replaceChildren();
+    if (recruitmentBuilding !== null && !recruitmentView.buildingChoices.some(b => b.slot === recruitmentBuilding)) recruitmentBuilding = null;
+    if (w.phase === "active") {
+      if (w.initialRecruitmentPanel === "open") recruitmentPanel(recruitment, null);
+      else if (recruitmentBuilding !== null) recruitmentPanel(recruitment, recruitmentBuilding);
+      else for (const center of recruitmentView.buildingChoices) button(recruitment, `Recruit at Recruitment Center ${center.slot + 1}`, () => {
+        const point = campaignHumanRosterAssociatedTarget(w, center.slot, pack);
+        if (rosterOrder({type: "roster-target", point})) {recruitmentBuilding = center.slot; hud();}
+      });
+    }
     const role = node("campaign-role");
     if (
       !(

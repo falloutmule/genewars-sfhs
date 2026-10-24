@@ -1,5 +1,6 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { campaignFixture } from "./fixtures/campaign";
+import { addRecruitmentEffectFixture } from "./fixtures/recruitment-effects";
 import {
   createCampaign,
   enterCampaign,
@@ -38,12 +39,14 @@ describe("staged strategic specialist command host", () => {
   };
   let start: CampaignWorld;
   beforeAll(() => {
+    addRecruitmentEffectFixture(pack);
     const prior = createCampaign(pack, "strategic-role-host"),
       startup = pack.missions[0].startup!;
     prior.players[0].progress = prior.players[0].raw[0x6e7] = 4;
     startup.context.actorMask = 15;
     const prefix = decodeBytes(startup.missionPrefixBase64);
     put32(prefix, 0x1ec2, 1000000);
+    startup.context.specialActivation = 1000000;
     startup.missionPrefixBase64 = encodeBytes(prefix);
     start = createCampaign(pack, "strategic-role-host", 1, {
       players: prior.players,
@@ -51,7 +54,7 @@ describe("staged strategic specialist command host", () => {
       world: prior.retainedWorld,
       rngRing: prior.rng.ring,
     });
-    enterCampaign(start);
+    enterCampaign(start, pack);
     for (let i = 0; i < 240; i++) stepCampaign(start, pack);
     expect(start.notices.filter((n) => n.severity === "error")).toEqual([]);
     expect(

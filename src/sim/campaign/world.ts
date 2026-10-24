@@ -46,8 +46,15 @@ import {
 import { nextRandom } from "../mechanics/random";
 import { createCampaignStrategicStorage, cloneCampaignStrategicStorage, validateCampaignStrategicStorage,
   campaignStrategicAuxiliary, type CampaignStrategicStorage } from "./strategic-state";
-import { activateStagedCampaignSpecialists } from "./strategic-recruit-adapter";
+import { activateStagedCampaignSpecialists, createStagedCampaignRosterLanding } from "./strategic-recruit-adapter";
 import { stepCampaignStrategy } from "./strategic-adapter";
+import {
+  createStagedCampaignRecruitmentMarker,
+  stepCampaignRecruitmentEffect,
+} from "./recruitment-landing-adapter";
+import { issueCampaignHumanRoster, campaignHumanRosterView, campaignHumanRosterInitialPanel } from "./human-roster-adapter";
+import { stepStagedCampaignLandingBuilding } from "./landing-building-adapter";
+import type { HumanRosterCommand } from "../mechanics/human-roster";
 import {
   findRoute,
   moveGoal,
@@ -223,6 +230,26 @@ const point = z.tuple([
 ]);
 export const CampaignCommandSchema = z.discriminatedUnion("type", [
   z.object({
+    type: z.literal("roster-select"),
+    blueprintIndex: z.number().int().min(0).max(31),
+  }),
+  z.object({
+    type: z.literal("roster-deselect"),
+    blueprintIndex: z.number().int().min(0).max(31),
+  }),
+  z.object({
+    type: z.literal("roster-target"),
+    point: z.tuple([
+      z.number().int().min(-32768).max(32767),
+      z.number().int().min(-32768).max(32767),
+    ]),
+  }),
+  z.object({
+    type: z.literal("roster-deploy"),
+    deployment: z.union([z.literal(0), z.literal(1)]),
+    associatedBuilding: z.number().int().min(0).max(255).nullable(),
+  }),
+  z.object({
     type: z.literal("shepherd-interact"),
     actorId: z.number().int().min(0).max(19),
     task: z.union([z.literal(1), z.literal(2)]),
@@ -287,6 +314,10 @@ export const CampaignCommandSchema = z.discriminatedUnion("type", [
   }),
 ]);
 export type CampaignCommand = z.infer<typeof CampaignCommandSchema>;
+function isHumanRosterCommand(command: CampaignCommand): command is HumanRosterCommand {
+  return command.type === "roster-select" || command.type === "roster-deselect" ||
+    command.type === "roster-target" || command.type === "roster-deploy";
+}
 export interface CampaignNotice {
   frame: number;
   severity: "info" | "warning" | "error";
@@ -294,6 +325,11 @@ export interface CampaignNotice {
   entityId: number | null;
 }
 export interface CampaignWorld extends CampaignBootstrap {
+  /** Source module setup opens20880 once. This is child-panel identity,
+   * separate from runflag4, and survives save/replay input-only iterations. */
+  initialRecruitmentPanel?: "open" | "closed";
+  /**20AE0 producer runs after70B00's AI gate and before1C120 packets. */
+  initialRecruitmentLaunch?: {sequence: number; runFlag: boolean};
   /** Present only after the imported cold/retained control image is established. */
   strategy?: CampaignStrategicStorage;
   entryCarry: CampaignCarry | null;
@@ -559,6 +595,11 @@ export function campaignObjectiveContext(w: CampaignWorld) {
   return result.value;
 }
 export function enterCampaign(w: CampaignWorld, pack?: Pack): void {
+  const staged = structuredClone(w);
+  enterStagedCampaign(staged, pack);
+  Object.assign(w, staged);
+}
+function enterStagedCampaign(w: CampaignWorld, pack?: Pack): void {
   if (w.phase !== "briefing")
     throw new Error("Campaign briefing entry required");
   if (w.missionPrefix[0x34b8] && !pack)
@@ -573,6 +614,13 @@ export function enterCampaign(w: CampaignWorld, pack?: Pack): void {
       p.id < w.source.source.context.activePlayerCount &&
       campaignPlayerInitialLanding(p.raw, w.flags, w.missionPrefix),
   )) {
+    //7D090→80830/7F3B0 activates a special human entry immediately at frame0.
+    //72AD0 creates its64 marker later; this branch never allocates carrier49.
+    if (w.frame === 0 && u32(w.missionPrefix, 0x1ec2) !== 0) {
+      if (!pack) throw Error("Original content required for immediate specialist activation");
+      createStagedCampaignRosterLanding(w, {routine: 0x80830, player: p.id, deployment: 1, associatedBuilding: null}, pack, specialistServices(pack));
+      continue;
+    }
     let slot = 0;
     while (occupied.includes(slot)) slot++;
     if (slot >= 200) throw new Error("Landing effect pool is full");
@@ -616,6 +664,10 @@ export function enterCampaign(w: CampaignWorld, pack?: Pack): void {
       "initialize",
     );
   }
+  if (u32(w.missionPrefix, 0x1ec2) !== 0) {
+    if (!pack) throw Error("Original content required for recruitment marker initialization");
+    createStagedCampaignRecruitmentMarker(w, pack, rewardFactoryOptions(w, pack));
+  }
   reveal(w, w.source.source.targets[w.selectedPlayer] as [number, number]);
   //72960 refreshes every live entity after72AD0 zone/reveal initialization.
   const shadeNative = (n: (number | null)[]) => {
@@ -638,6 +690,11 @@ export function enterCampaign(w: CampaignWorld, pack?: Pack): void {
   for (const p of w.powerEffects.slots)
     if (p.occupied && p.nativePrior) shadeNative(p.nativePrior);
   for (const v of w.ethereals.records) shadeNative(v.native);
+  //30120→2BBE0 module setup runs after72AD0, once per mission entry.
+  if (campaignHumanRosterInitialPanel(w).open) {
+    w.initialRecruitmentPanel = "open";
+    w.flags &= ~4;
+  }
   w.phase = "active";
 }
 function reveal(w: CampaignWorld, p: [number, number]): void {
@@ -1005,7 +1062,10 @@ export function queueCampaign(
   const c = CampaignCommandSchema.safeParse(input);
   if (!c.success) return { ok: false, reason: "Invalid campaign command" };
   const command = c.data;
-  if (command.type === "move-mule") {
+  if (isHumanRosterCommand(command)) {
+    if (w.players[w.selectedPlayer].raw[2] !== 0)
+      return { ok: false, reason: "Human campaign recruitment required" };
+  } else if (command.type === "move-mule") {
     const m = w.ecology.mules.find((m) => m.index === command.muleIndex);
     if (
       !m ||
@@ -1070,6 +1130,18 @@ export function queueCampaign(
   }
   if (w.phase !== "active")
     return { ok: false, reason: "Mission is not accepting orders" };
+  if (w.initialRecruitmentPanel === "open" && isHumanRosterCommand(command) && command.type === "roster-deploy") {
+    if (command.associatedBuilding !== null)
+      return {ok: false, reason: "Initial recruitment uses the mission landing point"};
+    if (command.deployment) {
+      const view = campaignHumanRosterView(w);
+      if (!view.canDeploy) return {ok: false, reason: view.deployReason};
+      //Retain the producer phase.70B00 must read the previous runflag before
+      //20AE0 writes it and1C120 later attempts the concrete landing factory.
+      w.initialRecruitmentLaunch = {sequence: w.nextSequence, runFlag: !(w.runtimeMode & 1)};
+    }
+    w.initialRecruitmentPanel = "closed";
+  }
   w.pending.push({
     frame: w.frame,
     sequence: w.nextSequence++,
@@ -1102,6 +1174,26 @@ function requestCampaignOwnedMuleMove(
   return result;
 }
 function issue(w: CampaignWorld, c: CampaignCommand, pack: Pack): void {
+  if (isHumanRosterCommand(c)) {
+    const result = issueCampaignHumanRoster(w, c, pack, specialistServices(pack));
+    if (!result.accepted) {
+      notice(w, result.reason ?? "Specialist recruitment unavailable", "warning");
+      return;
+    }
+    const message = result.disposition === "capacity"
+      ? "Landing capacity reached"
+      : result.disposition === "landing"
+        ? "Specialist deployment requested"
+        : result.disposition === "created"
+          ? "Specialist added to waiting roster"
+          : result.disposition === "removed"
+            ? "Waiting roster updated"
+            : c.type === "roster-target"
+              ? "Recruitment landing point set"
+              : "Specialist selection unchanged";
+    notice(w, message, result.disposition === "capacity" ? "warning" : "info");
+    return;
+  }
   if (c.type === "move-mule") {
     const m = w.ecology.mules.find((m) => m.index === c.muleIndex);
     if (!m || m.native[24] !== w.selectedPlayer)
@@ -1764,6 +1856,10 @@ function rewardFactoryOptions(
       stepCampaignEngineerChargeEffect(staged, slot, pack, rewardFactoryOptions(staged, pack), out),
     salvageEffect: (staged, slot, out) =>
       stepCampaignSalvageEffect(staged, slot, pack, rewardFactoryOptions(staged, pack), out),
+    recruitmentEffect: (staged, slot, out) =>
+      stepCampaignRecruitmentEffect(staged, slot, pack, rewardFactoryOptions(staged, pack), out),
+    landingBuilding: (staged, request) =>
+      stepStagedCampaignLandingBuilding(staged, request, pack),
     etherealAttackEffect: (staged, slot, out) =>
       stepCampaignEtherealAttackEffect(
         staged,
@@ -1928,13 +2024,17 @@ export function stepCampaign(w: CampaignWorld, pack: Pack): void {
   try {
     //70B00/37870 runs on the current frame before1C120 consumes queued
     //commands and before the actor/economy/effect callbacks below.
-    stepCampaignStrategy(w, pack, specialistServices(pack));
+    if (w.flags & 4) stepCampaignStrategy(w, pack, specialistServices(pack));
     syncNativeBindings(w);
     const ready = w.pending
       .filter((p) => p.frame <= w.frame)
       .sort((a, b) => a.sequence - b.sequence);
     w.pending = w.pending.filter((p) => p.frame > w.frame);
-    for (const p of ready)
+    for (const p of ready) {
+      if (w.initialRecruitmentLaunch?.sequence === p.sequence) {
+        if (w.initialRecruitmentLaunch.runFlag) w.flags |= 4;
+        delete w.initialRecruitmentLaunch;
+      }
       try {
         issue(w, p.command, pack);
       } catch (e) {
@@ -1942,13 +2042,19 @@ export function stepCampaign(w: CampaignWorld, pack: Pack): void {
           w,
           String(e instanceof Error ? e.message : e),
           "warning",
-          p.command.type === "move-mule"
+          isHumanRosterCommand(p.command)
+            ? null
+            : p.command.type === "move-mule"
             ? 2000 + p.command.muleIndex
             : p.command.type === "produce-mule"
               ? p.command.buildingId
               : p.command.actorId,
         );
       }
+    }
+    //1C120 continues to consume input while1C73B's runflag4 gate freezes
+    //ordinary callbacks. Tick counts host iterations; source frame stays put.
+    if (!(w.flags & 4)) { w.tick++; return; }
     //1C120 finishes queued human dispatch before7A280 observes the current
     //positions, then58780 actors and47F80 buildings run in that order.
     stepCampaignZones(w, pack, {
@@ -2654,6 +2760,9 @@ export function validateCampaignWorld(w: CampaignWorld, hash: string): void {
     !integer(w.selectedPlayer, 0, 3) ||
     !integer(w.flags, 0, 255) ||
     !integer(w.runtimeMode, 0, 255) ||
+    (w.initialRecruitmentPanel !== undefined && !["open", "closed"].includes(w.initialRecruitmentPanel)) ||
+    (w.initialRecruitmentLaunch !== undefined && (!integer(w.initialRecruitmentLaunch.sequence, 0, Number.MAX_SAFE_INTEGER) || typeof w.initialRecruitmentLaunch.runFlag !== "boolean" ||
+      !w.pending.some(p => p.sequence === w.initialRecruitmentLaunch!.sequence && p.command.type === "roster-deploy" && p.command.deployment === 1 && p.command.associatedBuilding === null))) ||
     !integer(w.countdown, 0, 65535) ||
     !["briefing", "active", "result", "blocked"].includes(w.phase) ||
     !bytes(w.missionPrefix, 0x355e) ||
