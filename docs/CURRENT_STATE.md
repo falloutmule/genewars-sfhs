@@ -1,5 +1,25 @@
 # Current direct-conversion state — 24 October 2026
 
+## Krell (mission 2) proven in ordinary play, simulation layer
+
+The carried Exceland state now plays Krell end to end with public commands only.
+
+**Objective:** `terrain-score` (source player byte `0x0D`) target 1000 from the single marked zone at **(256, 24320)**, decoded from the mission prefix at `BASE 0x2ff8`, stride 19 — selector **12** (gene category 4), chain −1, quota present. The mission *target* (1536,15360) is a different point and is not the zone; moving Mules there scores nothing.
+
+**Route, all ordinary commands:**
+- Power (`3`) then Gene Pod (`0`) at Krell's own anchor
+- Geneticist `research-mule` on a wild Mule with `native[122] === 4` — research quality 3 → 7 → 18, which is what makes the pod's birth roll succeed
+- `produce-mule` repeatedly: each birth costs 75 total and yields an **owner 0** Mule (pod-born Mules are player-owned; the mission's wild Mules are owner 4)
+- `move-mule` each owned Mule to the zone centre, re-issued as new Mules are born
+
+**Result:** nine live Mules in the zone, `terrain-score` reached **1008/1000** at frame **9,921**, `phase: "result"`, `result.phase: "victory-notification"`, zero error notices. Save → reload at that state gives an identical checksum and the same result. `continue-notification` → `enter-victory` → `advance-victory(1)` → `campaign-view-queued` with `progress 2`, and `continueCampaign` initialises **mission 3 Madami** at frame 0, `briefing`, `progress [2,1,0,0]`, funds 800.
+
+**Mechanics confirmed, not defects:** the zone pass runs only while the mission countdown `0x355c` is zero, so credit accrues in windows; and Mules starve in the zone because it is barren (`reserve 12 → 0`, `health 67 → 0`, zero plants nearby), so sustained production and herding is the actual requirement. Both match `ZONES.md` and `mule.ts` mortality rather than indicating missing code.
+
+**Evidence:** `.private/build-probe-20261024/probe10.ts`, `probe11.ts`, `probe12.ts`, `probe13.ts`, with `krell6.log`, `krell7.log`, `krell8.log`, `krell9.log`, and `zones.log` (zone geometry decode).
+
+**Acceptance:** still **2/24 pending**. Krell counts only once the same route is played through the phone UI; the UI already exposes the needed affordances (Mule selection with map-click move, "Capture / research", "Produce Mule · 75 total"), so the next step is extending the browser campaign test rather than adding app code.
+
 ## Software campaign acceptance: 1/24 — Exceland
 
 Exceland is accepted in the **software** ledger through the real UI, not a simulation harness. The browser campaign run on the artifact built from commit `2f3c6c1` passed at **desktop 1440×900, phone-landscape 915×412 and phone-portrait 412×915**, the two phone viewports using `hasTouch` and real `touchscreen.tap` input:
