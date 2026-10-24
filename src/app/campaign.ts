@@ -36,6 +36,8 @@ import { describeMissionObjectives } from "../sim/mechanics/mission-objectives";
 import { specialistCorpseBinding } from "../sim/mechanics/specialist-corpse";
 import { campaignHumanRosterView, campaignHumanRosterAssociatedTarget, campaignHumanRosterInitialPanel } from "../sim/campaign/human-roster-adapter";
 import type { HumanRosterCommand } from "../sim/mechanics/human-roster";
+import { classifyCampaignHumanMuleTarget } from "../sim/campaign/human-creature-command-adapter";
+import type { CreatureCommandReference } from "../sim/mechanics/creature-commands";
 const NAMES: Record<number, string> = {
   0: "Genepod",
   1: "Turret",
@@ -78,6 +80,7 @@ export async function openCampaign(
     lastHud = -1,
     placing: number | null = null,
     geneticistMuleTarget: number | null = null,
+    muleMaterialTarget: string | null = null,
     shepherdTarget: string | null = null,
     botanistPlantType: number | null = null,
     recruitmentBuilding: number | null = null,
@@ -379,13 +382,8 @@ export async function openCampaign(
       }
       const command: CampaignCommand = mule
         ? {
-            type: "move-mule",
+            type: "stop-mule",
             muleIndex: mule.index,
-            point: [
-              i16(mule.native as number[], 7),
-              i16(mule.native as number[], 9),
-            ],
-            queued: false,
           }
         : { type: "cancel", actorId: actorId! };
       const r = queueCampaign(w, command);
@@ -641,9 +639,11 @@ export async function openCampaign(
     const a = w.actors.find(
       (a) => selected.has(a.id) && w.specialists.records[a.id][6] === 3,
     );
+    const selectedMule = w.ecology.mules.find(m => selected.has(2000+m.index) && m.native[6] === 1 && m.native[24] === w.selectedPlayer && m.native[94]! < 24);
     node("campaign-selection").textContent = a
       ? a.reason
-      : "Tap a specialist, then a destination. Drag to pan; pinch or scroll to zoom.";
+      : selectedMule ? "Tap ground to move, or choose visible material to collect."
+      : "Tap a specialist or owned Mule, then a destination. Drag to pan; pinch or scroll to zoom.";
     const recruitment = node("campaign-recruitment"), recruitmentView = campaignHumanRosterView(w);
     recruitment.replaceChildren();
     if (recruitmentBuilding !== null && !recruitmentView.buildingChoices.some(b => b.slot === recruitmentBuilding)) recruitmentBuilding = null;
@@ -663,6 +663,42 @@ export async function openCampaign(
       )
     ) {
       role.replaceChildren();
+      if (selectedMule) {
+        const label = document.createElement("label"), target = document.createElement("select");
+        label.textContent = "Material target "; target.setAttribute("aria-label", "Mule material target");
+        const choices: {ref:CreatureCommandReference;label:string}[] = [
+          ...w.ecology.plants.filter(p => p.native[6] === 2).map(p => ({ref:{kind:2 as const,index:p.index},label:`Plant ${p.index+1}`})),
+          ...w.ecology.mules.filter(m => m.native[6] === 1 && m.native[94]! >= 24).map(m => ({ref:{kind:1 as const,index:m.index},label:`Remains ${m.index+1}`})),
+        ];
+        let unavailable: string | null = null;
+        for (const choice of choices) {
+          try {
+            const mode = classifyCampaignHumanMuleTarget(w,selectedMule.index,choice.ref,{force:false,bypassVisibility:false},pack);
+            if (mode !== 4 && mode !== 5) continue;
+            const option = document.createElement("option"); option.value = `${choice.ref.kind}:${choice.ref.index}`;
+            option.textContent = choice.label; target.append(option);
+          } catch (e) {unavailable = e instanceof Error ? e.message : String(e); break;}
+        }
+        if (muleMaterialTarget !== null && [...target.options].some(o => o.value === muleMaterialTarget)) target.value = muleMaterialTarget;
+        else muleMaterialTarget = target.options.length ? target.value : null;
+        target.addEventListener("change",()=>{muleMaterialTarget = target.value;});
+        label.append(target); role.append(label);
+        const control = button(role,"Collect material",()=>{
+          const ref = choices.find(c => `${c.ref.kind}:${c.ref.index}` === target.value)?.ref;
+          if (!ref) {say("Select visible material first");return;}
+          try {
+            const mode = classifyCampaignHumanMuleTarget(w,selectedMule.index,ref,{force:false,bypassVisibility:false},pack);
+            if (mode !== 4 && mode !== 5) {say("This material is no longer available to this Mule");return;}
+            const command: CampaignCommand = {type:"target-mule",muleIndex:selectedMule.index,target:ref,mode}, result = queueCampaign(w,command);
+            if (result.ok) {recording?.commands.push({tick:w.tick,type:"command",command});say("Mule collection order queued");}
+            else say(result.reason ?? "Mule collection order rejected");
+          } catch (e) {say(e instanceof Error ? e.message : String(e));}
+        });
+        control.disabled = w.phase !== "active" || !target.options.length || unavailable !== null;
+        const help = document.createElement("p"); help.className = "help";
+        help.textContent = unavailable ?? (target.options.length ? "The Mule travels to and collects the selected material." : "No visible plants or eligible remains are available.");
+        role.append(help);
+      }
       if (a && p.blueprints[a.blueprintIndex].category === 3) {
         const help = document.createElement("p");
         help.textContent = "Control your creatures within this Shepherd's range. Stop or move to end control.";

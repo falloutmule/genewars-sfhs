@@ -713,11 +713,11 @@ export function restoreCreatureCommandAliases<W extends CreatureCommandWorld>(
 
 /** Wrap source-like pointers around foreign services without replacing the
  * records themselves. Retained bindings are re-read only through pure6D390. */
-function stable<W extends CreatureCommandWorld>(
+function stable<W extends CreatureCommandWorld, T>(
   w: W,
   index: number,
   c: CreatureCommandContext<W>,
-  run: (c: CreatureCommandContext<W>) => CreatureCommandReceipt,
+  run: (c: CreatureCommandContext<W>) => T,
 ) {
   const records = w.creatureNative,
     n = actor(w, index),
@@ -755,6 +755,15 @@ function stable<W extends CreatureCommandWorld>(
     if (c.resolve!(w, ref) !== native)
       throw Error("Creature command service replaced retained target");
   return out;
+}
+/** Source5C920 only, for an already isolated ordinary creature callback.
+ * It preserves the source carrier retention branch and held native identities. */
+export function detachStagedCreatureCarrier<W extends CreatureCommandWorld>(
+  w: W,
+  index: number,
+  c: CreatureCommandContext<W>,
+): void {
+  stable(w, index, c, (g) => detach(w, index, g));
 }
 export function releaseStagedCreatureAction<W extends CreatureCommandWorld>(
   w: W,

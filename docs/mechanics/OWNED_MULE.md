@@ -14,6 +14,7 @@ The implementation now includes:
 - Same-species mate scoring in randomized radius1024 cell traversal; peer stage79 may be negative. Mutual task cleanup, pursuit, rendezvous corners, shared center movement, stop/countdown, parent reserve/stage changes, original gene/inheritance draws, first-free native factory and peer-before-current birth continuation are implemented. A full300-slot pool skips only the factory; parents still finish the source continuation.
 - Source59280 owned reveal and84B40 four-cell dirtiness/plant shade changes, with building shade patches returned for the host. Reveal runs after physical contact and before arrival/AI.
 - Source5B100 last-living-creature selection and5B260 cell-entry waypoint draw, including wrap and shared-list order. Airborne6DD50 collision impulse uses the actual selected building and physical height.
+- Owned Mule4 material work now binds the actual processing-building query, autonomous and commanded plant/corpse selection, cutting20 animation, carrier67 pickup, carried pose, delivery/drop and retained task recovery after damage. See [MULE_HAULING.md](MULE_HAULING.md) and [PLANT_CARRIER.md](PLANT_CARRIER.md). Ground-carried corpses skip their own motion and aging while97bit1 is set.
 
 ## Context and host obligations
 
@@ -71,4 +72,4 @@ reported separately. This fix does not establish canonical acceptance.
 
 The corpse extension adds eighteen complete existing source callback comparisons, including final retirement, with15,416 compared numeric bytes, matching RNG and matching terrain effects. Synthetic tests additionally cover rich-corpse nutrition and the code32 shared-pool factory. Its scope and fixture limits are recorded in [CORPSE_FEEDING.md](CORPSE_FEEDING.md).
 
-Explicit remaining boundaries: live hostile acquisition/combat/reaction and non-Mule species scorers; carrier/flight attachments; low-temperature damage/effect continuation; code11 effect escape; and the owned processing-building action when an actual completed selector2 or4 is found. These branches remain reason-bearing atomic failures. They are required before any run encountering them can pass. The implemented ordinary family and fixture comparisons do not establish whole Krell or all24 mission acceptance.
+Explicit remaining boundaries include non-Mule species scorers, live-creature/specialist pickup, pending2/state13 builder work, broader flight attachments and code11 effect escape. Entered unavailable services remain reason-bearing atomic failures; the admitted cold/stun paths retain their existing source gates. The implemented ordinary families and fixture comparisons do not establish canonical mission acceptance.

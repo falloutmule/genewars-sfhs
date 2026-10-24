@@ -21,6 +21,7 @@ import { i16, put16, put32, u16, u32 } from "./bytes";
 import type { SourceEntityId } from "./source-pools";
 import { readShepherdOperators } from "../mechanics/shepherd";
 import { campaignBuildingAsset } from "./building-startup-adapter";
+import { makeCampaignMuleMaterialServices } from "./mule-adapter";
 
 /** Current virtual0/68 and combat-only building reach. These are distinct
  * from74270 collision extents and from the construction footprint in cells. */
@@ -138,6 +139,20 @@ export function campaignMuleDamageContext(
     bounce: pack.rules.tables.bounce,
     combat: pack.ecologyRules.muleCombat,
     coldResponse: pack.ecologyRules.muleCold,
+    material: makeCampaignMuleMaterialServices(pack,(state,terrain,rng)=>{
+      if (state !== w.ecology || terrain !== w.terrain || rng !== w.rng)
+        throw Error("Mule damage material release must use the isolated current host");
+      for (const m of state.mules) w.creatureNative[m.index] = m.native;
+      return w;
+    },{
+      gravity:i16(w.missionPrefix,0x1c5d),
+      obstacleAt:p=>campaignAirborneBuilding(w,pack,p,-1)!==null,
+      destructionObstacle:(s,p,h)=>{
+        const b=campaignAirborneBuilding(s,pack,p,h);
+        return b ? {position:b.position,ground:b.ground} : null;
+      },
+      cleanupReferences:cleanupCampaignReferences,
+    }),
     profile: (action) => animationProfile(pack.assets.MULE, action),
     bonesProfile: (action) => animationProfile(pack.assets.BONES, action),
     obstacleAt: (p) => campaignAirborneBuilding(w, pack, p, -1) !== null,

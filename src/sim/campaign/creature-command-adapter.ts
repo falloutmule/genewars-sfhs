@@ -195,19 +195,36 @@ function searchOffsets(
   return input.value;
 }
 
-/**43130 as entered by5D870: selector mask4 and required flags0x18.
- * 0x18 is material+completion, not a distance/radius. */
+/**43130. The compatibility defaults are5D870's selector mask4/flags18;
+ * hauling supplies its actual10/30 masks, without a second query body. */
 export function campaignCreatureServiceBuilding(
   w: CampaignCreatureCommandWorld,
   index: number,
+  query: {
+    selectorMask?: number;
+    requiredFlags?: number;
+    position?: Point;
+  } = {},
 ): number | null {
+  const mask = query.selectorMask ?? 4,
+    flags = query.requiredFlags ?? 0x18;
+  if (
+    !Number.isInteger(mask) ||
+    mask < 0 ||
+    mask > 0xffffffff ||
+    !Number.isInteger(flags) ||
+    flags < 0 ||
+    flags > 0xffff ||
+    query.position?.some((v) => !Number.isInteger(v) || v < -32768 || v > 32767)
+  )
+    throw Error("Actual43130 selector/flag/point query required");
   const n = w.creatureNative[index],
     owner = byte(n, 24),
     aggregateOwner = byte(w.players[owner]?.raw ?? [], 0x4a1),
     raw = w.players[aggregateOwner]?.raw;
   if (aggregateOwner >= 4 || !raw || raw.length !== 1805)
     throw Error("Actual43130 owner aggregate required");
-  const from = position(n),
+  const from = query.position ?? position(n),
     fromHeight = groundHeight(w.terrain, ...from),
     all = !!(w.runtimeMode & 1),
     start = all ? 0 : aggregateOwner * 64,
@@ -223,8 +240,14 @@ export function campaignCreatureServiceBuilding(
       !(byte(raw, 0x6e5) & (1 << (buildingOwner & 31)))
     )
       continue;
-    if (byte(b, 45) !== 2 || !(byte(b, 49) & 1) || dword(b, 54) >>> 0 === 0)
-      continue;
+    if (!(mask & (1 << (byte(b, 45) & 31)))) continue;
+    const nativeFlags = byte(b, 49) | (byte(b, 50) << 8);
+    let actualFlags = 0;
+    if (flags & 4 && nativeFlags & 4) actualFlags |= 4;
+    if (flags & 8 && byte(b, 45) === 2 && dword(b, 54) !== 0) actualFlags |= 8;
+    if (flags & 0x10 && nativeFlags & 1) actualFlags |= 0x10;
+    if (flags & 0x20 && (nativeFlags & 0x141) === 1) actualFlags |= 0x20;
+    if (actualFlags !== flags) continue;
     const to = position(b),
       dx = torusDelta(to[0], from[0]),
       dy = torusDelta(to[1], from[1]),

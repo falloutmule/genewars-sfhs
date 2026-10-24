@@ -359,7 +359,7 @@ describe("source specialist corpse69", () => {
     expect(f.world.rng).toEqual(rng);
     validateSpatial(f.world.spatial);
   });
-  it("rolls back earlier corpse motion/timer and cleanup on a later unsupported selector", () => {
+  it("rolls back earlier corpse motion/timer and cleanup on a later missing plant carrier service", () => {
     const f = fixture();
     for (const slot of [0, 199])
       publishStagedSharedEffect(f.world, slot, f.make(slot));
@@ -367,7 +367,7 @@ describe("source specialist corpse69", () => {
     f.world.powerEffects.slots[199].nativePrior![69] = 68;
     const before = JSON.stringify(f.world);
     expect(() => stepEffectScheduler(f.world, f.pack, f.options)).toThrow(
-      /selector 68/,
+      /plant carrier67\/68 callback service is required/,
     );
     expect(JSON.stringify(f.world)).toBe(before);
   });

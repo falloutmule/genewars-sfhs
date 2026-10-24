@@ -439,12 +439,20 @@ export interface DestructionStep {
   samples: [number, number][];
   obstacleQueries: [number, number][];
 }
-/**Full6DF30 for this family's constructor flags. Debris has gravity,
- * half-vertical slope slide/friction and real water factories;46 freezes physics. */
-export function stepDestructionEffect(
+/** Numeric6DF30 for the already-admitted free-altitude effect records.
+ * Concrete callers supply actual virtual8/90 descriptor semantics. Timer,
+ * animation, selector dispatch and final49D30 remain with those callers. */
+export interface SharedFreeEffectMotionContext
+  extends Omit<DestructionStepContext, "profile"> {}
+export interface SharedFreeEffectMotionPolicy {
+  movable: boolean;
+  waterResponse: boolean;
+}
+export function stepSharedFreeEffectMotion(
   before: readonly (number | null)[],
   rng: GeneRng,
-  c: DestructionStepContext,
+  c: SharedFreeEffectMotionContext,
+  policy: SharedFreeEffectMotionPolicy,
 ): DestructionStep {
   validateEffectNativePrior(before);
   if (
@@ -459,11 +467,7 @@ export function stepDestructionEffect(
     c.water > 0xffffffff
   )
     throw Error("Original destruction frame/gravity/water required");
-  const code = byte(before, 69) as DestructionCode,
-    p = c.profile(code);
-  profile(code, p);
   const n = before.slice(),
-    debris = code >= 27 && code <= 31,
     flags = word(n, 21) & ~1,
     samples: [number, number][] = [],
     obstacleQueries: [number, number][] = [],
@@ -476,12 +480,10 @@ export function stepDestructionEffect(
     };
   if (
     n[6] !== 5 ||
-    ![0, 1, 2, 3, 5, 27, 28, 29, 30, 31, 46].includes(code) ||
-    flags !== (debris ? 0x180 : code === 46 ? 0x820 : 0x20) ||
-    word(n, 63) !== -1 ||
-    [51, 53, 55].some((at) => word(n, at) !== 0)
+    ![0x20, 0x180, 0x1a0, 0x820].includes(flags) ||
+    word(n, 63) !== -1
   )
-    throw Error("Unsupported original destruction physics state");
+    throw Error("Unsupported original shared free effect motion state");
   const x = word(n, 7),
     y = word(n, 9),
     height = dword(n, 39),
@@ -501,12 +503,20 @@ export function stepDestructionEffect(
     n[23] = effectTerrainShade(c.terrain, ...at);
     return h;
   };
-  if (code !== 46) {
-    let vx = word(n, 45),
-      vy = word(n, 47),
-      vz = wrap16(word(n, 49) - (debris ? c.gravity : 0));
+  if (!(flags & 0x800)) {
+    let vx = wrap16(word(n, 45) + word(n, 51)),
+      vy = wrap16(word(n, 47) + word(n, 53)),
+      vz = wrap16(
+        word(n, 49) + wrap16(word(n, 55) - (!(flags & 0x20) ? c.gravity : 0)),
+      );
     const candidateHeight = (height + (vz >> 3)) | 0,
       h = sample(fixed(0, vx), fixed(1, vy));
+    //6DF30 applies acceleration to the record before angle reconstruction.
+    //Existing debris constructors have zero acceleration; attached carriers
+    //receive the parent's actual51..56 through6EAF0.
+    put(n, 45, vx);
+    put(n, 47, vy);
+    put(n, 49, vz);
     if (candidateHeight > h) {
       put32(n, 39, Math.max(0, candidateHeight));
       put(n, 49, vz);
@@ -517,7 +527,7 @@ export function stepDestructionEffect(
       }
     } else if (height <= groundBefore) {
       put32(n, 39, h);
-      if (debris) {
+      if (flags & 0x80) {
         const normal = terrainNormal(c.terrain, x, y),
           slide = Math.abs(vz) >> 1;
         vx = wrap16(vx + Math.trunc((normal[0] * slide) / 256));
@@ -573,7 +583,7 @@ export function stepDestructionEffect(
     const at = point(n),
       obstacle = c.obstacle([...at], dword(n, 39));
     obstacleQueries.push([...at]);
-    if (obstacle && (debris || code === 46)) {
+    if (obstacle && policy.movable) {
       const dx = wrap16((word(n, 7) - obstacle.position[0]) * 2),
         dy = wrap16((word(n, 9) - obstacle.position[1]) * 2),
         xy = integerSqrt(
@@ -599,7 +609,7 @@ export function stepDestructionEffect(
     if (c.particle(r, rng, n) && r.newborn) out.newborns++;
   };
   if (
-    debris &&
+    policy.waterResponse &&
     ((c.frame + word(n, 15)) & 3) === 3 &&
     dword(n, 39) >>> 0 <= (c.water + 320) >>> 0 &&
     ecologyTerrainClass(c.terrain, point(n)) <= 1 &&
@@ -621,6 +631,51 @@ export function stepDestructionEffect(
   }
   put(n, 7, word(n, 7) & 32767);
   put(n, 9, word(n, 9) & 32767);
+  return out;
+}
+
+/**Full6DF30 for this family's constructor flags. Debris has gravity,
+ * half-vertical slope slide/friction and real water factories;46 freezes physics. */
+export function stepDestructionEffect(
+  before: readonly (number | null)[],
+  rng: GeneRng,
+  c: DestructionStepContext,
+): DestructionStep {
+  validateEffectNativePrior(before);
+  if (
+    !Number.isInteger(c.frame) ||
+    c.frame < 0 ||
+    c.frame > 0xffffffff ||
+    !Number.isInteger(c.gravity) ||
+    c.gravity < -32768 ||
+    c.gravity > 32767 ||
+    !Number.isInteger(c.water) ||
+    c.water < 0 ||
+    c.water > 0xffffffff
+  )
+    throw Error("Original destruction frame/gravity/water required");
+  const code = byte(before, 69) as DestructionCode,
+    p = c.profile(code);
+  profile(code, p);
+  const debris = code >= 27 && code <= 31,
+    flags = word(before, 21) & ~1;
+  if (
+    before[6] !== 5 ||
+    ![0, 1, 2, 3, 5, 27, 28, 29, 30, 31, 46].includes(code) ||
+    flags !== (debris ? 0x180 : code === 46 ? 0x820 : 0x20) ||
+    word(before, 63) !== -1 ||
+    [51, 53, 55].some((at) => word(before, at) !== 0)
+  )
+    throw Error("Unsupported original destruction physics state");
+  const out = stepSharedFreeEffectMotion(before, rng, c, {
+      movable: debris || code === 46,
+      waterResponse: debris,
+    }),
+    n = out.native;
+  const spawn = (r: DestructionChildRequest) => {
+    if (!c.particle) throw Error("Original destruction child factory required");
+    if (c.particle(r, rng, n) && r.newborn) out.newborns++;
+  };
   if (word(n, 74) >= 0) put(n, 74, word(n, 74) - 1);
   const a = advanceAnimation(
     {

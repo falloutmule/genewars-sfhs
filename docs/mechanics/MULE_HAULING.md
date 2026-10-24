@@ -1,0 +1,29 @@
+# Mule4 material work
+
+`mule-hauling.ts` implements the owned source63049..64CE7 material decision family, state11 cutting, positive-timer pending1 travel and pickup5D1C0. `mule.ts` calls it within the existing source callback, after the earlier hostile/food/mate decisions. It keeps a single motion pass, source5EB30 prefix and animation tail. No resource, health or goal is supplied to make a mission pass.
+
+The work preserves the actual native records and references. New material searches require enabled completed processing buildings; an already carried delivery uses the separate completed-building query. The Recycler is excluded from new searches when its owner's current GOOP reaches capacity. Pulper fullness and the signed32, wrapping5D7D0 comparison remain distinct. The two searches use exact43130 selector/flag masks and strict first-slot ties.
+
+Selection first visits the current intrusive cell: richest eligible corpse, then cut plant. Remote6B3B0/6B190 and6B660/6B5E0 searches preserve source constructor draws, two randomized traversal axes, center exclusion, per-sector totals, first individual ties and the final randomized descending sector tie scan. Reservations, carried/processing flags, terrain/building admission and the retained command-anchor bias participate in their original positions.
+
+Uncut plants enter state11/action20 only after actual virtualAC arrival. Cutting completion ignites a plant only if it is still in the current cell chain. Pickup attempts the shared67 factory before changing any plant references or flags. On success, the callback writes the carrier reference, optionally ignites, binds the actual plant to the effect, marks and unlinks the plant, then marks the Mule as carrying. Source40170 captures the return point before a plant factory attempt, including capacity failure. Pickup-to-building offsets draw Y first (`64..191`) and X second (`-192..-65`);58ED0 retains the nominated building and route bit80. The already-carried and damaged-building routes use their separate source operations.
+
+`mule-hauling-motion.ts` implements the complete6EAF0 virtual9C arm for Mule virtual10=false: position, signed velocity, physical-height offset, fresh terrain ground/shade, ground clamp, slot/frame-gated smoke6, copied acceleration/speed and immediate spatial relink. An actual carried corpse's97bit1 bypasses its own motion, aging and timer decrement while retaining the source animation callback. Drop reuses the released5C920 core; carrier67 becomes68 and its existing callback restores the actual plant. See [PLANT_CARRIER.md](PLANT_CARRIER.md) for that shared scheduler family.
+
+Damage and capture use the same staged5CC60 release. Completed hit16/20 rebuilds non-move task81D30 from retained88/90 and task120, with the creature's owner as caller. It rechecks task120 after the wrapper, so a missing retained target clears work and returns to ordinary selection. Legal material re-acquisition after a nonlethal hit is retained.
+
+## Host boundary
+
+`makeCampaignMuleMaterialServices(pack, host, options, commandServices?)` supplies `MuleContext.material`. `host(state,terrain,rng)` must return the enclosing isolated campaign transaction. `options` accepts the scheduler object or a getter for that staged world. The adapter binds current intrusive chains, real43130/74160 queries, admitted species/health rules, the released command bodies and human wrapper, ignition, shared carrier/smoke factories, audio and spatial mutation. It verifies that foreign services preserve held native, player and Mule identities. There is no nested world clone. The existing public Mule callback and outer campaign transaction retain rollback on a late missing service.
+
+No new imported table or asset is fabricated. MULE action20, EFF67, effect descriptors, processing offset, ordered footprint samples and existing scalar rules come from the admitted pack. EFF68 is not requested: its source continuation retains EFF67. Normal selector4 processing and GOOP credit remain in the released Recycling Plant callback.
+
+## Evidence and verification
+
+Read-only evidence is the preserved `player-creation/instructions-0005ed20.txt`, its5EB30/5E640 companions, building-loader43130 and the mapped object1 bodies for5D1C0,5D7D0,58ED0,6B190/6B3B0/6B5E0/6B660,8D9E0/8DB60 and6EAF0. The ignored `mule-hauling-proof-20261023` harnesses interpret listing arithmetic only; they never execute the original native program.
+
+Five closed comparisons match193 cases and197,361 interpreted instructions: numeric building choice/route/pickup/attachment; the full owned-work decision slice; actual remote material searches and RNG; completed-hit retained packet construction; and selector2/4 storage-query flags. The work-slice comparison declares maximum-health lookup, cross-pool factories/ignition, command dispatch and spatial mutation as ports. Their real runtime bodies are bound through the separately verified families; the arithmetic comparison does not stand in for them.
+
+Public synthetic tests cover source order, capacity failure, storage gates, reservations, command recovery, attachment, damage/capture release and held identity. Integrated campaign tests run real plant cutting→67→68→Recycler GOOP and corpse pickup→carried pause→drop→Recycler GOOP, with JSON continuation and complete sealed replays. Nonlethal and lethal material damage also continue through ordinary callbacks after save/load. Synthetic fixtures do not admit an original mission.
+
+Pending2/state13 builder work and live-creature/specialist pickup remain separate entered guards. Other species, the virtual10=true flight attachment arm, missing original resources and unknown services remain explicit. Existing command scratch95 provenance is unchanged. Frozen mission3 segment009 is untouched; canonical acceptance remains0/24.

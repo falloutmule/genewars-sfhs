@@ -280,7 +280,7 @@ describe("source plant6C6B0 and shared fire8", () => {
     expect(f.world.spatial.nodes["source:1:8"]).toBeUndefined();
     validateSpatial(f.world.spatial);
   });
-  it("rolls back inline ignition, fire, plant native bytes and audio on a later unsupported callback", () => {
+  it("rolls back inline ignition, fire, plant native bytes and audio on a later missing plant carrier service", () => {
     const f = fixture();
     for (const [slot, code] of [
       [0, 20],
@@ -308,7 +308,7 @@ describe("source plant6C6B0 and shared fire8", () => {
     };
     const before = JSON.stringify(f.world);
     expect(() => stepEffectScheduler(f.world, f.pack, f.options)).toThrow(
-      /selector 68/,
+      /plant carrier67\/68 callback service is required/,
     );
     expect(JSON.stringify(f.world)).toBe(before);
   });

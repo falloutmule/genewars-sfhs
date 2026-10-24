@@ -68,6 +68,7 @@ import {
   insertSpatial,
   moveSpatial,
   unlinkSpatial,
+  copySpatialLinks,
   validateSpatial,
 } from "./spatial";
 import { worldCell } from "../mechanics/terrain";
@@ -83,6 +84,7 @@ import type { SpecialistCorpseRequest } from "../mechanics/specialist-damage";
 import type { EngineerChargeUpdate } from "../mechanics/engineer-charge";
 import type { SalvageEffectUpdate } from "../mechanics/salvage-effect";
 import type { RecruitmentEffectUpdate } from "../mechanics/recruitment-effect";
+import type { PlantCarrierUpdate } from "../mechanics/plant-carrier";
 import {
   stepBotanistWorkEffectRecord,
   stepBotanistEconomyEffectRecord,
@@ -179,6 +181,8 @@ export interface EffectSchedulerOptions<
   salvageEffect?: (world: W, slot: number, receipt: EffectSchedulerReceipt) => SalvageEffectUpdate;
   /** Actual64/0x40 mode6 marker and generic51/0x33 feedback. */
   recruitmentEffect?: (world: W, slot: number, receipt: EffectSchedulerReceipt) => RecruitmentEffectUpdate;
+  /**Actual67 carried plant and68 retained-resource release/drop callbacks. */
+  plantCarrierEffect?: (world: W, slot: number, receipt: EffectSchedulerReceipt) => PlantCarrierUpdate;
 }
 export interface EffectSchedulerReceipt {
   callbacks: { phase: "primary" | "newborn"; slot: number; code: number }[];
@@ -301,6 +305,10 @@ function links(w: EffectSchedulerWorld) {
     if (next) putEffectWord(n, 3, next.index);
     n[5] = next ? next.family + 1 : 0;
   }
+  //8AC60/8ACC0 also change adjacent plant/creature headers immediately.
+  //Later callbacks in this same shared pass can read these retained records.
+  for (const plant of w.ecology.plants) copySpatialLinks(w.spatial,plant.id,plant.native);
+  for (const mule of w.ecology.mules) copySpatialLinks(w.spatial,mule.id,mule.native);
   if (w.missionPrefix) putEffectWord(w.missionPrefix, 0x3554, occupied);
   for (const landing of w.landings) {
     if (landing.phase !== 4 && landing.native)
@@ -670,6 +678,17 @@ export function createStagedDestructionEffect<W extends EffectSchedulerWorld>(
 ): number | null {
   return destructionFactory(w, request, pack, options, emptyReceipt());
 }
+/**Already-staged code6 entry for the source carried-target ground scrape.
+ * Reuses the complete shared allocation/particle factory above. */
+export function createStagedSmokeEffect<W extends EffectSchedulerWorld>(
+  w: W,
+  request: Omit<DestructionChildRequest,"code"> & {code:6},
+  pack: Pack,
+  options: EffectSchedulerOptions<W>,
+): number | null {
+  if (request.code !== 6) throw Error("Source smoke6 factory required");
+  return destructionFactory(w,request,pack,options,emptyReceipt());
+}
 export function createCampaignDestructionEffect<W extends EffectSchedulerWorld>(
   w: W,
   request: DestructionRequest,
@@ -973,6 +992,14 @@ export function stepEffectScheduler<W extends EffectSchedulerWorld>(
       if (!result || typeof result.retirementRequired !== "boolean" ||
         !Number.isInteger(result.newborns) || result.newborns < 0 || result.newborns > 1)
         throw Error("Original recruitment callback receipt is invalid");
+      publishStagedSharedEffect(s, slot, result.native);
+      created = result.newborns;
+      if (result.retirementRequired) retireStagedSharedEffect(s, slot, options, out);
+    } else if (code === 67 || code === 68) {
+      if (!options.plantCarrierEffect) throw Error("Original plant carrier67/68 callback service is required");
+      const result = options.plantCarrierEffect(s, slot, out);
+      if (!result || typeof result.retirementRequired !== "boolean" || !Number.isInteger(result.newborns) || result.newborns < 0)
+        throw Error("Original plant carrier67/68 callback receipt is invalid");
       publishStagedSharedEffect(s, slot, result.native);
       created = result.newborns;
       if (result.retirementRequired) retireStagedSharedEffect(s, slot, options, out);

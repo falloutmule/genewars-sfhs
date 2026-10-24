@@ -227,7 +227,7 @@ describe("destruction factories in the native shared scheduler", () => {
     ).toBeNull();
     expect(JSON.stringify(f.world)).toBe(before);
   });
-  it("rolls back countdown, native links and prior callbacks on a later unknown selector", () => {
+  it("rolls back countdown, native links and prior callbacks on a later missing plant carrier service", () => {
     const f = fixture();
     createCampaignDestructionEffect(f.world, f.request(27), f.pack, f.options);
     f.world.powerEffects.slots[0].nativePrior![70] = 0;
@@ -251,7 +251,7 @@ describe("destruction factories in the native shared scheduler", () => {
     copySpatialLinks(f.world.spatial, id(199), p.nativePrior);
     const before = JSON.stringify(f.world);
     expect(() => stepEffectScheduler(f.world, f.pack, f.options)).toThrow(
-      /selector 68/,
+      /plant carrier67\/68 callback service is required/,
     );
     expect(JSON.stringify(f.world)).toBe(before);
   });

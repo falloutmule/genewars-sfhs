@@ -196,6 +196,9 @@ import {
   type CampaignEngineerServices,
 } from "./engineer-adapter";
 import { campaignEngineerChargeServices, stepCampaignEngineerChargeEffect } from "./engineer-charge-adapter";
+import { issueCampaignHumanMuleTarget, stopCampaignHumanMule } from "./human-creature-command-adapter";
+import { stepCampaignPlantCarrier } from "./plant-carrier-adapter";
+import { makeCampaignMuleMaterialServices } from "./mule-adapter";
 import { stepStagedCampaignBuildingDemolition, stepCampaignSalvageEffect } from "./building-demolition-adapter";
 import { revealCampaignRadius } from "./reveal-adapter";
 import {
@@ -284,6 +287,20 @@ export const CampaignCommandSchema = z.discriminatedUnion("type", [
     muleIndex: z.number().int().min(0).max(299),
     point,
     queued: z.boolean(),
+  }),
+  z.object({
+    type: z.literal("target-mule"),
+    muleIndex: z.number().int().min(0).max(299),
+    target: z.object({
+      kind: z.union([z.literal(1),z.literal(2),z.literal(3),z.literal(4),z.literal(5)]),
+      index: z.number().int().min(0).max(511),
+    }).refine(r => r.index < ({1:300,2:512,3:20,4:256,5:200}[r.kind]), "Invalid retained target"),
+    //27AE0 classifies at input time; packet17/replay retains that exact mode.
+    mode: z.number().int().min(1).max(6),
+  }),
+  z.object({
+    type: z.literal("stop-mule"),
+    muleIndex: z.number().int().min(0).max(299),
   }),
   z.object({
     type: z.literal("produce-mule"),
@@ -1067,7 +1084,7 @@ export function queueCampaign(
   if (isHumanRosterCommand(command)) {
     if (w.players[w.selectedPlayer].raw[2] !== 0)
       return { ok: false, reason: "Human campaign recruitment required" };
-  } else if (command.type === "move-mule") {
+  } else if (command.type === "move-mule" || command.type === "target-mule" || command.type === "stop-mule") {
     const m = w.ecology.mules.find((m) => m.index === command.muleIndex);
     if (
       !m ||
@@ -1194,6 +1211,20 @@ function issue(w: CampaignWorld, c: CampaignCommand, pack: Pack): void {
               ? "Recruitment landing point set"
               : "Specialist selection unchanged";
     notice(w, message, result.disposition === "capacity" ? "warning" : "info");
+    return;
+  }
+  if (c.type === "target-mule" || c.type === "stop-mule") {
+    const m = w.ecology.mules.find(m => m.index === c.muleIndex);
+    if (!m || m.native[6] !== 1 || m.native[24] !== w.selectedPlayer || m.native[94]! >= 24)
+      throw Error("Living owned Mule required");
+    const services = {effectOptions: (s: CampaignWorld) => rewardFactoryOptions(s, pack)},
+      result = c.type === "target-mule"
+        ? issueCampaignHumanMuleTarget(w, c.muleIndex, {target:c.target,mode:c.mode}, pack, services)
+        : stopCampaignHumanMule(w, c.muleIndex, pack, services);
+    if (result.disposition === "installed" || result.disposition === "stopped" || result.disposition === "unchanged")
+      w.muleQueues[c.muleIndex] = [];
+    notice(w, c.type === "stop-mule" ? "Mule stop command processed" :
+      result.accepted ? "Mule target ordered" : "Mule cannot take this target order", "info", 2000+c.muleIndex);
     return;
   }
   if (c.type === "move-mule") {
@@ -1860,6 +1891,8 @@ function rewardFactoryOptions(
       stepCampaignSalvageEffect(staged, slot, pack, rewardFactoryOptions(staged, pack), out),
     recruitmentEffect: (staged, slot, out) =>
       stepCampaignRecruitmentEffect(staged, slot, pack, rewardFactoryOptions(staged, pack), out),
+    plantCarrierEffect: (staged, slot, out) =>
+      stepCampaignPlantCarrier(staged, slot, pack, rewardFactoryOptions(staged, pack), out),
     landingBuilding: (staged, request) =>
       stepStagedCampaignLandingBuilding(staged, request, pack),
     etherealAttackEffect: (staged, slot, out) =>
@@ -2046,7 +2079,7 @@ export function stepCampaign(w: CampaignWorld, pack: Pack): void {
           "warning",
           isHumanRosterCommand(p.command)
             ? null
-            : p.command.type === "move-mule"
+            : p.command.type === "move-mule" || p.command.type === "target-mule" || p.command.type === "stop-mule"
             ? 2000 + p.command.muleIndex
             : p.command.type === "produce-mule"
               ? p.command.buildingId
@@ -2270,6 +2303,8 @@ export function stepCampaign(w: CampaignWorld, pack: Pack): void {
             index,
           ),
         combatEffect: combatTransaction.effect,
+        material: makeCampaignMuleMaterialServices(pack, combatTransaction.host,
+          staged => rewardFactoryOptions(staged, pack)),
         plantDamage: (state, terrain, rng, index, amount) =>
           damageCampaignPlant(
             combatTransaction.host(state, terrain, rng),

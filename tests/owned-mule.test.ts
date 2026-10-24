@@ -356,6 +356,34 @@ function peer(f: ReturnType<typeof fixture>, slot = 1) {
   return p;
 }
 describe("ordinary owned Mule commands and shared natural lifecycle", () => {
+  it("carried97bit1 bypasses motion, ground refresh and odd corpse aging", () => {
+    const f = fixture();
+    f.n[94] = 25;
+    f.n[97] = 1;
+    f.n[22] = 0x48;
+    put(f.n, 63, -1);
+    put(f.n, 108, 32);
+    put(f.n, 104, 51);
+    put(f.n, 102, 100);
+    put32(f.n, 39, 9000);
+    const fields = [
+      ...f.n.slice(7, 25),
+      ...f.n.slice(39, 57),
+      ...f.n.slice(98, 110),
+    ];
+    const result = stepOwnedMule(f.state, 0, f.rng, f.context),
+      n = f.state.mules[0].native;
+    expect(result.reason).toBeNull();
+    expect([
+      ...n.slice(7, 25),
+      ...n.slice(39, 57),
+      ...n.slice(98, 110),
+    ]).toEqual(fields);
+    expect(n[94]).toBe(25);
+    expect(n[25]).toBe(18);
+    expect(f.rng.draws).toBe(0);
+    expect(result.events).toEqual([]);
+  });
   it("installs an ordinary move without teleporting or altering opaque native bytes", () => {
     const f = fixture(),
       before = f.n.slice(),

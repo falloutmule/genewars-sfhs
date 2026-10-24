@@ -33,6 +33,13 @@ import {
 } from "./ecology";
 import { initializeMuleNative } from "./genepod";
 import {
+  stepMuleMaterialWork,
+  stepMuleMaterialTravel,
+  finishMuleMaterialCut,
+  resumeMuleMaterialTask,
+  type MuleHaulingContext,
+} from "./mule-hauling";
+import {
   chooseMuleHostile,
   contactMuleHostile,
   acquireMuleHostile,
@@ -72,6 +79,15 @@ const put32 = (n: Native, p: number, v: number) => {
 };
 const point = (n: Native): [number, number] => [w(n, 7), w(n, 9)];
 export interface MuleContext {
+  /**Already isolated full-host material services, required lazily on entry. */
+  material?(
+    state: EcologyState,
+    terrain: TerrainState,
+    rng: GeneRng,
+    mule: EcologyMule,
+  ): MuleHaulingContext;
+  /**Callback-owned closure; installed only by stepMule for actual5CC60. */
+  materialRuntime?(mule: EcologyMule): MuleHaulingContext;
   terrain: TerrainState;
   tables: MotionTables;
   rules: EcologyRules;
@@ -271,7 +287,8 @@ export function queryMuleAirborneBuilding(
   if (
     offsets.length !== 9 ||
     offsets.some(
-      (p) => p.length !== 2 ||
+      (p) =>
+        p.length !== 2 ||
         p.some((v) => !Number.isInteger(v) || v < -32768 || v > 32767),
     )
   )
@@ -1411,7 +1428,7 @@ function acquireFood(
 ) {
   const n = mule.native;
   n[0x61] = n[0x61]! | 0x40;
-  releaseAction(state, mule);
+  releaseAction(state, mule, c);
   put(n, 0x55, food.index);
   n[0x57] = food.kind;
   if (n[0x78] !== 0) {
@@ -1468,7 +1485,7 @@ function corpseFeeding(
     target.native[6] !== 1 ||
     distance(c.terrain, point(n), point(target.native)) > 4096
   ) {
-    releaseAction(state, mule);
+    releaseAction(state, mule, c);
     idleWait(state, mule, rng, c);
     return;
   }
@@ -1481,7 +1498,7 @@ function corpseFeeding(
   }
   if (w(n, 0x6c) & 15) return;
   if (action === 5 && w(t, 0x68) <= w(t, 0x62) >> 1) {
-    releaseAction(state, mule);
+    releaseAction(state, mule, c);
     idleWait(state, mule, rng, c, 20);
     return;
   }
@@ -1542,7 +1559,7 @@ function corpseFeeding(
     beginPair(state, mule, peer, c);
     pairAction(state, mule, rng, c, events);
   } else if (full) {
-    releaseAction(state, mule);
+    releaseAction(state, mule, c);
     idleWait(state, mule, rng, c, action === 4 ? 20 : 10);
   }
 }
@@ -1575,6 +1592,12 @@ function selectAnimation(n: Native, c: MuleContext) {
         100,
     );
     n[0x1d] = 1 + +(w(n, 0x68) < strength >> 1);
+  } else if (n[0x5e] === 11) {
+    if (n[25] !== 20) {
+      n[25] = 20;
+      n[26] = n[27] = n[29] = n[30] = 0;
+      n[28] = 1;
+    }
   } else if (n[0x5e] === 10) {
     if (n[0x19] !== 22) {
       n[0x19] = 22;
@@ -1845,13 +1868,21 @@ function resetAction(n: Native) {
 }
 /**5CC60's ordinary task cleanup. Reference effects belong to this same
  * transaction; logical resource pointers are never synthesized. */
-function releaseAction(state: EcologyState, mule: EcologyMule) {
+function releaseAction(
+  state: EcologyState,
+  mule: EcologyMule,
+  c?: MuleContext,
+) {
   const n = mule.native,
     kind = n[0x57],
     target = w(n, 0x55),
     action = n[0x5e];
   //5CC60's first instruction-level gate preserves stun references and timer.
   if (action === 18) return;
+  if (n[96]! & 2 && c?.materialRuntime) {
+    c.materialRuntime(mule).release();
+    return;
+  }
   if (n[0x60]! & 2)
     throw new Error(
       "Mule attachment cleanup requires the actual carrier binding",
@@ -2165,8 +2196,8 @@ function beginPair(
   c: MuleContext,
 ) {
   const speed = muleRequestedSpeed(mule, c.rules);
-  releaseAction(state, mule);
-  releaseAction(state, peer);
+  releaseAction(state, mule, c);
+  releaseAction(state, peer, c);
   for (const [self, other] of [
     [mule, peer],
     [peer, mule],
@@ -2214,7 +2245,7 @@ function pairAction(
     p[0x57] !== 1 ||
     w(p, 0x55) !== mule.index
   ) {
-    releaseAction(state, mule);
+    releaseAction(state, mule, c);
     idleWait(state, mule, rng, c);
     return;
   }
@@ -2274,7 +2305,7 @@ function pairAction(
   }
   if (w(n, 0x6c) > 0) {
     if ((phase & 3) === 3 && physicalDistance(n, p) > 16384) {
-      releaseAction(state, mule);
+      releaseAction(state, mule, c);
       idleWait(state, mule, rng, c);
     }
     return;
@@ -2282,7 +2313,7 @@ function pairAction(
   const dx = torusDelta(w(n, 7), w(p, 7)),
     dy = torusDelta(w(n, 9), w(p, 9));
   if ((Math.imul(dx, dx) + Math.imul(dy, dy)) >>> 0 > 16384) {
-    releaseAction(state, mule);
+    releaseAction(state, mule, c);
     idleWait(state, mule, rng, c);
     return;
   }
@@ -2401,7 +2432,7 @@ function combatServices(
         : undefined,
     },
     ports: {
-      release: (m) => releaseAction(state, m),
+      release: (m) => releaseAction(state, m, c),
       speed: (m) => muleRequestedSpeed(m, c.rules),
       occupied: (m) =>
         cellEntryPredicate(state, m, worldCell(...point(m.native)), c),
@@ -2494,6 +2525,8 @@ export function damageMuleEntity(
   rng: GeneRng,
   c: MuleContext,
 ): MuleEvent[] {
+  if (c.material)
+    c = { ...c, materialRuntime: (m) => c.material!(state, c.terrain, rng, m) };
   const target = state.mules.find(
     (m) => m.index === targetIndex && m.native[6] === 1,
   );
@@ -2527,6 +2560,8 @@ export function applyMuleCaptureImpact(
   c: MuleContext,
   request: { damage: 1; duration: number; capturedByActor: number | null },
 ): MuleEvent[] {
+  if (c.material)
+    c = { ...c, materialRuntime: (m) => c.material!(state, c.terrain, rng, m) };
   if (
     effect.length !== 81 ||
     effect[6] !== 5 ||
@@ -2566,7 +2601,7 @@ export function applyMuleCaptureImpact(
     put(n, 88, request.capturedByActor);
     n[90] = 3;
   }
-  releaseAction(state, target);
+  releaseAction(state, target, c);
   n[97] = n[97]! & 127;
   put(n, 63, 0);
   put(n, 73, w(n, 73) & 0xefe8);
@@ -2601,6 +2636,14 @@ function action(
   events: MuleEvent[],
 ) {
   const n = mule.native;
+  if (n[94] === 11) {
+    if (w(n, 108) <= 0) {
+      if (!c.materialRuntime)
+        throw Error("Mule cutting requires actual material services");
+      finishMuleMaterialCut(n, c.materialRuntime(mule));
+    }
+    return;
+  }
   if (n[94] === 6) {
     if (w(n, 108) <= 0) {
       nutrition(mule, 1000, true);
@@ -2654,26 +2697,32 @@ function action(
     }
     if (n[0x78] !== 0) {
       if ((w(n, 0x49) & 3) !== 3) {
-        if (n[0x78] !== 7)
-          throw new Error(
-            "Mule hit resume requires its actual retained task command",
-          );
-        const target: [number, number] = [w(n, 0x72), w(n, 0x74)];
-        releaseAction(state, mule);
-        n[0x5e] = 0;
-        for (const at of [0x6e, 0x72]) {
-          put(n, at, target[0]);
-          put(n, at + 2, target[1]);
+        if (n[0x78] !== 7) {
+          if (!c.materialRuntime)
+            throw Error(
+              "Mule hit resume requires its actual retained task command",
+            );
+          resumeMuleMaterialTask(n, c.materialRuntime(mule));
+        } else {
+          const target: [number, number] = [w(n, 0x72), w(n, 0x74)];
+          releaseAction(state, mule, c);
+          n[0x5e] = 0;
+          for (const at of [0x6e, 0x72]) {
+            put(n, at, target[0]);
+            put(n, at + 2, target[1]);
+          }
+          n[0x60] = n[0x60]! | 0x18;
+          n[0x61] = (n[0x61]! | 0x80) & 0xbf;
+          n[0x78] = 7;
+          n[0x5f] = 0;
         }
-        n[0x60] = n[0x60]! | 0x18;
-        n[0x61] = (n[0x61]! | 0x80) & 0xbf;
-        n[0x78] = 7;
-        n[0x5f] = 0;
       }
-      n[0x5e] = 8;
-      if (ports.occupied(mule)) ports.escape(mule);
-      else put(n, 0x6c, 0);
-      return;
+      if (n[120] !== 0) {
+        n[0x5e] = 8;
+        if (ports.occupied(mule)) ports.escape(mule);
+        else put(n, 0x6c, 0);
+        return;
+      }
     }
     const query = queryMuleCombat(state, mule, random, context);
     if (chooseMuleHostile(state, mule, random, context, ports, events, query)) {
@@ -2720,7 +2769,7 @@ function action(
     //cadence test.724C0 can clear only the reference kind between callbacks.
     const target = w(n, 0x55);
     if (n[0x57] !== 2) {
-      releaseAction(state, mule);
+      releaseAction(state, mule, c);
       idleWait(state, mule, random, c);
       return;
     }
@@ -2728,7 +2777,7 @@ function action(
     if (!plant?.active)
       throw Error("Mule feeding reference has an inactive plant binding");
     if (distance(c.terrain, point(n), plant.position) >>> 0 > 4096) {
-      releaseAction(state, mule);
+      releaseAction(state, mule, c);
       idleWait(state, mule, random, c);
       return;
     }
@@ -2765,7 +2814,7 @@ function action(
       return;
     }
     if (retired || full) {
-      releaseAction(state, current);
+      releaseAction(state, current, c);
       idleWait(state, current, random, c);
     }
     return;
@@ -2775,7 +2824,7 @@ function action(
       const { context, ports } = combatServices(state, random, c, events),
         target = resolveMuleCombatTarget(state, context, n[87]!, w(n, 85));
       if (!target) {
-        releaseAction(state, mule);
+        releaseAction(state, mule, c);
         idleWait(state, mule, random, c);
         return;
       }
@@ -2822,7 +2871,7 @@ function action(
             return;
           }
         }
-        releaseAction(state, mule);
+        releaseAction(state, mule, c);
         idleWait(state, mule, random, c);
         return;
       }
@@ -2833,7 +2882,7 @@ function action(
         elapsed > 256 &&
         nextRandom(random) % 150 <= elapsed - 256
       ) {
-        releaseAction(state, mule);
+        releaseAction(state, mule, c);
         idleWait(state, mule, random, c);
         return;
       }
@@ -2843,7 +2892,7 @@ function action(
     if (n[0x57] === 1) {
       const corpse = state.mules.find((m) => m.index === w(n, 0x55));
       if (!corpse || corpse.native[6] === 0) {
-        releaseAction(state, mule);
+        releaseAction(state, mule, c);
         idleWait(state, mule, random, c);
         return;
       }
@@ -2855,7 +2904,7 @@ function action(
           elapsed > 256 &&
           nextRandom(random) % 150 <= elapsed - 256
         ) {
-          releaseAction(state, mule);
+          releaseAction(state, mule, c);
           idleWait(state, mule, random, c);
           return;
         }
@@ -2879,7 +2928,7 @@ function action(
       plant.growth <= 0 ||
       plant.plantFlags & 8
     ) {
-      releaseAction(state, mule);
+      releaseAction(state, mule, c);
       idleWait(state, mule, random, c);
       return;
     }
@@ -2913,24 +2962,27 @@ function action(
       pairAction(state, mule, random, c, events);
       return;
     }
-    if (n[24]! < 4 && n[0x78] === 0 && !(n[0x60]! & 0x42) && n[0x61] === 0) {
+    if (n[24]! < 4 && (c.material || n[95] !== 0 || n[0x78] === 0)) {
       if (!c.owned)
         throw new Error(
           "Owned Mule idle requires actual player building/operator context",
         );
-      if (
-        c.owned.buildings.some(
-          (b) =>
-            b.index >= n[24]! * 64 &&
-            b.index < (n[24]! + 1) * 64 &&
-            b.native[6] === 4 &&
-            (b.native[24] === n[24] ||
-              !!(c.owned!.allianceMasks[n[24]!] & (1 << b.native[24]!))) &&
-            [2, 4].includes(b.native[0x2d]!) &&
-            (w(b.native, 0x31) & 0x141) === 1,
-        )
-      )
-        throw new Error("Owned Mule selected a processing building action");
+      const possible = c.owned.buildings.some(
+        (b) =>
+          b.index >= n[24]! * 64 &&
+          b.index < (n[24]! + 1) * 64 &&
+          b.native[6] === 4 &&
+          (b.native[24] === n[24] ||
+            !!(c.owned!.allianceMasks[n[24]!] & (1 << b.native[24]!))) &&
+          [2, 4].includes(b.native[0x2d]!) &&
+          (w(b.native, 0x31) & 0x141) === 1,
+      );
+      if (c.materialRuntime) {
+        if (stepMuleMaterialWork(n, c.materialRuntime(mule))) return;
+      } else if (possible || n[95] !== 0 || n[96]! & 2)
+        throw new Error(
+          "Owned Mule selected a processing building action: actual material services required",
+        );
       if (!cellEntryPredicate(state, mule, worldCell(...point(n)), c))
         put(n, 0x6c, 10 + (nextRandom(random) % 20));
     }
@@ -2941,6 +2993,62 @@ function action(
     throw new Error("Mule food acquisition requires prior action cleanup");
   consumeMuleCombatQuery(random, capture.query);
   acquireFood(state, mule, target, c, events);
+}
+
+/**5EB30 common prefix runs on both phases, after odd life and before dispatch. */
+function materialPrefix(mule: EcologyMule, c: MuleContext) {
+  const n = mule.native;
+  if (n[94] === 19) return;
+  if (w(n, 73) & 0x200) n[96] = n[96]! & (n[94] === 0 ? 0xcf : 0xef);
+  if (n[94]! < 24 && n[96]! & 128 && w(n, 73) & 0x300) {
+    n[96] = n[96]! & 127;
+    if (n[97]! & 128 && w(n, 110) === w(n, 11) && w(n, 112) === w(n, 13))
+      n[97] = n[97]! & 127;
+    put(n, 108, 0);
+  }
+  if (
+    [11, 16, 20, 21, 22, 23, 24].includes(n[94]!) &&
+    animationFinished(nativeAnimation(n), c.profile(n[25]!, n[94]!))
+  )
+    put(n, 108, 0);
+  if (n[96]! & 2) {
+    if (!c.materialRuntime)
+      throw Error("Mule attached9C requires actual material pose service");
+    const kind = n[93]!,
+      index = w(n, 91);
+    if (kind && index >= 0) {
+      if (kind < 1 || kind > 5)
+        throw Error("Actual carried reference kind required");
+      c.materialRuntime(mule).attach({
+        kind: kind as 1 | 2 | 3 | 4 | 5,
+        index,
+      });
+    }
+  }
+}
+function carriedAnimation(n: Native, c: MuleContext) {
+  if (n[94]! < 24) {
+    animation(n, c);
+    return;
+  }
+  if (n[94] === 24 && n[25] !== 17) {
+    n[25] = 17;
+    n[26] = n[27] = n[29] = n[30] = 0;
+    n[28] = 1;
+  } else if (n[94] === 25) {
+    n[25] = 18;
+    n[27] = 0;
+    n[28] = 0;
+  }
+  const a = advanceAnimation(
+    nativeAnimation(n),
+    mortalityProfile(n[25]!, n[94]!, c),
+  );
+  n[26] = a.hold;
+  n[27] = a.frame;
+  n[28] = a.direction & 255;
+  n[29] = a.delay & 255;
+  n[30] = a.counter & 255;
 }
 
 /** Whole bounded neutral owner4 selector4 wander/plant-feeding callback.
@@ -2958,13 +3066,15 @@ function stepMule(
       bytes: context.terrain.bytes.slice(),
       revision: context.terrain.revision,
     },
-    c = { ...context, terrain },
+    c: MuleContext = { ...context, terrain },
     events: MuleEvent[] = [];
   try {
     const found = staged.mules.find((candidate) => candidate.index === index);
     if (!found) throw new Error("Mule slot is absent");
     let mule: EcologyMule = found,
       n = mule.native;
+    if (c.material)
+      c.materialRuntime = (m) => c.material!(staged, terrain, random, m);
     if (n[6] === 0) return { committed: true, reason: null, events: [] };
     const dead = n[0x5e]! >= 24;
     if (
@@ -2973,7 +3083,7 @@ function stepMule(
       n[0x7a] !== 4 ||
       n[0x76] === null ||
       ![
-        0, 1, 3, 4, 5, 6, 7, 8, 10, 15, 16, 18, 20, 21, 24, 25, 26, 27,
+        0, 1, 3, 4, 5, 6, 7, 8, 10, 11, 15, 16, 18, 20, 21, 24, 25, 26, 27,
       ].includes(n[0x5e]!) ||
       (!dead && n[94] !== 18 && w(n, 0x6a) <= 0)
     )
@@ -2983,6 +3093,14 @@ function stepMule(
         "Owned Mule callback requires actual selected-player, alliance, building and operator context",
       );
     const phase = (c.frame + w(n, 15)) >>> 0;
+    if (n[97]! & 1) {
+      materialPrefix(mule, c);
+      carriedAnimation(n, c);
+      Object.assign(state, staged);
+      Object.assign(rng, random);
+      Object.assign(context.terrain, terrain);
+      return { committed: true, reason: null, events };
+    }
     if (n[0x16]! & 0x48 || w(n, 0x49) & 0x400)
       throw new Error("Mule attached movement prefix is required");
     const route = routePrefix(staged, mule, random, c, phase),
@@ -3135,7 +3253,7 @@ function stepMule(
             n[123] =
               warmth! + (temperature < 86 ? 1 : Math.min(2, 255 - warmth!));
           if (n[123] === 0 && n[94] !== 15) {
-            releaseAction(staged, mule);
+            releaseAction(staged, mule, c);
             put(n, 63, 0);
             put(n, 73, w(n, 73) & 0xefe8);
             n[84] = 0;
@@ -3151,27 +3269,16 @@ function stepMule(
           }
         }
       }
-      if (w(n, 0x49) & 0x200)
-        n[0x60] = n[0x60]! & (n[0x5e] === 0 ? 0xcf : 0xef);
-      if (n[0x60]! & 0x80 && w(n, 0x49) & 0x300) {
-        n[0x60] = n[0x60]! & 0x7f;
-        if (
-          n[0x61]! & 0x80 &&
-          w(n, 0x6e) === w(n, 11) &&
-          w(n, 0x70) === w(n, 13)
-        )
-          n[0x61] = n[0x61]! & 0x7f;
-        put(n, 0x6c, 0);
+      materialPrefix(mule, c);
+      if (n[94] === 8 && w(n, 108) > 0 && n[95] === 1) {
+        if (!c.materialRuntime)
+          throw Error("Pending Mule material travel requires actual services");
+        stepMuleMaterialTravel(n, c.materialRuntime(mule));
       }
-      if (
-        [16, 20, 21].includes(n[0x5e]!) &&
-        animationFinished(nativeAnimation(n), c.profile(n[0x19]!, n[0x5e]!))
-      )
-        put(n, 0x6c, 0);
       if (
         ([0, 8].includes(n[0x5e]!) && w(n, 0x6c) === 0) ||
         [1, 3, 4, 5, 6, 7, 10].includes(n[0x5e]!) ||
-        ([15, 16, 18, 20, 21].includes(n[0x5e]!) && w(n, 0x6c) <= 0) ||
+        ([11, 15, 16, 18, 20, 21].includes(n[0x5e]!) && w(n, 0x6c) <= 0) ||
         (n[0x5e] === 1 && (w(n, 0x49) & 0x200) !== 0 && !(n[0x60]! & 0x80))
       )
         action(staged, mule, random, c, events);
@@ -3181,18 +3288,7 @@ function stepMule(
       muleLifecycleTail(mule, c.rules);
       if (w(n, 0x6c) > 0) put(n, 0x6c, w(n, 0x6c) - 1);
     } else {
-      if (w(n, 0x49) & 0x200)
-        n[0x60] = n[0x60]! & (n[0x5e] === 0 ? 0xcf : 0xef);
-      if (n[0x60]! & 0x80 && w(n, 0x49) & 0x300) {
-        n[0x60] = n[0x60]! & 0x7f;
-        if (
-          n[0x61]! & 0x80 &&
-          w(n, 0x6e) === w(n, 11) &&
-          w(n, 0x70) === w(n, 13)
-        )
-          n[0x61] = n[0x61]! & 0x7f;
-        put(n, 0x6c, 0);
-      }
+      materialPrefix(mule, c);
     }
     if (n[94]! >= 24) mortality(staged, mule, 0, c, events, true);
     else animation(n, c);
