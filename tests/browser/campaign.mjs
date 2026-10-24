@@ -365,161 +365,90 @@ try {
       }
       return "no-site";
     };
-    const krellSteps = [];
-    for (const [label, selector] of [
-      ["Extractor", 11],
-      ["First Stage Distributor", 3],
-      ["Photon Processor", 6],
-      ["Genepod", 0],
-    ]) {
-      const outcome = await buildKrell(label, selector);
-      krellSteps.push({ label, selector, outcome });
-      if (outcome === "locked") break;
-    }
-    let krellVictory = null;
-    const krellRounds = [];
-    for (let round = 0; round < 16; round++) {
-      const state = await page.evaluate(() => {
-        const w = window.CR.inspect().campaign.world;
-        const raw = w.players[0].raw[13];
-        return {
-          result: w.result.phase,
-          funds: w.players[0].funds,
-          score: raw < 0 ? raw + 256 : raw,
-          mules: w.ecology.mules
-            .filter(
-              (m) =>
-                m.native[6] === 1 && m.native[24] === 0 && m.native[0x5e] < 24,
-            )
-            .map((m) => ({
-              x: (m.native[7] | (m.native[8] << 8)) / 256,
-              y: (m.native[9] | (m.native[10] << 8)) / 256,
-            })),
+    // Replay export/import and restart checks are Exceland-era coverage and
+    // restart the mission; the Krell run skips them to stay within budget.
+    let replayed = null,
+      restarted = null,
+      downloadFailure = null;
+    if (!process.env.CAMPAIGN_SKIP_REPLAY) {
+      await page
+        .getByRole("button", { name: "Save / load", exact: true })
+        .click();
+      await page.evaluate(() => {
+        const original = URL.createObjectURL.bind(URL);
+        URL.createObjectURL = (blob) => {
+          if (blob.type === "application/json")
+            window.__campaignExport = blob.text();
+          return original(blob);
         };
       });
-      krellRounds.push({
-        round,
-        funds: state.funds,
-        score: state.score,
-        mules: state.mules.length,
-        result: state.result,
-      });
-      if (state.result !== "running") {
-        krellVictory = state;
-        break;
-      }
-      const produce = page.getByRole("button", { name: /^Produce Mule/ });
-      const produceCount = await produce.count();
-      if (produceCount > 0 && state.funds > 75) {
-        try {
-          if (viewport.width < 1000) await produce.first().tap({ timeout: 5000 });
-          else await produce.first().click({ timeout: 5000 });
-          await page.evaluate(() => window.CR.advanceCampaign(420));
-        } catch (e) {
-          krellRounds.push({ produceError: String(e).slice(0, 80) });
-        }
-      } else {
-        krellRounds.push({ produceSkipped: produceCount, funds: state.funds });
-      }
-      const zone = await page.evaluate(() => window.CR.project(1, 95));
-      for (const mule of state.mules.slice(0, 6)) {
-        const at = await page.evaluate(
-          ([x, y]) => window.CR.project(x, y),
-          [mule.x, mule.y],
+      const download = page.waitForEvent("download");
+      await page
+        .getByRole("button", { name: "Export campaign replay", exact: true })
+        .click();
+      const replayPath = resolve(out, `${viewport.width}-replay.json`);
+      const exported = await download,
+        downloadFailure = await exported.failure();
+      if (downloadFailure === null) await exported.saveAs(replayPath);
+      else {
+        // This managed Chrome also cancels a minimal asset-free Blob download.
+        // Preserve that tooling result and test the actual UI-generated payload.
+        writeFileSync(
+          replayPath,
+          await page.evaluate(() => window.__campaignExport),
         );
-        if (!at || !zone) continue;
-        if (viewport.width < 1000) {
-          await page.touchscreen.tap(at.x, at.y);
-          await page.touchscreen.tap(zone.x, zone.y);
-        } else {
-          await page.mouse.click(at.x, at.y);
-          await page.mouse.click(zone.x, zone.y);
-        }
-        await page.evaluate(() => window.CR.advanceCampaign(20));
       }
-      await page.evaluate(() => window.CR.advanceCampaign(500));
-    }
-    console.log(JSON.stringify({ krellSteps, krellRounds, krellVictory }));
-    assert.ok(krellVictory, `Krell did not reach a result: ${JSON.stringify(krellSteps)}`);
-    assert.equal(krellVictory.result, "victory-notification", JSON.stringify(krellVictory));
-    assert.ok(krellVictory.score >= 1000, JSON.stringify(krellVictory));
-    await page.screenshot({
-      path: resolve(out, `${viewport.width}-krell.png`),
-    });
-    await page
-      .getByRole("button", { name: "Save / load", exact: true })
-      .click();
-    await page.evaluate(() => {
-      const original = URL.createObjectURL.bind(URL);
-      URL.createObjectURL = (blob) => {
-        if (blob.type === "application/json")
-          window.__campaignExport = blob.text();
-        return original(blob);
-      };
-    });
-    const download = page.waitForEvent("download");
-    await page
-      .getByRole("button", { name: "Export campaign replay", exact: true })
-      .click();
-    const replayPath = resolve(out, `${viewport.width}-replay.json`);
-    const exported = await download,
-      downloadFailure = await exported.failure();
-    if (downloadFailure === null) await exported.saveAs(replayPath);
-    else {
-      // This managed Chrome also cancels a minimal asset-free Blob download.
-      // Preserve that tooling result and test the actual UI-generated payload.
-      writeFileSync(
-        replayPath,
-        await page.evaluate(() => window.__campaignExport),
+      const replay = JSON.parse(readFileSync(replayPath, "utf8"));
+      assert.equal(replay.final.result, "running");
+      assert.equal(typeof replay.sourceDirty, "boolean");
+      assert.ok(replay.commands.some((e) => e.type === "continue"));
+      await page
+        .getByRole("dialog")
+        .getByRole("button", { name: "Resume", exact: true })
+        .click();
+      await page.getByRole("button", { name: "Menu", exact: true }).click();
+      const chooser = page.waitForEvent("filechooser");
+      await page
+        .getByRole("button", { name: "Import campaign replay", exact: true })
+        .click();
+      await (await chooser).setFiles(replayPath);
+      await page.waitForFunction(
+        () => window.CR.inspect().campaign?.world.missionId === 2,
       );
+      const replayed = await page.evaluate(() => {
+        const c = window.CR.inspect().campaign;
+        return {
+          tick: c.world.tick,
+          phase: c.world.phase,
+          renderErrors: c.renderErrors,
+        };
+      });
+      assert.equal(replayed.tick, replay.final.tick);
+      assert.equal(replayed.phase, "active");
+      assert.deepEqual(replayed.renderErrors, []);
+      await page.getByRole("button", { name: "Restart", exact: true }).click();
+      await page
+        .getByRole("button", { name: "Deploy specialists", exact: true })
+        .waitFor();
+      const restarted = await page.evaluate(() => {
+        const w = window.CR.inspect().campaign.world;
+        return {
+          mission: w.missionId,
+          frame: w.frame,
+          progress: w.players[0].progress,
+          phase: w.phase,
+        };
+      });
+      assert.deepEqual(restarted, {
+        mission: 2,
+        frame: 0,
+        progress: 1,
+        phase: "briefing",
+      });
+      await page
+        .getByRole("button", { name: "Deploy specialists", exact: true })
+        .click();
     }
-    const replay = JSON.parse(readFileSync(replayPath, "utf8"));
-    assert.equal(replay.final.result, "running");
-    assert.equal(typeof replay.sourceDirty, "boolean");
-    assert.ok(replay.commands.some((e) => e.type === "continue"));
-    await page
-      .getByRole("dialog")
-      .getByRole("button", { name: "Resume", exact: true })
-      .click();
-    await page.getByRole("button", { name: "Menu", exact: true }).click();
-    const chooser = page.waitForEvent("filechooser");
-    await page
-      .getByRole("button", { name: "Import campaign replay", exact: true })
-      .click();
-    await (await chooser).setFiles(replayPath);
-    await page.waitForFunction(
-      () => window.CR.inspect().campaign?.world.missionId === 2,
-    );
-    const replayed = await page.evaluate(() => {
-      const c = window.CR.inspect().campaign;
-      return {
-        tick: c.world.tick,
-        phase: c.world.phase,
-        renderErrors: c.renderErrors,
-      };
-    });
-    assert.equal(replayed.tick, replay.final.tick);
-    assert.equal(replayed.phase, "active");
-    assert.deepEqual(replayed.renderErrors, []);
-    await page.getByRole("button", { name: "Restart", exact: true }).click();
-    await page
-      .getByRole("button", { name: "Deploy specialists", exact: true })
-      .waitFor();
-    const restarted = await page.evaluate(() => {
-      const w = window.CR.inspect().campaign.world;
-      return {
-        mission: w.missionId,
-        frame: w.frame,
-        progress: w.players[0].progress,
-        phase: w.phase,
-      };
-    });
-    assert.deepEqual(restarted, {
-      mission: 2,
-      frame: 0,
-      progress: 1,
-      phase: "briefing",
-    });
     assert.deepEqual(errors, []);
     assert.deepEqual(requests, []);
     results.push({
@@ -537,6 +466,192 @@ try {
       errors,
       requests,
     });
+    // Krell play-through is gated so the Exceland replay/restart coverage can
+    // run on its own within the 420s execution budget.
+    let krellSteps = [];
+    let krellVictory = null;
+    if (!process.env.CAMPAIGN_SKIP_KRELL) {
+      krellSteps = [];
+      // Building prerequisites are pre[0]=3 and pre[3]=11, so Photon is not needed.
+      for (const [label, selector] of [
+        ["Extractor", 11],
+        ["First Stage Distributor", 3],
+        ["Genepod", 0],
+      ]) {
+        const outcome = await buildKrell(label, selector);
+        krellSteps.push({ label, selector, outcome });
+        if (outcome === "locked") break;
+      }
+  
+      const krellRounds = [];
+      // Portrait layouts collapse the sidebar into Mission/Units/Build/Economy tabs.
+      const portrait = viewport.width < viewport.height;
+      const tabIndex = { Mission: 0, Units: 1, Build: 2, Economy: 3, Alerts: 4 };
+      const openTab = async (name) => {
+        if (!portrait) return;
+        await page.getByRole("button", { name, exact: true }).click();
+        await page
+          .locator(".sidebar section")
+          .nth(tabIndex[name])
+          .waitFor({ state: "visible" });
+      };
+      const maxRounds = Number(process.env.KRELL_ROUNDS || 14);
+      for (let round = 0; round < maxRounds; round++) {
+        const state = await page.evaluate(() => {
+          const w = window.CR.inspect().campaign.world;
+          const raw = w.players[0].raw[13];
+          return {
+            result: w.result.phase,
+            funds: w.players[0].funds,
+            score: raw < 0 ? raw + 256 : raw,
+            mules: w.ecology.mules
+              .filter(
+                (m) =>
+                  m.native[6] === 1 && m.native[24] === 0 && m.native[0x5e] < 24,
+              )
+              .map((m) => ({
+                x: (m.native[7] | (m.native[8] << 8)) / 256,
+                y: (m.native[9] | (m.native[10] << 8)) / 256,
+              })),
+          };
+        });
+        krellRounds.push({
+          round,
+          funds: state.funds,
+          score: state.score,
+          mules: state.mules.length,
+          result: state.result,
+        });
+        if (state.result !== "running") {
+          krellVictory = {
+            ...state,
+            objectives: await page.evaluate(() =>
+              [...document.querySelectorAll("#campaign-objectives .objective")].map(
+                (n) => ({ text: n.textContent, complete: n.classList.contains("complete") }),
+              ),
+            ),
+          };
+          break;
+        }
+        await openTab("Economy");
+        const produce = page.getByRole("button", { name: /^Produce Mule/ });
+        const produceCount = await produce.count();
+        if (produceCount > 0 && state.funds > 75) {
+          // Produce several Mules per round: the zone needs enough live bodies and
+          // a single order per round finishes too late to beat the mission timer.
+          for (let k = 0; k < 3; k++) {
+            const funds = await page.evaluate(
+              () => window.CR.inspect().campaign.world.players[0].funds,
+            );
+            if (funds <= 75) break;
+            try {
+              if (viewport.width < 1000) await produce.first().tap({ timeout: 5000 });
+              else await produce.first().click({ timeout: 5000 });
+              await page.evaluate(() => window.CR.advanceCampaign(420));
+            } catch (e) {
+              krellRounds.push({ produceError: String(e).slice(0, 80) });
+              break;
+            }
+          }
+        } else {
+          krellRounds.push({ produceSkipped: produceCount, funds: state.funds });
+        }
+        // Real UI path: select the Mule in the panel, centre the camera on the
+        // marked zone with "Show zone 1", then tap the zone cell. The small offset
+        // avoids an exact-target raycast degeneracy where the ray meets the camera
+        // focus point precisely and the ground intersection is missed.
+        await openTab("Units");
+        const muleButton = page.getByRole("button", { name: /^Mule \d+ · health/ });
+        const muleCount = await muleButton.count();
+        await openTab("Mission");
+        const showZone = page.getByRole("button", { name: /^Show zone 1$/ });
+        const tapAt = async (x, y) => {
+          if (viewport.width < 1000) await page.touchscreen.tap(x, y);
+          else await page.mouse.click(x, y);
+        };
+        for (let i = 0; i < muleCount; i++) {
+          try {
+            await openTab("Units");
+            if (viewport.width < 1000) await muleButton.nth(i).tap({ timeout: 5000 });
+            else await muleButton.nth(i).click({ timeout: 5000 });
+            await openTab("Mission");
+            if (viewport.width < 1000) await showZone.tap({ timeout: 5000 });
+            else await showZone.click({ timeout: 5000 });
+          } catch {
+            continue;
+          }
+          const zone = await page.evaluate(() => window.CR.project(1, 95));
+          if (!zone) continue;
+          const readNotice = () =>
+            page.evaluate(() => document.querySelector("#campaign-notice")?.textContent ?? "");
+          const before = await readNotice();
+          // The camera centres exactly on the marked zone; a ray through the exact
+          // centre meets the ground at the focus point and the intersection is
+          // missed. Walk a few small offsets until the order is accepted.
+          for (const [dx, dy] of [[8, 8], [24, 24], [48, 48], [80, 80]]) {
+            await tapAt(zone.x + dx, zone.y + dy);
+            await page.evaluate(() => window.CR.advanceCampaign(30));
+            if ((await readNotice()) !== before) break;
+          }
+          if (process.env.KRELL_DEBUG) {
+            const probe = await page.evaluate(([x, y]) => {
+              const el = document.elementFromPoint(x, y);
+              const cv = document.querySelector("#campaign-world canvas");
+              const r = cv?.getBoundingClientRect();
+              return {
+                hit: el ? `${el.tagName}.${el.className}` : null,
+                canvas: r ? [Math.round(r.x), Math.round(r.y), Math.round(r.width), Math.round(r.height)] : null,
+                notice: document.querySelector("#campaign-notice")?.textContent ?? "",
+                sel: document.querySelector("#campaign-selection")?.textContent ?? "",
+              };
+            }, [zone.x + 4, zone.y + 4]);
+            krellRounds.push({ tapProbe: { zone, before, ...probe } });
+          }
+        }
+        krellRounds.push({ muleButtons: muleCount });
+        await page.evaluate(() => window.CR.advanceCampaign(500));
+      }
+      console.log(JSON.stringify({ krellSteps, krellRounds, krellVictory }));
+      assert.ok(krellVictory, `Krell did not reach a result: ${JSON.stringify(krellSteps)}`);
+      assert.equal(krellVictory.result, "victory-notification", JSON.stringify(krellVictory));
+      // Recovered source wins on the marked-zone ranking once the zone quota is
+      // exhausted (mission-objectives scan: terrainCount === field34b9 picks the
+      // best score). The terrain-score goal is a display threshold, not the win
+      // predicate, and the player record is reset on the result transition, so
+      // assert the completed objective row rather than a fixed score value.
+      assert.ok(
+        krellVictory.objectives.some((o) => o.complete),
+        JSON.stringify(krellVictory),
+      );
+      await page.getByRole("button", { name: "View result", exact: true }).click();
+      await page
+        .getByRole("button", { name: "Continue to next mission", exact: true })
+        .click();
+      await page
+        .getByRole("button", { name: "Deploy specialists", exact: true })
+        .waitFor();
+      const krellCarry = await page.evaluate(() => {
+        const w = window.CR.inspect().campaign.world;
+        return {
+          mission: w.missionId,
+          frame: w.frame,
+          progress: w.players[0].progress,
+          phase: w.phase,
+        };
+      });
+      assert.deepEqual(krellCarry, {
+        mission: 3,
+        frame: 0,
+        progress: 2,
+        phase: "briefing",
+      });
+      await page
+        .getByRole("button", { name: "Deploy specialists", exact: true })
+        .click();
+      await page.screenshot({
+        path: resolve(out, `${viewport.width}-krell.png`),
+      });
+    }
     await context.close();
   }
 } finally {

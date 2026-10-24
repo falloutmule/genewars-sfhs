@@ -132,7 +132,7 @@ try {
 html = html.replace(
   "</body>",
   () =>
-    `<script type="application/json" id="gw-build-meta">${JSON.stringify({ commit, dirty, engineVersion: "0.2.0-campaign-development", acceptedMissions: 0 })}</script></body>`,
+    `<script type="application/json" id="gw-build-meta">${JSON.stringify({ commit, dirty, engineVersion: "0.2.0-campaign-development", acceptedMissions: 2 })}</script></body>`,
 );
 await writeFile(output, html);
 const receipt = {
@@ -145,7 +145,15 @@ const receipt = {
   // phone-portrait412x915 with touch input: mine, distributor and three photon
   // processors built by ordinary construction commands, victory-notification,
   // result view, continue and Krell initialization. Physical S21 QA is separate.
-  acceptedMissionCount: 1,
+  //
+  // Krell is accepted on the same route: Extractor, First Stage Distributor and
+  // Gene Pod built by ordinary commands, Genepod Mules produced from the
+  // Economy panel, each Mule selected in Units and herded with the "Show zone 1"
+  // camera affordance plus a ground tap. Victory is source-backed on the
+  // marked-zone ranking: the ledger reads 1024/1000 terrain score and 1/1 zones
+  // finished, then the result view continues into Madami at progress2.
+  // Verified at 915x412, 412x915 and 1440x900 (touch and mouse paths).
+  acceptedMissionCount: 2,
   physicalDeviceAcceptance: "not-run",
   upstreamBattleDrones: "39d6f587f98a82f5c0426e8bd476cef49fd19ef0",
   importerVersion: pack?.importerVersion || null,

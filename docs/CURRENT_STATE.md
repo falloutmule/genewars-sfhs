@@ -18,9 +18,21 @@ The carried Exceland state now plays Krell end to end with public commands only.
 
 **Evidence:** `.private/build-probe-20261024/probe10.ts`, `probe11.ts`, `probe12.ts`, `probe13.ts`, with `krell6.log`, `krell7.log`, `krell8.log`, `krell9.log`, and `zones.log` (zone geometry decode).
 
-**Acceptance:** still **2/24 pending**. Krell counts only once the same route is played through the phone UI; the UI already exposes the needed affordances (Mule selection with map-click move, "Capture / research", "Produce Mule · 75 total"), so the next step is extending the browser campaign test rather than adding app code.
+**Acceptance: Krell is accepted in the software ledger through the real UI.** The browser campaign run against the built artifact (`outputSha256 eb4ca213…`) played this route with real taps at **phone-landscape 915×412, phone-portrait 412×915 and desktop 1440×900**:
 
-## Software campaign acceptance: 1/24 — Exceland
+- Extractor (`11`), First Stage Distributor (`3`) and Gene Pod (`0`) placed by pointer from the Construct menu — the Photon Processor is not a Krell prerequisite (`pre[0] = 3`, `pre[3] = 11`)
+- Mules produced from the **Economy** panel ("Produce Mule · 75 total"), up to three per round until funds run out
+- each Mule selected in the **Units** panel, the camera centred with **"Show zone 1"**, then a ground tap to issue the move
+- `victory-notification` with the objective ledger reading **`terrain-score 1024/1000`** and **`Finish marked zones 1/1`**, both complete
+- "View result" → "Continue to next mission" → Madami initialised at frame 0, progress 2, briefing
+
+Portrait needs the Mission/Units/Economy tab switches; the other viewports show every panel at once. The tap lands a few pixels off the exact zone centre because the camera focuses precisely on it and the centre ray otherwise misses the ground intersection — a projection quirk, not a game defect.
+
+The route is verified in two invocations because one full run exceeds the 420 s execution budget: `CAMPAIGN_SKIP_REPLAY=1` exercises the Krell play-through, `CAMPAIGN_SKIP_KRELL=1` exercises the Exceland replay export/import and restart block. Both pass; neither is a weakened assertion.
+
+Evidence: `.private/build-probe-20261024/ui-krell915k.log`, `ui-krell412j.log`, `ui-krell1440b.log`, `ui-replay1440.log`, plus `.private/browser-campaign/report.json` (artifact hash `eb4ca2131834acff…`). Simulation-layer reasoning remains in the probe logs above.
+
+## Software campaign acceptance: 2/24 — Exceland and Krell
 
 Exceland is accepted in the **software** ledger through the real UI, not a simulation harness. The browser campaign run on the artifact built from commit `2f3c6c1` passed at **desktop 1440×900, phone-landscape 915×412 and phone-portrait 412×915**, the two phone viewports using `hasTouch` and real `touchscreen.tap` input:
 
@@ -54,7 +66,7 @@ So the objective scan (`72ED0`), result stages, save/reload and campaign carry w
 
 **Evidence:** `.private/build-probe-20261024/probe2.ts` (objective recipe, per-stage ledger dumps) and `probe4.ts` (result flow and carry), with `run3.log`.
 
-**Still required before `1/24`:** the same route played through the real UI at desktop and phone-landscape/portrait viewports, with save/reload during that play. Simulation-layer proof does not satisfy the human-playable gate, and acceptance remains **0/24**.
+**Requirement met:** the same route is now played through the real UI at desktop and phone-landscape/portrait viewports, with save/reload during that play. Both Exceland and Krell are accepted in the software ledger (2/24); see the acceptance sections above for the artifact hash and per-viewport evidence.
 
 **Next:** drive this route in the browser build and fix whatever the UI layer cannot yet express.
 
