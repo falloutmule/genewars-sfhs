@@ -8,9 +8,12 @@ creature, DNA, research completion or projectile contact is synthesized.
 
 ## Host entry points
 
-- `queueGeneticistInteraction` admits task 0 research or task 1 healing through
-  category 2 release/initialization, retaining the target reference and setting
-  pending byte 57 bit 0. It does not move or activate the specialist.
+- `queueGeneticistInteraction` binds category2 packet81080 for task0 research
+  or task1 healing. It sets pending57 bit0 before conditional51E80 release,
+  initializes51960 target/role bytes, then stamps130=1. If state85 is8, it
+  performs virtual84 Stop and clears active58 bit1 so57A10 can leave the old
+  movement and activate the pending role. Physical velocity is retained. It
+  does not perform a motion or role callback during command admission.
 - `stepGeneticistCallback` orders actual 6FB60 motion, cooldown decrement,
   blueprint recovery, moving-state completion/error, pending command activation,
   idle acquisition or role work, class 3 charge, stamina recovery, animation
@@ -126,3 +129,15 @@ recovery, idle draws, arrival, motion mirrors, factory order and atomic refusal.
 This is reusable family evidence, not canonical mission acceptance. The
 conversion's canonical mission ledger remains **0/24** until the separate
 source-data playthrough and result/carry acceptance requirements are met.
+
+The complete81080 category2 caller is additionally compared against static
+instructions in576 cases: both tasks, four native states, three retained stamps,
+four active-bit combinations, two pending images and three skills. All103,680
+numeric actor bytes, ordered stop-audio requests and unchanged RNG match over
+79,632 interpreted instructions. Device audio returns are explicit ports and
+MAINPANL selection is inactive; no original executable is executed. Public
+regressions cover retargeting during native state8, pending JSON continuation,
+actual next-callback activation, conditional prior-task release, late rollback
+and normal campaign movement-to-research with full sealed replay. This repairs
+a command-wrapper omission; earlier frozen campaign graphs and their stalled
+travel evidence remain unchanged. It does not establish canonical acceptance.

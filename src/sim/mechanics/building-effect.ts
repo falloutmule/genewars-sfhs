@@ -11,6 +11,12 @@ import {
   worldCell,
   type TerrainState,
 } from "./terrain";
+import {
+  stepSharedFreeEffectMotion,
+  type SharedFreeEffectMotionContext,
+  type DestructionStep,
+} from "./destruction-effect";
+import type { GeneRng } from "./random";
 const word = (n: EffectNativePrior, at: number) =>
   ((effectPriorByte(n, at) | (effectPriorByte(n, at + 1) << 8)) << 16) >> 16;
 const dword = (n: EffectNativePrior, at: number) =>
@@ -65,8 +71,84 @@ export function createBuildingEffect(
   n[73] = 4;
   return n;
 }
-/** Source4B630 on the prepared level construction site. Changing ground or
- * water contact requires common effect physics, rather than guessed motion. */
+function validateBuildingCallback(
+  n: EffectNativePrior,
+  profile: AnimationProfile,
+) {
+  if (
+    n[6] !== 5 ||
+    n[69] !== 44 ||
+    effectPriorByte(n, 24) >= 4 ||
+    word(n, 15) < 0 ||
+    word(n, 15) >= 200 ||
+    word(n, 43) !== 16
+  )
+    throw new Error("Invalid building effect callback");
+  if (
+    profile.flags !== 0 ||
+    profile.holds.length !== 9 ||
+    profile.last - profile.first !== 8 ||
+    profile.holds.some((h) => h !== 0) ||
+    n[25] !== 0 ||
+    n[28] !== 1 ||
+    n[29] !== 0
+  )
+    throw new Error("Unsupported building appearance animation");
+}
+function advanceBuildingEffect(
+  n: EffectNativePrior,
+  profile: AnimationProfile,
+) {
+  const after = n.slice(),
+    timer = word(n, 74),
+    nextTimer = timer >= 0 ? timer - 1 : timer;
+  putEffectWord(after, 74, nextTimer);
+  const a = advanceAnimation(
+    {
+      action: 44,
+      hold: effectPriorByte(n, 26),
+      frame: effectPriorByte(n, 27),
+      direction: 1,
+      delay: 0,
+      counter: (effectPriorByte(n, 30) << 24) >> 24,
+    },
+    profile,
+  );
+  after[26] = a.hold;
+  after[27] = a.frame;
+  after[30] = a.counter & 255;
+  return {
+    native: after,
+    retired: nextTimer < 0 && a.frame === 8 && a.hold === 0 && a.counter === 0,
+  };
+}
+export interface BuildingEffectContext extends SharedFreeEffectMotionContext {
+  profile: AnimationProfile;
+}
+/** Complete4B630 code44/0x2C: actual6DF30 first, then timer/7AC00 and mode0
+ * retirement. Descriptor44 is immovable and water-response false; its odd
+ * airborne74270 query still runs. No child factory or RNG draw is reached. */
+export function stepBuildingEffectRecord(
+  before: EffectNativePrior,
+  rng: GeneRng,
+  context: BuildingEffectContext,
+): DestructionStep {
+  validateBuildingCallback(before, context.profile);
+  if ((word(before, 21) & ~1) !== 0x20)
+    throw new Error("Unsupported building appearance physics flags");
+  const result = stepSharedFreeEffectMotion(before, rng, context, {
+    movable: false,
+    waterResponse: false,
+  });
+  const animation = advanceBuildingEffect(result.native, context.profile);
+  return {
+    ...result,
+    native: animation.native,
+    retirementRequired: animation.retired,
+  };
+}
+/** Compatibility wrapper for callers explicitly supplying a quiet, level
+ * site. Campaign callbacks use stepBuildingEffectRecord and full6DF30. */
 export function stepBuildingEffect(
   n: EffectNativePrior,
   terrain: TerrainState,
@@ -74,14 +156,7 @@ export function stepBuildingEffect(
   shade: number,
   profile: AnimationProfile,
 ): { native: EffectNativePrior; retired: boolean } {
-  if (
-    n[6] !== 5 ||
-    n[69] !== 44 ||
-    effectPriorByte(n, 24) >= 4 ||
-    word(n, 15) < 0 ||
-    word(n, 15) >= 200
-  )
-    throw new Error("Invalid building effect callback");
+  validateBuildingCallback(n, profile);
   const x = word(n, 7),
     y = word(n, 9),
     ground = groundHeight(terrain, x, y),
@@ -108,34 +183,8 @@ export function stepBuildingEffect(
     throw new Error(
       "Building appearance requires changed-ground or water physics",
     );
-  if (
-    profile.flags !== 0 ||
-    profile.holds.length !== 9 ||
-    profile.holds.some((h) => h !== 0) ||
-    n[25] !== 0 ||
-    n[28] !== 1 ||
-    n[29] !== 0
-  )
-    throw new Error("Unsupported building appearance animation");
   const after = n.slice();
   after[23] = shade;
   putEffectWord(after, 59, 512);
-  const timer = word(n, 74),
-    nextTimer = timer >= 0 ? timer - 1 : timer;
-  putEffectWord(after, 74, nextTimer);
-  const a = advanceAnimation(
-    {
-      action: 44,
-      hold: effectPriorByte(n, 26),
-      frame: effectPriorByte(n, 27),
-      direction: 1,
-      delay: 0,
-      counter: (effectPriorByte(n, 30) << 24) >> 24,
-    },
-    profile,
-  );
-  after[26] = a.hold;
-  after[27] = a.frame;
-  after[30] = a.counter & 255;
-  return { native: after, retired: nextTimer < 0 && a.frame === 8 };
+  return advanceBuildingEffect(after, profile);
 }

@@ -666,6 +666,45 @@ describe("source57A10 Geneticist callback envelope", () => {
     expect(r.events.map((e) => e.type)).toContain("presentation");
     expect(f.n()[27]).toBe(1);
   });
+  it("retargets an ordinary moving Geneticist through81080, then activates the pending role after JSON continuation", () => {
+    const f = fixture();
+    f.n()[85] = 8;
+    f.n()[88] = 2;
+    f.n()[130] = 0;
+    put(f.n(), 63, 700);
+    put(f.n(), 45, 29);
+    put(f.n(), 73, 0x214);
+    const position = f.n().slice(7, 11), rng = structuredClone(f.w.rng);
+    const out = queueGeneticistInteraction(f.w, 0, { task: 0, target: 1, callerOwner: 0 }, f.c);
+    expect(out.events.filter(e => e.type === "released")).toEqual([]);
+    expect([f.n()[85], f.n()[88], f.n()[87]! & 1, f.n()[130], word(f.n(), 63), word(f.n(), 45)]).toEqual([8, 0, 1, 1, 0, 29]);
+    expect(f.n().slice(7, 11)).toEqual(position);
+    expect(f.w.rng).toEqual(rng);
+    const loaded: GeneticistWorld = JSON.parse(JSON.stringify(f.w));
+    const c = callback(f);
+    stepGeneticistCallback(f.w, 0, c);
+    stepGeneticistCallback(loaded, 0, c);
+    expect(loaded).toEqual(f.w);
+    expect([f.n()[85], f.n()[87]! & 1, f.n()[88]! & 1]).toEqual([11, 0, 1]);
+    expect(f.raw()[0x62a] | f.raw()[0x62b] << 8).toBeGreaterThan(0);
+  });
+  it("81080 releases a stamped prior task before installing the new one, while preserving pending flags and physical momentum", () => {
+    const f = fixture();
+    f.n()[130] = 1;
+    f.n()[87] = 2;
+    put(f.n(), 45, -31);
+    const out = queueGeneticistInteraction(f.w, 0, { task: 1, target: 1, callerOwner: 0 }, f.c);
+    expect(out.events.filter(e => e.type === "audio").map(e => e.type === "audio" && e.cue)).toEqual([87, 86]);
+    expect([f.n()[87], f.n()[88], f.n()[130], f.n()[126], word(f.n(), 45)]).toEqual([3, 0, 1, 1, -31]);
+  });
+  it("rolls back the complete81080 admission and prior task release when the required projectile profile is unavailable", () => {
+    const f = fixture();
+    f.n()[130] = 1;
+    const before = structuredClone(f.w);
+    expect(() => queueGeneticistInteraction(f.w, 0, { task: 0, target: 1, callerOwner: 0 },
+      { ...f.c, rules: { schemaVersion: 1, projectiles: [] } })).toThrow(/projectile profile/);
+    expect(f.w).toEqual(before);
+  });
   it("runs the exact idle timer draws only after a failed or ineligible acquisition pulse", () => {
     const f = fixture();
     f.w.frame = 1;

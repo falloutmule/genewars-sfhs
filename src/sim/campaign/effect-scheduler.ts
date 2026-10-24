@@ -30,7 +30,7 @@ import {
   type BlastAreaContext,
 } from "../mechanics/destruction-effect";
 import { animationProfile } from "../mechanics/animation";
-import { stepBuildingEffect } from "../mechanics/building-effect";
+import { stepBuildingEffectRecord } from "../mechanics/building-effect";
 import { stepZoneEffectRecord } from "../mechanics/zones";
 import {
   stepProductionEffectRecord,
@@ -1253,17 +1253,25 @@ export function stepEffectScheduler<W extends EffectSchedulerWorld>(
       if (result.retirementRequired)
         retire(s, slot, result.native, out, options);
     } else if (code === 44) {
-      const x = ((n[7]! | (n[8]! << 8)) << 16) >> 16,
-        y = ((n[9]! | (n[10]! << 8)) << 16) >> 16;
-      const result = stepBuildingEffect(
-        n,
-        s.terrain,
-        s.source.source.terrain.loadedPhysicalWaterHeight,
-        effectTerrainShade(s.terrain, x, y),
-        animationProfile(pack.assets.EFF, 44),
-      );
-      publish(s, slot, result.native);
-      if (result.retired) retire(s, slot, result.native, out, options);
+      const result = stepBuildingEffectRecord(n, s.rng, {
+        frame: s.frame,
+        gravity: options.gravity,
+        water: s.source.source.terrain.loadedPhysicalWaterHeight,
+        terrain: s.terrain,
+        tables: pack.rules!.tables,
+        bounce: pack.rules!.tables.bounce,
+        friction: pack.ecologyRules?.corpseFriction ?? [],
+        profile: animationProfile(pack.assets.EFF, 44),
+        obstacle: options.destructionObstacle
+          ? (point, height) => options.destructionObstacle!(s, point, height)
+          : undefined,
+        particle: () => {
+          throw Error("Unexpected building44 child factory");
+        },
+      });
+      publishStagedSharedEffect(s, slot, result.native);
+      if (result.retirementRequired)
+        retireStagedSharedEffect(s, slot, options, out);
     } else if (code === 0x21) {
       const receipt = stepPowerEffects(s, pack, slot);
       out.power.push(receipt);

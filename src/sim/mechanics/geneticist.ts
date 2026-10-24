@@ -966,7 +966,8 @@ export function stepSpecialistLifecycleCallback<W extends GeneticistWorld>(
     role: unsupported,
   });
 }
-/** UI admission through51E80/51960.57A10 consumes57-bit0 on the next callback;
+/**81080 category2 input, including conditional51E80 and51960.57A10 consumes
+ *57-bit0 on the next callback; an interrupted state8 must clear active motion.
  * no507D0 activation, cooldown step, animation or physical movement occurs here. */
 export function queueGeneticistInteraction<W extends GeneticistWorld>(
   world: W,
@@ -989,14 +990,19 @@ export function queueGeneticistInteraction<W extends GeneticistWorld>(
   if (!(byte(n, 112) & 1)) return out;
   const target = mule(s, request.target);
   if (!target) throw Error("Geneticist request target is inactive");
-  release(s, index, out);
+  n[87] = byte(n, 87) | 1;
+  if (byte(n, 130) !== 0) release(s, index, out);
   n[126] = request.task;
   reference(n, target.native);
   put(n, 136, 0);
   put(n, 138, Math.trunc((a.skill * 362) / 100) + 150);
   put(n, 132, 0);
   put(n, 134, 0);
-  n[87] = byte(n, 87) | 1;
+  n[130] = 1;
+  if (byte(n, 85) === 8) {
+    stop(n);
+    n[88] = byte(n, 88) & 253;
+  }
   out.status = "pending";
   out.reason = "interaction-queued";
   // Admit the exact row now, without selecting an action or resetting counters.

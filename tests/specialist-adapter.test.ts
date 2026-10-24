@@ -218,6 +218,45 @@ describe("campaign specialist services", () => {
       }).reason,
     ).toMatch(/Engineer/);
   });
+  it("retargets a moving Geneticist through queued81080 and preserves pending save continuation and full replay", () => {
+    const w = structuredClone(start), actor = w.actors[1];
+    const position: [number, number] = [actor.motion.x + 128, actor.motion.y];
+    const factory = initializeMuleNative(w.creatureNative[0], w.rng,
+      { slot: 0, owner: 4, position, quality: 50 },
+      { terrain: w.terrain, tables: pack.rules!.tables });
+    if (!factory.ok) throw Error(factory.reason);
+    const n = factory.value.native;
+    //Explicit synthetic initial captured-target condition; commands and all
+    //subsequent motion, research, saves and replay use the ordinary host.
+    n[94] = 18;
+    put16(n as number[], 108, 200);
+    w.rng = factory.value.rng;
+    w.creatureNative[0] = n;
+    w.ecology.mules.push({ index: 0, id: "source:0:0", native: n, pending: [] });
+    put16(w.missionPrefix, 0x3550, 1);
+    insertSpatial(w.spatial, w.terrain, "source:0:0", ((position[1] >> 8) & 127) * 128 + ((position[0] >> 8) & 127));
+    synchronizeCampaignLinks(w);
+    const recording = recordCampaign(w, "synthetic-moving-retarget");
+    const move = { type: "move" as const, actorId: actor.id, point: [9000, 9000] as [number, number], queued: false };
+    expect(queueCampaign(w, move).ok).toBe(true);
+    recording.commands.push({ tick: w.tick, type: "command", command: move });
+    stepCampaign(w, pack);
+    expect([w.specialists.records[actor.id][85], w.specialists.records[actor.id][88]! & 2]).toEqual([8, 2]);
+    const research = { type: "research-mule" as const, actorId: actor.id, muleIndex: 0 };
+    expect(queueCampaign(w, research).ok).toBe(true);
+    recording.commands.push({ tick: w.tick, type: "command", command: research });
+    const loaded = loadCampaign(saveCampaign(w, { paused: true, speed: 2, accumulator: 0 }), w.contentHash).world;
+    const initialResearch = u32(w.players[0].raw, 0x62a);
+    for (let i = 0; i < 16; i++) {
+      stepCampaign(w, pack);
+      stepCampaign(loaded, pack);
+      expect(checksum(loaded)).toBe(checksum(w));
+      expect(w.notices.filter(notice => notice.severity === "error")).toEqual([]);
+      if (i === 0) expect([w.specialists.records[actor.id][85], w.specialists.records[actor.id][87]! & 1, w.specialists.records[actor.id][130]]).toEqual([11, 0, 1]);
+    }
+    expect(u32(w.players[0].raw, 0x62a)).toBeGreaterThan(initialResearch);
+    expect(checksum(replayCampaign(sealCampaignReplay(recording, w), pack, w.contentHash))).toBe(checksum(w));
+  });
   it("performs immediate child20 capture with retained parent identity, source damage gate and shared scheduling", () => {
     const w = structuredClone(start),
       a = w.specialists.records[1],
