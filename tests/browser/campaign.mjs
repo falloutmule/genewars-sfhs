@@ -377,6 +377,7 @@ try {
       if (outcome === "locked") break;
     }
     let krellVictory = null;
+    const krellRounds = [];
     for (let round = 0; round < 16; round++) {
       const state = await page.evaluate(() => {
         const w = window.CR.inspect().campaign.world;
@@ -396,15 +397,29 @@ try {
             })),
         };
       });
+      krellRounds.push({
+        round,
+        funds: state.funds,
+        score: state.score,
+        mules: state.mules.length,
+        result: state.result,
+      });
       if (state.result !== "running") {
         krellVictory = state;
         break;
       }
       const produce = page.getByRole("button", { name: /^Produce Mule/ });
-      if ((await produce.count()) > 0 && state.funds > 150) {
-        if (viewport.width < 1000) await produce.first().tap();
-        else await produce.first().click();
-        await page.evaluate(() => window.CR.advanceCampaign(420));
+      const produceCount = await produce.count();
+      if (produceCount > 0 && state.funds > 75) {
+        try {
+          if (viewport.width < 1000) await produce.first().tap({ timeout: 5000 });
+          else await produce.first().click({ timeout: 5000 });
+          await page.evaluate(() => window.CR.advanceCampaign(420));
+        } catch (e) {
+          krellRounds.push({ produceError: String(e).slice(0, 80) });
+        }
+      } else {
+        krellRounds.push({ produceSkipped: produceCount, funds: state.funds });
       }
       const zone = await page.evaluate(() => window.CR.project(1, 95));
       for (const mule of state.mules.slice(0, 6)) {
@@ -424,7 +439,7 @@ try {
       }
       await page.evaluate(() => window.CR.advanceCampaign(500));
     }
-    console.log(JSON.stringify({ krellSteps, krellVictory }));
+    console.log(JSON.stringify({ krellSteps, krellRounds, krellVictory }));
     assert.ok(krellVictory, `Krell did not reach a result: ${JSON.stringify(krellSteps)}`);
     assert.equal(krellVictory.result, "victory-notification", JSON.stringify(krellVictory));
     assert.ok(krellVictory.score >= 1000, JSON.stringify(krellVictory));
