@@ -83,12 +83,14 @@ is duplicated or teleported to a new candidate.
 
 The human raw2=0,frame>0,nonzero1EC2 branch of7F3B0 passes factory parameter1.
 Source48CA4..48CE2 then sets payload3, scans selector64 records and changes the
-factory's returned pointer. That selector64 return/lifecycle family is not
-admitted by `landing.ts`; this branch throws before inventing a substitute
-landing. Ordinary strategic opponents use raw2!=0 and are covered.
+factory's returned pointer. The concrete selector64 return/lifecycle family is
+now bound through `recruitment-landing-adapter.ts`; see `HUMAN_ROSTER.md` and
+`HUMAN_RECRUITMENT_EFFECT.md` for its separate proofs. An absent64 reaches an
+explicit one-past source guard. Ordinary strategic opponents use raw2!=0.
 
-Existing landing callbacks still reject water/environmental contact and
-full-pool smoke replacement rather than inventing those cross-family effects.
+Existing selector49 callbacks still reject water/environmental contact. Smoke
+and departure children now use the real shared priority allocator, including
+full-pool replacement and genuine capacity failure.
 The main recruitment landing factory itself uses real shared priority
 replacement and cleanup. Role cancellation services are required only if
 80AE0 enters the actual native130/87bit0 cancellation gate; unavailable work

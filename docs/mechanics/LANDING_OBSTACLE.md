@@ -46,6 +46,7 @@ Seven public tests cover these gates, source query before smoke/departure RNG,
 identical hit/null numeric afterimages, the actual staged host binding and
 missing-service rollback with held native identity preserved. Existing real
 initial/reinforcement descent, save/replay and campaign tests cover the normal
-host path. Water environmental effects, selector64 parameter1, optional building
-children and full-pool smoke replacement remain separate explicit boundaries;
-this change does not claim their implementation or canonical mission acceptance.
+host path. Selector64 parameter1, associated building updates and full-pool
+smoke replacement are now separately bound and compared in
+`HUMAN_RECRUITMENT_EFFECT.md`. Selector49 water environmental contact remains
+explicit. These source comparisons do not establish canonical mission acceptance.
