@@ -57,6 +57,7 @@ import { campaignAirborneBuilding } from "./mule-damage-adapter";
 import { insertSpatial } from "./spatial";
 import { i16, u16, u32, put16, put32 } from "./bytes";
 import { planBotanistEconomy } from "../mechanics/botanist";
+import { campaignBuildingAsset } from "./building-startup-adapter";
 
 export interface CampaignEngineerServices extends CampaignSpecialistServices {
   placeTakeoverCharge?(
@@ -104,7 +105,7 @@ export function progressCampaignEngineerBuilding(
     general =
       targetGrade !== 0 ||
       n[46] !== 0 ||
-      ![0, 1, 3, 6, 11].includes(b.selector) ||
+      ![0, 1, 3, 4, 6, 11].includes(b.selector) ||
       (!(u16(n as number[], 49) & 1) && u16(n as number[], 49) !== 0),
     maximum = pack.rules!.tables.buildingHealth[b.selector * 3 + targetGrade],
     owner = n[24]!,
@@ -202,7 +203,7 @@ export function progressCampaignEngineerBuilding(
         parameter: 0,
         gain: 1,
         range: null,
-        ...(general
+        ...(general || b.selector === 4
           ? {
               initialRatePercent:
                 115 - pack.rules!.tables.buildingFootprints[b.selector] * 15,
@@ -295,6 +296,15 @@ export function createStagedCampaignEngineerBuilding(
   while (slot < request.owner * 64 + 64 && w.buildingNative[slot][6] !== 0)
     slot++;
   if (slot === request.owner * 64 + 64) return null;
+  //43E30's virtual60 binds the actual resource. Newly admitted selector4
+  //requires the imported profile; no synthetic BFARM or source-table fallback.
+  if (request.selector === 4) {
+    if (!pack.buildingRules)
+      throw Error("Original selector4 building resource profile required");
+    if (pack.buildingRules.unsupportedSelectors.includes(request.selector))
+      throw Error("Unadmitted selector4 building resource profile");
+    campaignBuildingAsset(pack, request.selector);
+  }
   const effectSlot = allocateStagedSharedEffect(
     w,
     44,
@@ -486,7 +496,10 @@ export function campaignEngineerContext(
       reserveSite: (s, p, size) => {
         const r = reserveSite(s.terrain, p, size, tables.terrainBorder);
         return {
-          point: [(p[0] & ~255) | 127, (p[1] & ~255) | 127],
+          point: [
+            (p[0] & ~255) | (size === 2 ? 0 : 127),
+            (p[1] & ~255) | (size === 2 ? 0 : 127),
+          ],
           targetHeight: r.targetHeight,
           events: [{ type: "terrain", cells: r.vertices }],
         };

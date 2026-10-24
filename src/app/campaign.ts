@@ -763,7 +763,10 @@ export async function openCampaign(
     }
     const build = node("campaign-build");
     build.replaceChildren();
-    for (const selector of [11, 3, 6, 0, 1]) {
+    const constructionSelectors = [11, 3, 6, 0, 1];
+    if (pack.buildingRules?.resources.some(row => row.selector === 4 && pack.assets[row.assetKey]))
+      constructionSelectors.push(4);
+    for (const selector of constructionSelectors) {
       const skill = a ? p.blueprints[a.blueprintIndex].skill : 0,
         cost = pack.rules!.tables.constructionCosts[selector] - 2 * skill,
         b = button(build, `${NAMES[selector]} · ${cost}`, () => {

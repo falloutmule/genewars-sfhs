@@ -20,6 +20,7 @@ import { copySpatialLinks, unlinkSpatial } from "./spatial";
 import { i16, put16, put32, u16, u32 } from "./bytes";
 import type { SourceEntityId } from "./source-pools";
 import { readShepherdOperators } from "../mechanics/shepherd";
+import { campaignBuildingAsset } from "./building-startup-adapter";
 
 /** Current virtual0/68 and combat-only building reach. These are distinct
  * from74270 collision extents and from the construction footprint in cells. */
@@ -85,13 +86,6 @@ export function campaignMuleBuildingPointAccepted(
     ) < 10
   );
 }
-const art: Record<number, string> = {
-  0: "BGENE",
-  1: "BTURR",
-  3: "BPOWE",
-  6: "BSOLA",
-  11: "BMINE",
-};
 /** Exact74270 first-building semantics and current raw ANB height. */
 export function campaignAirborneBuilding(
   w: CampaignWorld,
@@ -114,7 +108,7 @@ export function campaignAirborneBuilding(
       return null;
     },
     (n) => {
-      const asset = pack.assets[art[n[45]!]],
+      const asset = pack.assets[campaignBuildingAsset(pack, n[45]!)],
         a = asset?.animations?.[n[25]!],
         raw = a ? asset.frames?.[a.first + n[27]!]?.sourceSize?.[1] : undefined;
       if (raw === undefined)
@@ -122,6 +116,7 @@ export function campaignAirborneBuilding(
       return raw;
     },
     mask,
+    pack.creatureCommandRules?.footprintSearchOffsets,
   );
 }
 /** Full native-pool effects run inside the caller's already isolated host.

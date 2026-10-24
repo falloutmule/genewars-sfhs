@@ -30,7 +30,7 @@ import type {
 
 type Native = (number | null)[];
 type Point = [number, number];
-type Selector = 0 | 1 | 3 | 6 | 11;
+type Selector = 0 | 1 | 3 | 4 | 6 | 11;
 export interface EngineerCompletedBuildingContribution {
   native: Native;
   /** Source43620 runs against this image BEFORE43F60 when both paths occur. */
@@ -61,7 +61,7 @@ export function planEngineerCompletedBuildingContribution(
   if (
     before.length !== 67 ||
     byte(before, 6) !== 4 ||
-    ![0, 1, 3, 6, 11].includes(s) ||
+    ![0, 1, 3, 4, 6, 11].includes(s) ||
     owner >= 4 ||
     index < 0 ||
     index >= 256 ||
@@ -225,19 +225,19 @@ export interface EngineerNativeConstructionContext<W extends GeneticistWorld>
   /** Actual104E1C fourteen signed dwords. Only the admitted selector is read. */
   constructionCosts: readonly number[];
   /**74E80(point,footprint,100), including real8B340 mask0 occupancy. */
-  siteClass(world: W, point: Point, footprint: 1 | 3): 0 | 1 | 2 | 3 | 4;
+  siteClass(world: W, point: Point, footprint: 1 | 2 | 3): 0 | 1 | 2 | 3 | 4;
   /**42B90/8CBA0, including reservation/material/border writes and actual
    * perimeter-average height. Must preserve world/native/player identities. */
   reserveSite(
     world: W,
     point: Point,
-    footprint: 1 | 3,
+    footprint: 1 | 2 | 3,
   ): EngineerSiteReservation;
   /**753F0/75240 ordinary task0 footprint release, including neighbor vertex
    * protection and current climate/borders. No building demolition/refund. */
   releaseSite(
     world: W,
-    request: { point: Point; footprint: 1 | 3; stage: number },
+    request: { point: Point; footprint: 1 | 2 | 3; stage: number },
   ): ConstructionEvent[];
   /** Actual retained kind4 pool. Null represents a cleaned/unresolved target. */
   building(world: W, slot: number): Native | null;
@@ -296,13 +296,14 @@ const position = (n: readonly (number | null)[], p = 7): Point => [
 ];
 function selected(n: Native): Selector {
   const s = byte(n, 131);
-  if (![0, 1, 3, 6, 11].includes(s))
+  if (![0, 1, 3, 4, 6, 11].includes(s))
     throw Error(
       "Native Engineer task0 selector requires an unimplemented construction family",
     );
   return s as Selector;
 }
-const footprint = (s: Selector): 1 | 3 => (s === 1 || s === 6 ? 1 : 3);
+const footprint = (s: Selector): 1 | 2 | 3 =>
+  s === 4 ? 2 : s === 1 || s === 6 ? 1 : 3;
 function bound<W extends GeneticistWorld>(world: W, index: number) {
   if (world.specialists.bindings[index]?.category !== 0)
     throw Error("Native Engineer construction requires category0");

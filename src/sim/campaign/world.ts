@@ -188,6 +188,7 @@ import {
   type CampaignEngineerServices,
 } from "./engineer-adapter";
 import { campaignEngineerChargeServices, stepCampaignEngineerChargeEffect } from "./engineer-charge-adapter";
+import { stepStagedCampaignBuildingDemolition, stepCampaignSalvageEffect } from "./building-demolition-adapter";
 import { revealCampaignRadius } from "./reveal-adapter";
 import {
   stepCampaignGeneticist,
@@ -273,6 +274,7 @@ export const CampaignCommandSchema = z.discriminatedUnion("type", [
       z.literal(0),
       z.literal(1),
       z.literal(3),
+      z.literal(4),
       z.literal(6),
       z.literal(11),
     ]),
@@ -1742,6 +1744,8 @@ function rewardFactoryOptions(
       stepCampaignShepherdEffect(staged, slot, pack, rewardFactoryOptions(staged, pack), out),
     engineerChargeEffect: (staged, slot, out) =>
       stepCampaignEngineerChargeEffect(staged, slot, pack, rewardFactoryOptions(staged, pack), out),
+    salvageEffect: (staged, slot, out) =>
+      stepCampaignSalvageEffect(staged, slot, pack, rewardFactoryOptions(staged, pack), out),
     etherealAttackEffect: (staged, slot, out) =>
       stepCampaignEtherealAttackEffect(
         staged,
@@ -1869,7 +1873,7 @@ function syncNativeBindings(w: CampaignWorld): void {
     native[63] = b.extraDrain;
     const flags = u16(native as number[], 49);
     put16(native as number[], 49, b.powered ? flags | 4 : flags & ~4);
-    if (b.complete && b.extractor) {
+    if (!(flags & 0x800) && b.complete && b.extractor) {
       native[25] = 1;
       native[26] = b.extractor.hold;
       native[27] = b.extractor.frame;
@@ -1877,7 +1881,7 @@ function syncNativeBindings(w: CampaignWorld): void {
       native[30] = b.extractor.delay & 255;
       native[51] = b.extractor.cycle;
     }
-    if (b.producer) {
+    if (!(flags & 0x800) && b.producer) {
       const a = b.producer.animation;
       native[25] = a.action;
       native[26] = a.hold;
@@ -1966,6 +1970,15 @@ export function stepCampaign(w: CampaignWorld, pack: Pack): void {
       pack,
       specialistServices(pack),
       {
+        dispatchCommonBuilding(staged, building) {
+          const slot = building.owner * 64 + building.slot;
+          if (!(u16(staged.buildingNative[slot] as number[], 49) & 0x800)) return false;
+          stepStagedCampaignBuildingDemolition(staged, slot, pack, {
+            effectOptions: (s) => rewardFactoryOptions(s, pack),
+            cancelConstruction: (s, actor) => specialistServices(pack).cancelConstruction!(s, actor),
+          });
+          return true;
+        },
         dispatchBuilding(staged, building) {
           const slot = building.owner * 64 + building.slot;
           if (!building.complete) {

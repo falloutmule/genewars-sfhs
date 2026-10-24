@@ -45,6 +45,9 @@ export interface CampaignEconomyContacts {
    * so generic3/6/11 numeric work is skipped. Used for Genepod/incomplete native
    * callbacks. Selector4 is owned by this adapter and never delegated twice. */
   dispatchBuilding?(staged: CampaignWorld, building: EconomyBuilding): boolean;
+  /** Complete451F0 common-prefix branch, before upkeep and selector work,
+   * including selector4. True owns the entire callback and its common tail. */
+  dispatchCommonBuilding?(staged: CampaignWorld, building: EconomyBuilding): boolean;
 }
 const extraRoots = [
   "buildingNative",
@@ -121,7 +124,7 @@ function syncBuilding(w: CampaignWorld, b: EconomyBuilding): void {
   if (b.selector === 11 && b.depleted) flags |= 0x300;
   put16(n as number[], 49, flags);
   physical.energy = b.energy;
-  if (b.complete && b.extractor) {
+  if (!(flags & 0x800) && b.complete && b.extractor) {
     const a = b.extractor;
     n[25] = b.grade + 1;
     n[26] = a.hold;
@@ -130,7 +133,7 @@ function syncBuilding(w: CampaignWorld, b: EconomyBuilding): void {
     n[30] = a.delay & 255;
     n[51] = a.cycle;
   }
-  if (b.complete && b.producer) {
+  if (!(flags & 0x800) && b.complete && b.producer) {
     const a = b.producer.animation;
     n[25] = a.action;
     n[26] = a.hold;
@@ -207,6 +210,10 @@ export function stepCampaignEconomyBuildings(
           staged.economy = state;
           syncPlayers(staged, state);
           syncBuilding(staged, b);
+          //451F0 branches on0800 before producer work, upkeep or contacts.
+          //The complete common callback is dispatched below in this same slot.
+          if (u16(staged.buildingNative[b.owner * 64 + b.slot] as number[], 49) & 0x800)
+            return;
           if (b.complete && !b.disabled && [3, 6].includes(b.selector)) {
             const producer = advancePowerProducerRng(staged, b, pack);
             for (const a of producer.audio)
@@ -254,6 +261,12 @@ export function stepCampaignEconomyBuildings(
           }
         },
         buildingCallback(state, b, _player, events) {
+          const common = contacts.dispatchCommonBuilding?.(staged, b) ?? false;
+          if (staged.economy !== state)
+            throw Error("Common building callback replaced its retained economy state");
+          if (common) return true;
+          if (u16(staged.buildingNative[b.owner * 64 + b.slot] as number[], 49) & 0x800)
+            throw Error("Actual451F0 timed demolition callback is required");
           if (b.selector === 4) {
             const receipt = stepStagedCampaignRecyclingPlant(
               staged,
@@ -277,6 +290,13 @@ export function stepCampaignEconomyBuildings(
           return handled;
         },
         afterBuilding(state, b, _player, events) {
+          const slot = b.owner * 64 + b.slot;
+          if (staged.buildingNative[slot][6] === 0) {
+            if (state.buildings.includes(b) || staged.buildings.some(v => v.slot === slot))
+              throw Error("Common building retirement did not publish its actual host removal");
+            syncPlayers(staged, state);
+            return;
+          }
           if (!b.complete && b.producer) {
             const n = staged.buildingNative[b.owner * 64 + b.slot];
             if (n.slice(25, 31).some((v) => v === null))

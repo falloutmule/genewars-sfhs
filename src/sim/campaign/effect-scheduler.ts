@@ -80,6 +80,7 @@ import {
 } from "../mechanics/plant-fire";
 import type { SpecialistCorpseRequest } from "../mechanics/specialist-damage";
 import type { EngineerChargeUpdate } from "../mechanics/engineer-charge";
+import type { SalvageEffectUpdate } from "../mechanics/salvage-effect";
 import {
   stepBotanistWorkEffectRecord,
   stepBotanistEconomyEffectRecord,
@@ -171,6 +172,8 @@ export interface EffectSchedulerOptions<
     slot: number,
     receipt: EffectSchedulerReceipt,
   ) => EngineerChargeUpdate;
+  /** Actual demolition salvage45/0x2D owner9, including common physics. */
+  salvageEffect?: (world: W, slot: number, receipt: EffectSchedulerReceipt) => SalvageEffectUpdate;
 }
 export interface EffectSchedulerReceipt {
   callbacks: { phase: "primary" | "newborn"; slot: number; code: number }[];
@@ -182,6 +185,7 @@ export interface EffectSchedulerReceipt {
   attacks?: { slot: number; update: GeneticistProjectileStep }[];
   shepherd?: { slot: number; update: GeneticistProjectileStep }[];
   engineerCharges?: { slot: number; update: EngineerChargeUpdate }[];
+  salvage?: { slot: number; update: SalvageEffectUpdate }[];
   createdNewborns: number;
   retired: SourceEntityId[];
   cleanedReferenceBytes: number;
@@ -925,6 +929,14 @@ export function stepEffectScheduler<W extends EffectSchedulerWorld>(
       publishStagedSharedEffect(s, slot, result.native);
       if (result.retirementRequired)
         retireStagedSharedEffect(s, slot, options, out);
+    } else if (code === 45) {
+      if (!options.salvageEffect) throw Error("Original salvage45 callback service is required");
+      const result = options.salvageEffect(s, slot, out);
+      if (!result || typeof result.retirementRequired !== "boolean" || result.newborns !== 0)
+        throw Error("Original salvage45 callback receipt is invalid");
+      publishStagedSharedEffect(s, slot, result.native);
+      (out.salvage ??= []).push({slot, update: result});
+      if (result.retirementRequired) retireStagedSharedEffect(s, slot, options, out);
     } else if (code === 50 || code === 10 || code === 51) {
       if (!options.engineerChargeEffect)
         throw Error(

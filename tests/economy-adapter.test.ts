@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { campaignFixture } from "./fixtures/campaign";
 import { createCampaign, type CampaignWorld } from "../src/sim/campaign/world";
 import { stepCampaignEconomyBuildings } from "../src/sim/campaign/economy-adapter";
+import { stepStagedCampaignBuildingDemolition } from "../src/sim/campaign/building-demolition-adapter";
 import type { CampaignRecyclingServices } from "../src/sim/campaign/recycling-adapter";
 import type { EffectSchedulerOptions } from "../src/sim/campaign/effect-scheduler";
 import { cleanupCampaignReferences } from "../src/sim/campaign/cleanup";
@@ -378,6 +379,44 @@ describe("campaign ordered economy transaction", () => {
       counter: -1,
     });
     expect(f.w.rng.draws).toBe(draws);
+  });
+
+  it("preserves the real demolition ANB against stale producer views before and after the common callback", () => {
+    const f = fixture(), b = f.add(0, 3);
+    const n = f.w.buildingNative[0];
+    put16(n as number[], 49, 0x805); put32(n as number[], 54, 16);
+    n[25] = 1; n[27] = 0; n[28] = 1; n[26] = n[29] = n[30] = 0;
+    b.producer = {
+      animation: { action: 1, frame: 7, hold: 1, direction: 1, delay: 0, counter: 0 },
+      audioRequested: false, audioRequests: [], lastFrame: null, lastPulse: false, lastDraw: null,
+    };
+    const draws = f.w.rng.draws;
+    stepCampaignEconomyBuildings(f.w, f.pack, f.services, {
+      dispatchCommonBuilding(staged, current) {
+        stepStagedCampaignBuildingDemolition(staged, current.owner * 64 + current.slot, f.pack, f.services);
+        return true;
+      },
+    });
+    expect(u32(f.w.buildingNative[0] as number[], 54)).toBe(8);
+    expect(f.w.buildingNative[0].slice(25, 31)).toEqual([1, 0, 1, 1, 0, 0]);
+    expect(f.w.economy.players[0].generatedEnergy).toBe(0);
+    expect(f.w.rng.draws).toBe(draws);
+  });
+
+  it("requires demolition before producer RNG and preserves the whole host when that common callback is unavailable", () => {
+    const f = fixture(); f.add(0, 3);
+    put16(f.w.buildingNative[0] as number[], 49, 0x805);
+    const before = structuredClone(f.w), draws = f.w.rng.draws;
+    let entered = false;
+    expect(() => stepCampaignEconomyBuildings(f.w, f.pack, f.services, {
+      dispatchCommonBuilding(staged) {
+        entered = true;
+        expect(staged.rng.draws).toBe(draws);
+        expect(staged.audio).toEqual(before.audio);
+        return false;
+      },
+    })).toThrow(/timed demolition/);
+    expect(entered).toBe(true); expect(f.w).toEqual(before);
   });
 
   it("creates real contact smoke before queries and rolls its four RNG draws/factory back on a late contact failure", () => {

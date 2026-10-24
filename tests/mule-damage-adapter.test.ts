@@ -4,10 +4,11 @@ import { createCampaign } from "../src/sim/campaign/world";
 import {
   damageCampaignMule,
   captureCampaignMule,
+  campaignAirborneBuilding,
 } from "../src/sim/campaign/mule-damage-adapter";
 import { initializeMuleNative } from "../src/sim/mechanics/genepod";
 import { insertSpatial } from "../src/sim/campaign/spatial";
-import { i16, put16, u32 } from "../src/sim/campaign/bytes";
+import { i16, put16, put32, u32 } from "../src/sim/campaign/bytes";
 function fixture() {
   const pack = campaignFixture();
   pack.ecologyRules!.muleCombat = {
@@ -88,4 +89,30 @@ it("keeps real capture stun through later lethal research damage, credits the ki
   expect(u32(w.players[0].raw, 0x6fd)).toBe(1);
   expect(w.missionPrefix[0x3550]).toBe(1);
   expect(w.spatial.nodes["source:0:0"]).toBeDefined();
+});
+
+it("queries a Recycling Plant using its admitted resource and current ANB frame height", () => {
+  const pack = campaignFixture();
+  pack.buildingRules = {
+    schemaVersion: 1, resources: [{ selector: 4, path: "synthetic/farm.anb", assetKey: "SYNTHFARM" }],
+    unsupportedSelectors: [9], upkeep: Array(14).fill(0), processingFrontOffset: [-256, 0],
+    provenance: { executableSha256: "0".repeat(64), originalExecution: false },
+  };
+  pack.assets.SYNTHFARM = structuredClone(pack.assets.TEST);
+  pack.assets.SYNTHFARM.frames![0].sourceSize = [4, 12];
+  pack.assets.SYNTHFARM.frames![1].sourceSize = [4, 100];
+  const w = createCampaign(pack, "synthetic-building-query"), n = w.buildingNative[0], cell = 32 * 128 + 32;
+  n[6] = 4; n[24] = 0; n[45] = 4; n[25] = 0; n[27] = 0;
+  put16(n as number[], 15, 0); put16(n as number[], 7, 8192); put16(n as number[], 9, 8192);
+  put16(n as number[], 49, 1); put32(n as number[], 17, 1024);
+  insertSpatial(w.spatial, w.terrain, "source:3:0", cell);
+  w.terrain.bytes[cell * 14 + 11] |= 1;
+  expect(campaignAirborneBuilding(w, pack, [8192, 8192], 1472)?.native).toBe(n);
+  expect(campaignAirborneBuilding(w, pack, [8192, 8192], 1473)).toBeNull();
+  n[27] = 1;
+  expect(campaignAirborneBuilding(w, pack, [8192, 8192], 1473)?.native).toBe(n);
+  //Resource admission is lazy on the actual height branch, as in74270.
+  delete pack.assets.SYNTHFARM;
+  expect(campaignAirborneBuilding(w, pack, [8192, 8192], -1)?.native).toBe(n);
+  expect(() => campaignAirborneBuilding(w, pack, [8192, 8192], 1473)).toThrow(/resource 4/);
 });
