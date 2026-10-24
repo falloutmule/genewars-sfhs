@@ -17,7 +17,8 @@
     "leak:check": "python -B tools/asset-leak-check/check.py",
     "check": "npm run typecheck && npm test && npm run test:importer && npm run leak:check",
     "verify": "node tools/verify.mjs",
-    "mission:check": "vite-node tools/mission-runner/main.ts"
+    "mission:check": "vite-node tools/mission-runner/main.ts",
+    "build:sfhs:priors": "node tools/build-sfhs/build.mjs --assets .private/imported-ai-host-priors"
   },
   "dependencies": {
     "three": "0.185.1",

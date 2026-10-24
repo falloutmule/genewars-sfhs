@@ -51,6 +51,16 @@ This explains the preserved runs: they grew GOOP 294 → 444 → 558 → 640 ove
 
 **Consequence for the route:** a single grade-0 Extractor takes ~22,000 ticks for 1400 GOOP, and capacity must reach 1400 first (extractor 600 + two Recycling Plants at 400 each), so the opening move is plants for capacity and income, then Extractors paid for out of recycling, then harvesting time. This is a long mission by construction and will not fit a 420 s browser run in one pass.
 
+## Mission 3 was blocked by the wrong content pack
+
+Madami would not advance at all: the world sat in phase `blocked` with `frame` pinned at 0 and the notice `Campaign lacks established strategic state`, thrown at `strategic-state.ts:50` because `w.strategy` was null.
+
+`w.strategy` is created in `world.ts:478` **only** when `pack.strategicAIRules.creatureControlPrior` exists. The `.private/imported` pack does not contain that 600-byte prior; `.private/imported-ai-host-priors` does (objectOffset 544124, virtualAddress 1592700, provenance recorded), and its hash `b8872317…` is the pack the sealed saves were built against.
+
+Building with the priors pack fixes it outright. Measured on the rebuilt artifact: `hasStrategy: true`, phase stays `active`, frames advance 0 → 600, specialists land and report ready at frame 200. Every earlier symptom — disabled specialist rows, taps producing no notice, `placing` never arming — was the blocked world, not the UI.
+
+Build with `npm run build:sfhs:priors` (or `--assets .private/imported-ai-host-priors`). The plain `--assets .private/imported` pack still builds, but its artifact cannot run mission 3 and must not be used for campaign acceptance beyond mission 2.
+
 ## Software campaign acceptance: 2/24 — Exceland and Krell
 
 Exceland is accepted in the **software** ledger through the real UI, not a simulation harness. The browser campaign run on the artifact built from commit `2f3c6c1` passed at **desktop 1440×900, phone-landscape 915×412 and phone-portrait 412×915**, the two phone viewports using `hasTouch` and real `touchscreen.tap` input:
