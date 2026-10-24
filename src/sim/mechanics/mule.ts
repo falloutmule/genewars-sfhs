@@ -1277,12 +1277,42 @@ export function applyNeutralMuleSelfWaterDamage(mule: EcologyMule): number {
   put(n, 0x6a, w(n, 0x6a) - damage);
   return damage;
 }
-function enterDeath(mule: EcologyMule, events: MuleEvent[]) {
+/**Pre-death reference cleanup shared by every5CDB0 entry (old age5E640,
+ * starvation5E193, cold15 and selector4 combat). Source5CDB0 is called as
+ * reason4/BL0, i.e. only with null task/attachment references, so the same
+ * family order precedes the numeric death:
+ *  1.5CC60 through the callback-owned service:5C920 attachment detach through
+ *    its actual carrier (clears60bit2/5D),5CCEF/5CD14 release of the kind1
+ *    target's reservation (peer60bit0), the kind2 plant release and the5CCA0
+ *    local reset.5CC60's own state18 stun gate and timer are preserved.
+ *  2.5CCA0/5CDB0's null-reference convention for the remaining task envelope:
+ *    the associated4D and association50 kinds are nulled while their indices
+ *    stay opaque, exactly as installTarget and5CCA0 already do.
+ * A surviving attachment bit is the one shape the family cannot admit:5CDB0's
+ * D71A mask preserves60bit2, so the caller transaction must reject and roll
+ * back instead of entering mortality with a live attachment. */
+export function releaseMuleMortalityReferences(
+  state: EcologyState,
+  mule: EcologyMule,
+  c: MuleContext,
+) {
   const n = mule.native;
+  if (n[0x5e] !== 18) releaseAction(state, mule, c);
+  n[0x4f] = 0;
+  n[0x52] = 0;
   if (n[0x60]! & 2)
     throw new Error(
-      "Mule mortality requires target/task/attachment cleanup before numeric death",
+      "Mule mortality attachment cleanup left the source attachment bit set",
     );
+}
+function enterDeath(
+  state: EcologyState,
+  mule: EcologyMule,
+  c: MuleContext,
+  events: MuleEvent[],
+) {
+  const n = mule.native;
+  releaseMuleMortalityReferences(state, mule, c);
   n[0x5e] = 24;
   resetAction(n);
   put(n, 0x15, w(n, 0x15) & 0xf7df & 0x3fdf);
@@ -2468,7 +2498,7 @@ function combatServices(
         return a.attackBonus!;
       },
       death: (m, attackerOwner) => {
-        enterDeath(m, events);
+        enterDeath(state, m, c, events);
         events.push({
           kind: "mule-combat-kill",
           id: m.id,
@@ -2669,7 +2699,7 @@ function action(
     return;
   }
   if (n[94] === 15) {
-    if (w(n, 108) <= 0) enterDeath(mule, events);
+    if (w(n, 108) <= 0) enterDeath(state, mule, c, events);
     return;
   }
   if (n[94] === 18) {
@@ -3186,7 +3216,7 @@ function stepMule(
       if (n[94] !== 15) {
         put(n, 0x66, w(n, 0x66) - 1);
         if (w(n, 0x66) <= 0) {
-          enterDeath(mule, events);
+          enterDeath(staged, mule, c, events);
           mortality(staged, mule, phase, c, events, true);
           Object.assign(state, staged);
           Object.assign(rng, random);
@@ -3206,7 +3236,7 @@ function stepMule(
         } else if (reserve <= 0 && (phase & 31) <= 1) {
           if (health <= 1) {
             put(n, 0x6a, 0);
-            enterDeath(mule, events);
+            enterDeath(staged, mule, c, events);
             mortality(staged, mule, phase, c, events, true);
             Object.assign(state, staged);
             Object.assign(rng, random);

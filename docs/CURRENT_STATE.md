@@ -1,5 +1,21 @@
 # Current direct-conversion state — 24 October 2026
 
+## Checkpoint — Mule mortality cleanup as a reusable creature-lifecycle family
+
+**Canonical acceptance remains 0/24.**
+
+The pre-death guard that refused the frame-20,933 record is replaced by a general family. `releaseMuleMortalityReferences` runs before the numeric death at every `5CDB0` entry and follows the source order already expressed by the runtime: `releaseAction` (`5CC60` through the callback-owned `5C920` attachment detach, preserving its own state-18 stun gate and timer, releasing the kind-1 target reservation through `5CCEF/5CD14` and the kind-2 plant flags), then the `5CCA0/5CDB0` null-reference convention for the remaining task envelope — the `0x4D`/`0x50` association kinds are cleared while their indices stay opaque, exactly as `installTarget` and `5CCA0` already leave them. All four `enterDeath` call sites (selector-4 combat, cold, hunger and starvation/old-age) now take the staged state and context, so cleanup participates in the existing transaction rather than bypassing it.
+
+One shape is still refused, deliberately: an attachment bit that survives the tray release. `5CDB0`'s D71A mask preserves `0x60` bit 2, so a caller whose carrier service leaves it set must reject and roll back rather than enter mortality with a live attachment. The old blanket refusal is gone; this narrower one is source-backed.
+
+The draft inherited from the interrupted run was audited rather than trusted: its ordering, addresses and transactional threading were checked against `releaseAction`, the state-27 retirement block and the preserved audit record, and were retained. Three tests were added for coverage the draft lacked.
+
+**Verification:** focused mortality 11/11 (`tests/mule-mortality-cleanup.test.ts` 11, `tests/campaign-mule-mortality-cleanup.test.ts` 3 — normal old-age death, absent carrier binding, carrier leaving the attachment bit set, kind-1 reservation release exactly once, multiple deaths in one update, living referrer retained until `716F0` retirement, `4D`/`50` nulling, full 300-slot pool, near-full 299-slot pool with every other record byte-identical, two identical worlds producing identical cleanup, unrelated settled state preserved, save before and after with reload and replay across the boundary, older imported pack). Full TypeScript suite **1651 tests across 154 suites** (previous baseline 1637/152 — increased). Importer **116 OK, 3 skipped**. `tsc --noEmit` clean. Leak check pass: 506 public files scanned, 255 private hashes compared, no failures.
+
+**Not yet proven:** the sealed frame-20,933 save has not been continued through this boundary. The campaign test uses the public synthetic pack only; the real continuation is the next task.
+
+**Next executable task:** create an immutable child of the last valid sealed campaign save and continue it through the mortality boundary, then resume family-by-family work.
+
 ## Checkpoint — complete Extractor family and conditional audio proof (Hermes, DeepSeek V4.1 Flash 1017)
 
 Interrupted-after-Codex work resumed and completed. **Canonical acceptance remains 0/24.**
