@@ -107,14 +107,15 @@ describe("concrete strategic campaign context", () => {
     expect(campaignStrategicProtected(w, s, { kind: 4, index: 0 })).toBe(false);
     expect(campaignStrategicProtected(w, s, { kind: 5, index: 0 })).toBe(true);
     expect(campaignStrategicProtected(w, s, { kind: 6, index: 0 })).toBe(true);
-    const family7 = Array(97).fill(0);
+    const family7 = w.collectors.records[0];
     family7[86] = 3;
-    //This unit fixture supplies only the retained family7 fields consumed here.
+    //A stale source registry overlay must never replace current saved state.
     w.source.entities.push({
       family: 6,
       index: 0,
-      nativeBytes: family7,
+      nativeBytes: Array(97).fill(0),
     } as RuntimeSourceEntity);
+    expect(campaignStrategicNative(w, s, { kind: 7, index: 0 })).toBe(family7);
     expect(campaignStrategicProtected(w, s, { kind: 7, index: 0 })).toBe(true);
     family7[86] = 2;
     expect(campaignStrategicProtected(w, s, { kind: 7, index: 0 })).toBe(false);

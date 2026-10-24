@@ -127,6 +127,7 @@ export function stepCampaignRecruitmentCenter(
       "creatureNative",
       "specialists",
       "collapse",
+      "collectors",
       "ethereals",
       "presentation",
       "buildings",

@@ -16,8 +16,8 @@ export interface CampaignEntityView {
   relativeHeight: number;
   native: (number | null)[];
 }
-/** Real current authoritative pools. Source registry overlays are used only
- * by the still registry-owned families6/7, never instead of live replacements. */
+/** Real current authoritative pools; retained source registry records never
+ * replace a live family that has its own authoritative pool. */
 export function campaignEntity(
   w: CampaignWorld,
   id: SourceEntityId,
@@ -42,7 +42,9 @@ export function campaignEntity(
                 ? w.ethereals.records[index]?.native
                 : family === 5
                   ? w.collapse.records[index]
-                  : w.source.entities.find((e) => e.id === id)?.nativeBytes;
+                  : family === 6
+                    ? w.collectors.records[index]
+                    : w.source.entities.find((e) => e.id === id)?.nativeBytes;
   if (!native || native[6] === 0) return null;
   if (native[6] !== family + 1 || i16(native as number[], 15) !== index)
     throw new Error("Campaign entity native identity differs");

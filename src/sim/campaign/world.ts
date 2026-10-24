@@ -135,6 +135,7 @@ import {
   type BuildingNative,
 } from "../mechanics/building-native";
 import { initializeNativePool } from "./native-pools";
+import { makeProcessorCollectorPool, PROCESSOR_COLLECTOR_COUNT_OFFSET, type ProcessorCollectorPool } from "../mechanics/processor-collector-state";
 import { createBuildingEffect } from "../mechanics/building-effect";
 import {
   createEtherealState,
@@ -199,6 +200,8 @@ import { campaignEngineerChargeServices, stepCampaignEngineerChargeEffect } from
 import { issueCampaignHumanMuleTarget, stopCampaignHumanMule } from "./human-creature-command-adapter";
 import { stepCampaignPlantCarrier } from "./plant-carrier-adapter";
 import { makeCampaignMuleMaterialServices } from "./mule-adapter";
+import { stepCampaignBuildingMaterial } from "./building-material-effect-adapter";
+import { stepStagedCampaignPulper } from "./pulper-adapter";
 import { stepStagedCampaignBuildingDemolition, stepCampaignSalvageEffect } from "./building-demolition-adapter";
 import { revealCampaignRadius } from "./reveal-adapter";
 import {
@@ -318,6 +321,7 @@ export const CampaignCommandSchema = z.discriminatedUnion("type", [
     selector: z.union([
       z.literal(0),
       z.literal(1),
+      z.literal(2),
       z.literal(3),
       z.literal(4),
       z.literal(5),
@@ -354,6 +358,7 @@ export interface CampaignWorld extends CampaignBootstrap {
   entryCarry: CampaignCarry | null;
   specialists: SpecialistPool;
   collapse: CollapsePool;
+  collectors: ProcessorCollectorPool;
   /** Explicit112D10 host scratch. Fresh admitted data is zero; carry retains
    * it. No factory silently resets it or resamples its final target. */
   specialistOrigin: [number, number];
@@ -474,6 +479,10 @@ export function createCampaign(
     collapse: makeCollapsePool(
       initializeNativePool(b.source, 5),
       u16(b.missionPrefix, 0x3556),
+    ),
+    collectors: makeProcessorCollectorPool(
+      initializeNativePool(b.source, 6),
+      b.missionPrefix[PROCESSOR_COLLECTOR_COUNT_OFFSET],
     ),
     specialistOrigin,
     entryCarry: carry ? structuredClone(carry) : null,
@@ -600,6 +609,20 @@ export function upgradeEmptyCollapsePool(w: CampaignWorld): boolean {
   if (records.some((n) => n[6] !== 0))
     throw new Error("Collapse upgrade requires retained inactive priors");
   w.collapse = makeCollapsePool(records, 0);
+  return true;
+}
+/** Earlier development saves did not expose the family6 collector records.
+ * Restore only the original retained inactive images after verifying both
+ * authoritative counts. A missing live collector cannot be reconstructed. */
+export function upgradeEmptyProcessorCollectors(w: CampaignWorld): boolean {
+  if (w.collectors) return false;
+  if (w.missionPrefix[PROCESSOR_COLLECTOR_COUNT_OFFSET] !== 0 ||
+      w.source.source.pools[6].activeCount !== 0)
+    throw Error("Earlier development snapshot lacks live processor collector state");
+  const records = initializeNativePool(w.source, 6);
+  if (records.some(n => n[6] !== 0))
+    throw Error("Collector upgrade requires retained inactive priors");
+  w.collectors = makeProcessorCollectorPool(records, 0);
   return true;
 }
 export function campaignObjectiveContext(w: CampaignWorld) {
@@ -1826,6 +1849,10 @@ function stageNativeHost(original: CampaignWorld, staged: CampaignWorld): void {
     ...original.collapse,
     records: original.collapse.records.map((n) => n.slice()),
   };
+  staged.collectors = {
+    ...original.collectors,
+    records: original.collectors.records.map(n => n.slice()),
+  };
   staged.buildings = structuredClone(original.buildings);
   staged.jobs = structuredClone(original.jobs);
   staged.muleQueues = structuredClone(original.muleQueues);
@@ -1839,6 +1866,7 @@ function commitNativeHost(target: CampaignWorld, staged: CampaignWorld): void {
   target.presentation = staged.presentation;
   target.specialists = staged.specialists;
   target.collapse = staged.collapse;
+  target.collectors = staged.collectors;
   target.buildings = staged.buildings;
   target.jobs = staged.jobs;
   target.muleQueues = staged.muleQueues;
@@ -1893,6 +1921,8 @@ function rewardFactoryOptions(
       stepCampaignRecruitmentEffect(staged, slot, pack, rewardFactoryOptions(staged, pack), out),
     plantCarrierEffect: (staged, slot, out) =>
       stepCampaignPlantCarrier(staged, slot, pack, rewardFactoryOptions(staged, pack), out),
+    buildingMaterialEffect: (staged, slot, out) =>
+      stepCampaignBuildingMaterial(staged, slot, pack, rewardFactoryOptions(staged, pack), out),
     landingBuilding: (staged, request) =>
       stepStagedCampaignLandingBuilding(staged, request, pack),
     etherealAttackEffect: (staged, slot, out) =>
@@ -2140,6 +2170,10 @@ export function stepCampaign(w: CampaignWorld, pack: Pack): void {
         },
         dispatchBuilding(staged, building) {
           const slot = building.owner * 64 + building.slot;
+          if (building.selector === 2) {
+            stepStagedCampaignPulper(staged, slot, pack, specialistServices(pack));
+            return true;
+          }
           if (building.selector === 5) {
             stepStagedCampaignRecruitmentCenter(staged, slot, pack, specialistServices(pack));
             return true;
@@ -2579,6 +2613,8 @@ export function stepCampaign(w: CampaignWorld, pack: Pack): void {
       (e) => e.kind !== "cleanup-required",
     );
     synchronizeCampaignPlantCounts(w);
+    if (w.collectors.count)
+      throw Error("Actual14EC0 processor collector callback pass is required");
     if (w.collapse.count)
       stepCollapsePool(w, {
         directions: pack.ecologyRules!.spreadDirections as [number, number][],
@@ -2814,6 +2850,11 @@ export function validateCampaignWorld(w: CampaignWorld, hash: string): void {
     !pool(w.collapse.records, 32, 49) ||
     w.collapse.count !== w.collapse.records.filter((n) => n[6] !== 0).length ||
     w.collapse.count !== u16(w.missionPrefix, 0x3556) ||
+    !w.collectors ||
+    !pool(w.collectors.records, 32, 97) ||
+    w.collectors.records.some((n, index) => n[6] !== 0 && (n[6] !== 7 || i16(n as number[], 15) !== index)) ||
+    w.collectors.count !== w.collectors.records.filter(n => n[6] !== 0).length ||
+    w.collectors.count !== w.missionPrefix[PROCESSOR_COLLECTOR_COUNT_OFFSET] ||
     !w.specialists ||
     w.specialists.records.length !== 20 ||
     w.specialists.bindings.length !== 20 ||

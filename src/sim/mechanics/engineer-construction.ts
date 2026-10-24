@@ -30,7 +30,7 @@ import type {
 
 type Native = (number | null)[];
 type Point = [number, number];
-type Selector = 0 | 1 | 3 | 4 | 5 | 6 | 11;
+type Selector = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 11;
 export interface EngineerCompletedBuildingContribution {
   native: Native;
   /** Source43620 runs against this image BEFORE43F60 when both paths occur. */
@@ -61,7 +61,7 @@ export function planEngineerCompletedBuildingContribution(
   if (
     before.length !== 67 ||
     byte(before, 6) !== 4 ||
-    ![0, 1, 3, 4, 5, 6, 11].includes(s) ||
+    ![0, 1, 2, 3, 4, 5, 6, 11].includes(s) ||
     owner >= 4 ||
     index < 0 ||
     index >= 256 ||
@@ -307,14 +307,14 @@ const position = (n: readonly (number | null)[], p = 7): Point => [
 ];
 function selected(n: Native): Selector {
   const s = byte(n, 131);
-  if (![0, 1, 3, 4, 5, 6, 11].includes(s))
+  if (![0, 1, 2, 3, 4, 5, 6, 11].includes(s))
     throw Error(
       "Native Engineer task0 selector requires an unimplemented construction family",
     );
   return s as Selector;
 }
 const footprint = (s: Selector): 1 | 2 | 3 =>
-  s === 4 || s === 5 ? 2 : s === 1 || s === 6 ? 1 : 3;
+  s === 2 || s === 4 || s === 5 ? 2 : s === 1 || s === 6 ? 1 : 3;
 function recruitmentPoint<W extends GeneticistWorld>(
   n: Native,
   c: EngineerNativeConstructionContext<W>,

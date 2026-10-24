@@ -49,6 +49,7 @@ const extraRoots = [
   "creatureNative",
   "specialists",
   "collapse",
+  "collectors",
   "ethereals",
   "presentation",
   "buildings",

@@ -28,6 +28,7 @@ import {
   type DestructionChildRequest,
   type DestructionAudio,
   type BlastAreaContext,
+  type DestructionStep,
 } from "../mechanics/destruction-effect";
 import { animationProfile } from "../mechanics/animation";
 import { stepBuildingEffectRecord } from "../mechanics/building-effect";
@@ -183,6 +184,8 @@ export interface EffectSchedulerOptions<
   recruitmentEffect?: (world: W, slot: number, receipt: EffectSchedulerReceipt) => RecruitmentEffectUpdate;
   /**Actual67 carried plant and68 retained-resource release/drop callbacks. */
   plantCarrierEffect?: (world: W, slot: number, receipt: EffectSchedulerReceipt) => PlantCarrierUpdate;
+  /**Actual36/0x24 Pulper material, including full common motion and mode6. */
+  buildingMaterialEffect?: (world: W, slot: number, receipt: EffectSchedulerReceipt) => DestructionStep;
 }
 export interface EffectSchedulerReceipt {
   callbacks: { phase: "primary" | "newborn"; slot: number; code: number }[];
@@ -992,6 +995,14 @@ export function stepEffectScheduler<W extends EffectSchedulerWorld>(
       if (!result || typeof result.retirementRequired !== "boolean" ||
         !Number.isInteger(result.newborns) || result.newborns < 0 || result.newborns > 1)
         throw Error("Original recruitment callback receipt is invalid");
+      publishStagedSharedEffect(s, slot, result.native);
+      created = result.newborns;
+      if (result.retirementRequired) retireStagedSharedEffect(s, slot, options, out);
+    } else if (code === 36) {
+      if (!options.buildingMaterialEffect) throw Error("Original building material36 callback service is required");
+      const result = options.buildingMaterialEffect(s, slot, out);
+      if (!result || typeof result.retirementRequired !== "boolean" || !Number.isInteger(result.newborns) || result.newborns < 0)
+        throw Error("Original building material36 callback receipt is invalid");
       publishStagedSharedEffect(s, slot, result.native);
       created = result.newborns;
       if (result.retirementRequired) retireStagedSharedEffect(s, slot, options, out);

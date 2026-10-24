@@ -17,6 +17,7 @@ export interface CleanupWorld {
   buildingNative?: (number | null)[][];
   specialists?: { records: (number | null)[][] };
   ethereals?: { records: { native: (number | null)[] }[] };
+  collectors?: { records: (number | null)[][] };
 }
 const OFFSETS: Record<number, number[]> = {
   1: [0x4d, 0x50, 0x55, 0x58, 0x5b],
@@ -55,7 +56,7 @@ export function cleanupCampaignReferences(
   };
   for (const m of w.ecology.mules) clear(m.native, 1);
   for (const e of w.source.entities)
-    if (e.family !== 0) clear(e.nativeBytes, e.family + 1);
+    if (e.family !== 0 && (e.family !== 6 || !w.collectors)) clear(e.nativeBytes, e.family + 1);
   for (const e of w.waterEffects ?? []) clear(e.native, 5);
   for (const l of w.landings ?? []) {
     if (l.native) clear(l.native, 5);
@@ -66,5 +67,6 @@ export function cleanupCampaignReferences(
   for (const b of w.buildingNative ?? []) clear(b, 4);
   for (const n of w.specialists?.records ?? []) clear(n, 3);
   for (const e of w.ethereals?.records ?? []) clear(e.native, 8);
+  for (const n of w.collectors?.records ?? []) clear(n, 7);
   return writes;
 }

@@ -110,7 +110,7 @@ export function progressCampaignEngineerBuilding(
     general =
       targetGrade !== 0 ||
       n[46] !== 0 ||
-      ![0, 1, 3, 4, 5, 6, 11].includes(b.selector) ||
+      ![0, 1, 2, 3, 4, 5, 6, 11].includes(b.selector) ||
       (!(u16(n as number[], 49) & 1) && u16(n as number[], 49) !== 0),
     maximum = pack.rules!.tables.buildingHealth[b.selector * 3 + targetGrade],
     owner = n[24]!,
@@ -301,9 +301,9 @@ export function createStagedCampaignEngineerBuilding(
   while (slot < request.owner * 64 + 64 && w.buildingNative[slot][6] !== 0)
     slot++;
   if (slot === request.owner * 64 + 64) return null;
-  //43E30's virtual60 binds the actual resource. Selectors4/5 require their
+  //43E30's virtual60 binds the actual resource. Selectors2/4/5 require their
   //imported resource profile; no synthetic artwork or source-table fallback.
-  if (request.selector === 4 || request.selector === 5) {
+  if (request.selector === 2 || request.selector === 4 || request.selector === 5) {
     if (!pack.buildingRules)
       throw Error("Original constructed building resource profile required");
     if (pack.buildingRules.unsupportedSelectors.includes(request.selector))
@@ -438,6 +438,7 @@ export function campaignEngineerContext(
         "creatureNative",
         "specialists",
         "collapse",
+        "collectors",
         "ethereals",
         "presentation",
         "buildings",

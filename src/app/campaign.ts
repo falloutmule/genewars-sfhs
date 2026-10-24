@@ -41,6 +41,7 @@ import type { CreatureCommandReference } from "../sim/mechanics/creature-command
 const NAMES: Record<number, string> = {
   0: "Genepod",
   1: "Turret",
+  2: "Pulper",
   3: "First Stage Distributor",
   4: "Recycling Plant",
   5: "Recruitment Center",
@@ -276,7 +277,7 @@ export async function openCampaign(
         : {
             type: "construct",
             actorId: a!.id,
-            selector: placing as 0 | 1 | 3 | 4 | 5 | 6 | 11,
+            selector: placing as 0 | 1 | 2 | 3 | 4 | 5 | 6 | 11,
             point,
             queued,
           };
@@ -863,6 +864,8 @@ export async function openCampaign(
     const build = node("campaign-build");
     build.replaceChildren();
     const constructionSelectors = [11, 3, 6, 0, 1];
+    if (pack.buildingRules?.resources.some(row => row.selector === 2 && pack.assets[row.assetKey]))
+      constructionSelectors.push(2);
     if (pack.buildingRules?.resources.some(row => row.selector === 4 && pack.assets[row.assetKey]))
       constructionSelectors.push(4);
     if (pack.buildingRules?.resources.some(row => row.selector === 5 && pack.assets[row.assetKey]))

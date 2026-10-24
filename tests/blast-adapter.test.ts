@@ -283,6 +283,8 @@ describe("current campaign blast adapter", () => {
       },
     };
     f.w.source.entities.push(source);
+    f.w.collectors.records[0] = source.nativeBytes.slice();
+    f.w.collectors.count = f.w.missionPrefix[0x3558] = 1;
     expect(() => c.damage("source:6:0", 1, null)).toThrow(
       "kind7 damage service",
     );

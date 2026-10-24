@@ -71,10 +71,7 @@ export function campaignStrategicNative(
     case 6:
       return w.collapse.records[index] ?? null;
     case 7:
-      return (
-        w.source.entities.find((e) => e.family === 6 && e.index === index)
-          ?.nativeBytes ?? null
-      );
+      return w.collectors.records[index] ?? null;
     case 8:
       return w.ethereals.records[index]?.native ?? null;
     default:
