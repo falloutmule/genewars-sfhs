@@ -648,6 +648,18 @@ try {
       await page
         .getByRole("button", { name: "Deploy specialists", exact: true })
         .click();
+      await page.waitForFunction(
+        () => window.CR.inspect().campaign?.world.phase === "active",
+      );
+      // Madami gate: the mission-3 objective list must be readable in the panel
+      // before any route can be built against it.
+      const madamiObjectives = await page.evaluate(() =>
+        [...document.querySelectorAll("#campaign-objectives li, .objective")]
+          .map((e) => e.textContent?.trim())
+          .filter(Boolean)
+          .slice(0, 6),
+      );
+      console.log(JSON.stringify({ madamiObjectives }));
       await page.screenshot({
         path: resolve(out, `${viewport.width}-krell.png`),
       });
