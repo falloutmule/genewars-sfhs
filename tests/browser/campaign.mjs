@@ -660,6 +660,43 @@ try {
           .slice(0, 6),
       );
       console.log(JSON.stringify({ madamiObjectives }));
+      if (process.env.CAMPAIGN_EXPORT_MADAMI) {
+        // A Madami segment takes ~22000 ticks, far past one run budget, so the
+        // route is segmented from an exported campaign save like a player would.
+        await page
+          .getByRole("button", { name: "Save / load", exact: true })
+          .click();
+        await page.evaluate(() => {
+          const original = URL.createObjectURL.bind(URL);
+          URL.createObjectURL = (blob) => {
+            if (blob.type === "application/json")
+              window.__madamiSaveText = blob.text();
+            return original(blob);
+          };
+        });
+        const saveDownload = page.waitForEvent("download").catch(() => null);
+        await page
+          .getByRole("button", { name: "Export campaign save", exact: true })
+          .click();
+        const saveEvent = await saveDownload;
+        const savePath = resolve(out, `${viewport.width}-madami-start.json`);
+        const saveFailure = saveEvent ? await saveEvent.failure() : "no-event";
+        if (saveEvent && saveFailure === null) await saveEvent.saveAs(savePath);
+        else
+          writeFileSync(
+            savePath,
+            await page.evaluate(() => window.__madamiSaveText),
+          );
+        const saved = JSON.parse(readFileSync(savePath, "utf8"));
+        console.log(
+          JSON.stringify({
+            madamiSave: savePath,
+            saveFailure,
+            bytes: readFileSync(savePath).length,
+            missionId: saved.missionId ?? saved.world?.missionId ?? null,
+          }),
+        );
+      }
       await page.screenshot({
         path: resolve(out, `${viewport.width}-krell.png`),
       });
