@@ -117,11 +117,12 @@ Specialist motion admits category0/state9 specifically, preserving wrong-role
 state rejection. Existing modern construction remains available for explicit
 compatibility; no native callback advances its route or ANB a second time.
 
-Other Engineer tasks, existing-building assignment, selector5's second site
-and the other new-building selectors remain unsupported and reject. Complete
-whole-campaign acceptance and remaining task/upgrade bindings are separate
-from this mechanic release. No fallback acknowledges work or
-skips required native movement.
+Selector5's complete second-site construction is now bound; see
+RECRUITMENT_CENTER.md for the source pad, second job and cancellation contract.
+Existing-building repair, sabotage and grade upgrades also have their later
+bindings. Other unimplemented tasks and selectors still reject. Complete
+whole-campaign acceptance remains separate from these mechanic releases.
+No fallback acknowledges work or skips required native movement.
 
 The campaign binds ordinary new-building task0 to its actual terrain, native
 25-slot jobs, retained67-byte buildings, real shared44 factory,441C0 progress,
