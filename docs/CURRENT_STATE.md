@@ -32,6 +32,21 @@ The route is verified in two invocations because one full run exceeds the 420 s 
 
 Evidence: `.private/build-probe-20261024/ui-krell915k.log`, `ui-krell412j.log`, `ui-krell1440b.log`, `ui-replay1440.log`, plus `.private/browser-campaign/report.json` (artifact hash `eb4ca2131834acff…`). Simulation-layer reasoning remains in the probe logs above.
 
+## Madami (mission 3) route research
+
+Objective: **1400 current GOOP**, with storage capacity 1600 tracked separately. Decoded from the pack (`economyRules`, printed by `.private/build-probe-20261024/madami1.ts`):
+
+- `extractor.goopPerResource = 2`, `harvestUnits = [2, 4, 6]` by grade, `cycleLength = 240`, harvest on frames 7–10, `harvestRadius = 3`, `upkeep = 1`
+- `capacity.extractor = 600`, `capacity.store4 = [400, 800, 1200]` (Recycling Plant), `capacity.store13 = [500, 1000, 1500]` (Stores)
+
+So **capacity 1600 is exactly four grade-1 Recycling Plants** (4 × 400), which is what the preserved Madami runs built, and it is a *separate* requirement from the GOOP total.
+
+**GOOP is credited only by Extractor harvesting** (`economy.ts:736`): `player.goop = min(goop + consumed × goopPerResource, capacity)`. A grade-0 Extractor therefore yields 4 GOOP per 240-frame cycle, i.e. ~60 GOOP per 3,600 frames per Extractor. Reaching 1400 at grade 0 needs roughly 21,000 frames with four Extractors; at grade 2 (6 units → 12 GOOP/cycle) the same four Extractors reach it in roughly 7,000 frames. **Grade upgrades are the lever, not more buildings.**
+
+This explains the preserved runs: they grew GOOP 294 → 444 → 558 → 640 over ~20,000 ticks with four Recycling Plants and Botanist planting, because the Botanist path only feeds corpses/plants into recycling and never matches extractor throughput. It is not a missing mechanic — it is the wrong economy emphasis.
+
+Next step for Madami is a UI route that upgrades Extractor grade before mass-producing, which needs the upgrade affordance checked in `src/app/campaign.ts` before the browser test is extended.
+
 ## Software campaign acceptance: 2/24 — Exceland and Krell
 
 Exceland is accepted in the **software** ledger through the real UI, not a simulation harness. The browser campaign run on the artifact built from commit `2f3c6c1` passed at **desktop 1440×900, phone-landscape 915×412 and phone-portrait 412×915**, the two phone viewports using `hasTouch` and real `touchscreen.tap` input:
