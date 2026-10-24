@@ -273,7 +273,7 @@ export async function openCampaign(
         : {
             type: "construct",
             actorId: a!.id,
-            selector: placing as 0 | 1 | 3 | 6 | 11,
+            selector: placing as 0 | 1 | 3 | 4 | 5 | 6 | 11,
             point,
             queued,
           };
@@ -829,6 +829,8 @@ export async function openCampaign(
     const constructionSelectors = [11, 3, 6, 0, 1];
     if (pack.buildingRules?.resources.some(row => row.selector === 4 && pack.assets[row.assetKey]))
       constructionSelectors.push(4);
+    if (pack.buildingRules?.resources.some(row => row.selector === 5 && pack.assets[row.assetKey]))
+      constructionSelectors.push(5);
     for (const selector of constructionSelectors) {
       const skill = a ? p.blueprints[a.blueprintIndex].skill : 0,
         cost = pack.rules!.tables.constructionCosts[selector] - 2 * skill,

@@ -29,6 +29,7 @@ import { campaignAirborneBuilding } from "./mule-damage-adapter";
 import { campaignBuildingAsset } from "./building-startup-adapter";
 import {
   clearDestroyedFootprint,
+  restoreRecruitmentFootprint,
   updateNativeBuildingCapacity,
 } from "../mechanics/building-damage";
 import { animationProfile } from "../mechanics/animation";
@@ -264,6 +265,16 @@ export function clearStagedCampaignBuildingProcessingFront(
   }
   return cleared;
 }
+/**44380 selector5's source753F0(size3,B1,C0), before unlink/reference cleanup.
+ * The computed1124F0 local is unused by source; retain the stored point. */
+export function restoreStagedCampaignRecruitmentFootprint(
+  w:CampaignWorld,slot:number,pack:Pack,
+):number[]{
+  const n=w.buildingNative[slot],border=pack.rules?.tables.terrainBorder;
+  if(n?.length!==67||n[6]!==4||n[45]!==5||i16(n as number[],15)!==slot||!border)
+    throw Error("Actual Recruitment Center retirement native/border required");
+  return restoreRecruitmentFootprint(w.terrain,[i16(n as number[],7),i16(n as number[],9)],border);
+}
 /** Complete44380 path for admitted selectors. No damage/debris/crater is added. */
 function retire(
   w: CampaignWorld,
@@ -281,10 +292,9 @@ function retire(
     p = w.players[owner],
     position: [number, number] = [i16(n as number[], 7), i16(n as number[], 9)],
     footprint = pack.rules!.tables.buildingFootprints[selector];
-  //Selector5 needs its independent extra launch footprint;12/9 are not admitted
-  //by this bounded host's current ordinary building families.
+  //12/9 are not admitted by this bounded host's current ordinary families.
   if (
-    ![0, 1, 2, 3, 4, 6, 7, 8, 10, 11, 13].includes(selector) ||
+    ![0, 1, 2, 3, 4, 5, 6, 7, 8, 10, 11, 13].includes(selector) ||
     ![1, 2, 3].includes(footprint)
   )
     throw Error(
@@ -298,7 +308,8 @@ function retire(
     detail.clearedFrontReferences.push(
       ...clearStagedCampaignBuildingProcessingFront(w, slot, pack),
     );
-  } else if (selector === 13)
+  } else if(selector===5)restoreStagedCampaignRecruitmentFootprint(w,slot,pack);
+  else if (selector === 13)
     put32(p.raw, 0x4a7, (u32(p.raw, 0x4a7) - u32(n as number[], 54)) >>> 0);
   if (services.selectedBuildingSlot?.(w) === slot)
     services.onEvent?.(w, { type: "selection-cleared", slot });

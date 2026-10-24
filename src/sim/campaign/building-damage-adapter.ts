@@ -20,7 +20,7 @@ import { cleanupCampaignReferences } from "./cleanup";
 import { unlinkSpatial } from "./spatial";
 import { requestAudio, type AudioRequest } from "../mechanics/audio";
 import { i16, u16, u32, put16 } from "./bytes";
-import { clearStagedCampaignBuildingProcessingFront } from "./building-demolition-adapter";
+import { clearStagedCampaignBuildingProcessingFront, restoreStagedCampaignRecruitmentFootprint } from "./building-demolition-adapter";
 
 export interface CampaignBuildingDamageServices {
   /** Real recursive blast/damage services bound to the current staged world. */
@@ -178,6 +178,9 @@ export function damageCampaignBuilding(
         details.clearedFrontReferences.push(
           ...clearStagedCampaignBuildingProcessingFront(current, dyingSlot, pack),
         );
+      },
+      restoreRecruitmentFootprint(current, dyingSlot) {
+        restoreStagedCampaignRecruitmentFootprint(current, dyingSlot, pack);
       },
       createCrater(current, request) {
         // The numeric constructor stages its argument. Supply only its three

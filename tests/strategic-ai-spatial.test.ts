@@ -38,6 +38,25 @@ function fixture() {
   return { s, c, terrain, cells, protectedPlants, visits, plantValues, place, free, density, style };
 }
 describe("strategic spatial queries", () => {
+  it("keeps BL100's main site distinct from BL5's additional recruitment pad", () => {
+    const f = fixture(), request = {routine: 0x74e80 as const, point: [8192, 8192] as [number, number], footprint: 2};
+    f.c.recruitmentLandingOffset = [0, 768];
+    expect(queryStrategicSite(f.s, {...request, discriminator: 5}, f.c).blocked).toBe(false);
+    const pad = worldCell(8192, 8960); f.terrain.bytes[pad * 14 + 11] = 1;
+    expect(queryStrategicSite(f.s, {...request, discriminator: 100}, f.c).blocked).toBe(false);
+    expect(queryStrategicSite(f.s, {...request, discriminator: 5}, f.c).blocked).toBe(true);
+    expect(f.s.rng.draws).toBe(0);
+  });
+  it("binds source plant protection on the secondary pad and requires its profile only when reached", () => {
+    const f = fixture(), request = {routine: 0x74e80 as const, point: [8192, 8192] as [number, number], footprint: 2, discriminator: 5};
+    expect(() => queryStrategicSite(f.s, request, f.c)).toThrow();
+    f.c.recruitmentLandingOffset = [0, 768]; f.place(2, 0, 8192, 8960);
+    expect(queryStrategicSite(f.s, request, f.c).blocked).toBe(true);
+    f.protectedPlants.push(0); expect(queryStrategicSite(f.s, request, f.c).blocked).toBe(false);
+    delete f.c.recruitmentLandingOffset;
+    f.terrain.bytes[worldCell(8192, 8192) * 14 + 11] = 1;
+    expect(queryStrategicSite(f.s, request, f.c).blocked).toBe(true);
+  });
   it("counts all linked plants independently of protection, owner or growth", () => {
     const f = fixture(); f.place(2, 0)[43] = 0; f.place(2, 1)[24] = 3; f.place(1, 0); f.protectedPlants.push(0, 1);
     expect(f.density()).toEqual({ routine: 0x8d930, count: 2 }); expect(f.s.rng.draws).toBe(2);

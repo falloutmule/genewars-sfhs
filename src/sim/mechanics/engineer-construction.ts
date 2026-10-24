@@ -30,7 +30,7 @@ import type {
 
 type Native = (number | null)[];
 type Point = [number, number];
-type Selector = 0 | 1 | 3 | 4 | 6 | 11;
+type Selector = 0 | 1 | 3 | 4 | 5 | 6 | 11;
 export interface EngineerCompletedBuildingContribution {
   native: Native;
   /** Source43620 runs against this image BEFORE43F60 when both paths occur. */
@@ -61,7 +61,7 @@ export function planEngineerCompletedBuildingContribution(
   if (
     before.length !== 67 ||
     byte(before, 6) !== 4 ||
-    ![0, 1, 3, 4, 6, 11].includes(s) ||
+    ![0, 1, 3, 4, 5, 6, 11].includes(s) ||
     owner >= 4 ||
     index < 0 ||
     index >= 256 ||
@@ -232,6 +232,7 @@ export interface EngineerNativeConstructionContext<W extends GeneticistWorld>
     world: W,
     point: Point,
     footprint: 1 | 2 | 3,
+    selector?: number,
   ): EngineerSiteReservation;
   /**753F0/75240 ordinary task0 footprint release, including neighbor vertex
    * protection and current climate/borders. No building demolition/refund. */
@@ -262,6 +263,16 @@ export interface EngineerNativeConstructionContext<W extends GeneticistWorld>
   buildingHealth?: readonly number[];
   buildingHalfWidths?: readonly number[];
   buildingFrontOffset?: readonly [number, number];
+  /**1124F0; consumed only by selector5's second site. */
+  recruitmentLandingOffset?: readonly [number, number];
+  /**753F0(BL0,ECX0), with no climate/classification pass. */
+  releaseRecruitmentSite?(
+    world: W,
+    point: Point,
+    footprint: 2 | 3,
+  ): ConstructionEvent[];
+  /**75240(point,null,0,0) after the second shared terrain job retires. */
+  prepareRecruitmentSite?(world: W, point: Point): ConstructionEvent[];
   startUpgrade?(world: W, building: number): void;
   startTakeover?(world: W, building: number, actor: number): void;
   placeTakeoverCharge?(
@@ -296,14 +307,38 @@ const position = (n: readonly (number | null)[], p = 7): Point => [
 ];
 function selected(n: Native): Selector {
   const s = byte(n, 131);
-  if (![0, 1, 3, 4, 6, 11].includes(s))
+  if (![0, 1, 3, 4, 5, 6, 11].includes(s))
     throw Error(
       "Native Engineer task0 selector requires an unimplemented construction family",
     );
   return s as Selector;
 }
 const footprint = (s: Selector): 1 | 2 | 3 =>
-  s === 4 ? 2 : s === 1 || s === 6 ? 1 : 3;
+  s === 4 || s === 5 ? 2 : s === 1 || s === 6 ? 1 : 3;
+function recruitmentPoint<W extends GeneticistWorld>(
+  n: Native,
+  c: EngineerNativeConstructionContext<W>,
+): Point {
+  const offset = c.recruitmentLandingOffset;
+  if (
+    !offset ||
+    offset.length !== 2 ||
+    offset.some((v) => !Number.isInteger(v) || v < -32768 || v > 32767)
+  )
+    throw Error("Actual1124F0 recruitment landing offset required");
+  return [wrap16(word(n, 140) + offset[0]), wrap16(word(n, 142) + offset[1])];
+}
+function releaseRecruitmentSite<W extends GeneticistWorld>(
+  world: W,
+  point: Point,
+  size: 2 | 3,
+  c: EngineerNativeConstructionContext<W>,
+  out: EngineerConstructionReceipt,
+): void {
+  if (!c.releaseRecruitmentSite)
+    throw Error("Actual753F0 recruitment site release required");
+  out.events.push(...c.releaseRecruitmentSite(world, point, size));
+}
 function bound<W extends GeneticistWorld>(world: W, index: number) {
   if (world.specialists.bindings[index]?.category !== 0)
     throw Error("Native Engineer construction requires category0");
@@ -445,7 +480,10 @@ function releaseResources<W extends GeneticistWorld>(
       retireJob(world, n, out);
       audio(out, index, 0x29, 4);
     }
-    if (stage <= 4)
+    if (stage <= 4 && s === 5) {
+      releaseRecruitmentSite(world, position(n, 140), 2, c, out);
+      releaseRecruitmentSite(world, recruitmentPoint(n, c), 3, c, out);
+    } else if (stage <= 4)
       out.events.push(
         ...c.releaseSite(world, {
           point: position(n, 140),
@@ -924,7 +962,7 @@ function activate<W extends GeneticistWorld>(
   }
   put(n, 11, word(n, 11) & 32767);
   put(n, 13, word(n, 13) & 32767);
-  const prepared = c.reserveSite(world, position(n), size),
+  const prepared = c.reserveSite(world, position(n), size, s),
     p = prepared.point;
   if (
     !prepared ||
@@ -984,11 +1022,15 @@ function step<W extends GeneticistWorld>(
     }
     n[89] = 13;
     n[112] = (byte(n, 112) & 239) | 128;
+    const current = position(n, 11),
+      second =
+        s === 5 && (current[0] !== word(n, 140) || current[1] !== word(n, 142));
+    if (second) releaseRecruitmentSite(world, current, 3, c, out);
     const countBefore = byte(world.missionPrefix, CRATER_JOB_COUNT),
       allocation = createLevelTerrainJob(
         world,
         position(n, 11),
-        footprint(s),
+        second ? 3 : footprint(s),
         word(n, 138),
         word(n, 132),
       );
@@ -1001,7 +1043,7 @@ function step<W extends GeneticistWorld>(
         countAfter: byte(world.missionPrefix, CRATER_JOB_COUNT),
       });
       put32(n, 144, allocation.slot);
-      put(n, 136, 1);
+      put(n, 136, second ? 2 : 1);
       audio(out, index, 0x29, 2, 255);
     }
     return out;
@@ -1025,13 +1067,35 @@ function step<W extends GeneticistWorld>(
     audio(out, index, 0x29, 4);
     if (draw(world, index, 0x78b, out) % 10 < 5)
       out.events.push({ type: "message", actorId: index, index: 16 });
-    const sign = draw(world, index, 0x7b2, out) % 10 < 5 ? -1 : 1;
-    n[112] = byte(n, 112) & 127;
-    goal(
-      n,
-      [wrap16(word(n, 140) + sign * 256), wrap16(word(n, 142) - sign * 256)],
-      a.speed,
-    );
+    if (s === 5 && stage === 1) {
+      goal(n, recruitmentPoint(n, c), a.speed);
+      put(n, 136, 0);
+      n[112] = byte(n, 112) & 127;
+      continuation(0);
+      return out;
+    }
+    if (s === 5) {
+      if (!c.prepareRecruitmentSite)
+        throw Error(
+          "Actual75240 recruitment landing-site preparation required",
+        );
+      out.events.push(...c.prepareRecruitmentSite(world, position(n, 11)));
+      n[112] = byte(n, 112) & 127;
+      //104578 is the existing deterministic (-256,+256) working corner.
+      goal(
+        n,
+        [wrap16(word(n, 140) - 256), wrap16(word(n, 142) + 256)],
+        a.speed,
+      );
+    } else {
+      n[112] = byte(n, 112) & 127;
+      const sign = draw(world, index, 0x7b2, out) % 10 < 5 ? -1 : 1;
+      goal(
+        n,
+        [wrap16(word(n, 140) + sign * 256), wrap16(word(n, 142) - sign * 256)],
+        a.speed,
+      );
+    }
     put(n, 136, 3);
     continuation(0);
     return out;

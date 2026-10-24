@@ -38,7 +38,12 @@ import {
   type NativeBuildingSelector,
 } from "../mechanics/building-native";
 import { createBuildingEffect } from "../mechanics/building-effect";
-import { updateNativeBuildingCapacity } from "../mechanics/building-damage";
+import {
+  updateNativeBuildingCapacity,
+  clearDestroyedFootprint,
+  setNativeBuildingFootprint,
+} from "../mechanics/building-damage";
+import { updateLandingSite } from "../mechanics/landing-site";
 import { specialistBlockerWeight } from "../mechanics/specialist-motion";
 import { requestAudio } from "../mechanics/audio";
 import { effectTerrainShade } from "../mechanics/power-motion";
@@ -105,7 +110,7 @@ export function progressCampaignEngineerBuilding(
     general =
       targetGrade !== 0 ||
       n[46] !== 0 ||
-      ![0, 1, 3, 4, 6, 11].includes(b.selector) ||
+      ![0, 1, 3, 4, 5, 6, 11].includes(b.selector) ||
       (!(u16(n as number[], 49) & 1) && u16(n as number[], 49) !== 0),
     maximum = pack.rules!.tables.buildingHealth[b.selector * 3 + targetGrade],
     owner = n[24]!,
@@ -203,7 +208,7 @@ export function progressCampaignEngineerBuilding(
         parameter: 0,
         gain: 1,
         range: null,
-        ...(general || b.selector === 4
+        ...(general || b.selector === 4 || b.selector === 5
           ? {
               initialRatePercent:
                 115 - pack.rules!.tables.buildingFootprints[b.selector] * 15,
@@ -296,13 +301,13 @@ export function createStagedCampaignEngineerBuilding(
   while (slot < request.owner * 64 + 64 && w.buildingNative[slot][6] !== 0)
     slot++;
   if (slot === request.owner * 64 + 64) return null;
-  //43E30's virtual60 binds the actual resource. Newly admitted selector4
-  //requires the imported profile; no synthetic BFARM or source-table fallback.
-  if (request.selector === 4) {
+  //43E30's virtual60 binds the actual resource. Selectors4/5 require their
+  //imported resource profile; no synthetic artwork or source-table fallback.
+  if (request.selector === 4 || request.selector === 5) {
     if (!pack.buildingRules)
-      throw Error("Original selector4 building resource profile required");
+      throw Error("Original constructed building resource profile required");
     if (pack.buildingRules.unsupportedSelectors.includes(request.selector))
-      throw Error("Unadmitted selector4 building resource profile");
+      throw Error("Unadmitted constructed building resource profile");
     campaignBuildingAsset(pack, request.selector);
   }
   const effectSlot = allocateStagedSharedEffect(
@@ -334,8 +339,31 @@ export function createStagedCampaignEngineerBuilding(
     grade: 0,
     health: 0,
     complete: false,
-    energy: 0,
+    energy: request.selector === 5 ? i16(n as number[], 61) : 0,
   });
+  if (request.selector === 5) {
+    if (n[63] == null)
+      throw Error("Actual retained Recruitment Center drain required");
+    w.economy.buildings.push({
+      id: 1000 + slot,
+      slot: slot % 64,
+      owner: request.owner,
+      selector: 5,
+      grade: 0,
+      x: request.point[0],
+      y: request.point[1],
+      complete: false,
+      disabled: false,
+      capacitySuppressed: false,
+      hqUpgradeSuppressed: false,
+      powered: false,
+      energy: i16(n as number[], 61),
+      extraDrain: n[63],
+      depleted: false,
+      storedGoop: 0,
+      specialPowerDelivery: false,
+    });
+  }
   insertSpatial(
     w.spatial,
     w.terrain,
@@ -458,6 +486,33 @@ export function campaignEngineerContext(
       buildingHealth: tables.buildingHealth,
       buildingHalfWidths: tables.buildingCombatHalfWidths,
       buildingFrontOffset: pack.buildingRules?.processingFrontOffset,
+      recruitmentLandingOffset:
+        pack.specialistRecruitmentRules?.associatedLandingOffset,
+      releaseRecruitmentSite: (s, point, size) => [
+        {
+          type: "terrain",
+          cells: clearDestroyedFootprint(s.terrain, point, size),
+        },
+      ],
+      prepareRecruitmentSite: (s, point) => {
+        const profile = pack.specialistRecruitmentRules?.landingSite;
+        if (!profile)
+          throw Error("Original75240 landing-site profile required");
+        return [
+          {
+            type: "terrain",
+            cells: updateLandingSite(
+              s.terrain,
+              null,
+              point,
+              s.frame,
+              0,
+              0,
+              profile,
+            ).cells,
+          },
+        ];
+      },
       startUpgrade: (s, slot) =>
         startStagedCampaignEngineerUpgrade(s, slot, pack, services),
       startTakeover: startStagedCampaignEngineerTakeover,
@@ -493,15 +548,24 @@ export function campaignEngineerContext(
             sitePlantBlocked(s.ecology, cell),
           )
         ],
-      reserveSite: (s, p, size) => {
-        const r = reserveSite(s.terrain, p, size, tables.terrainBorder);
+      reserveSite: (s, p, size, selector) => {
+        //42B90 calls753F0(BL1,ECX0). For5 retain the native X borrow/carry
+        //material-repair origin before reading the perimeter-average height.
+        const vertices =
+          selector === 5
+            ? setNativeBuildingFootprint(s.terrain, p, 2, tables.terrainBorder)
+            : undefined;
+        const r =
+          vertices === undefined
+            ? reserveSite(s.terrain, p, size, tables.terrainBorder)
+            : readSiteReservation(s.terrain, p, size);
         return {
           point: [
             (p[0] & ~255) | (size === 2 ? 0 : 127),
             (p[1] & ~255) | (size === 2 ? 0 : 127),
           ],
           targetHeight: r.targetHeight,
-          events: [{ type: "terrain", cells: r.vertices }],
+          events: [{ type: "terrain", cells: vertices ?? r.vertices }],
         };
       },
       releaseSite: (s, r) => {

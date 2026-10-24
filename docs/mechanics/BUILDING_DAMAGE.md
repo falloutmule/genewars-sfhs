@@ -1,6 +1,11 @@
 # Building damage and destruction
 
-`damageNativeBuilding(stagedWorld,slot,damage,attacker,context)` expresses source446D0 for the current host's Genepod, Turret, Distributor, Recycling Plant, Photon Processor and Extractor selectors0/1/3/4/6/11. It consumes actual67-byte building priors with null process-pointer gap31..38 and actual1805-byte player records. The caller owns the complete transaction because dependent factories can recursively damage other entities and replace shared roots. The implementation re-reads those roots after each service call.
+`damageNativeBuilding(stagedWorld,slot,damage,attacker,context)` expresses source446D0 for the current host's Genepod, Turret, Distributor, Recycling Plant, Recruitment Center, Photon Processor and Extractor selectors0/1/3/4/5/6/11. It consumes actual67-byte building priors with null process-pointer gap31..38 and actual1805-byte player records. The caller owns the complete transaction because dependent factories can recursively damage other entities and replace shared roots. The implementation re-reads those roots after each service call.
+
+Selector5 additionally requires its ordered footprint-restoration port at44380.
+That source operation sets a larger site at the stored point and retains its
+landing fields/references according to724C0; see `RECRUITMENT_CENTER_DAMAGE.md`
+for the exact quirk, full-map comparisons and host continuation coverage.
 
 Partial damage subtracts health, runs the exact one-third depletion threshold, sets flags and Genepod production fields, recomputes owner capacity, requests source audio and selection refresh, performs the random fragment chance, then writes the damage flash11. Each fragment attempt consumes speed, pitch, yaw and selector draws before the real factory. Only factory success consumes its own phase draw.
 

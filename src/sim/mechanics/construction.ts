@@ -30,7 +30,7 @@ import {
 } from "./crater";
 
 export type ConstructionPoint = [number, number];
-export type ConstructionSelector = 0 | 1 | 3 | 4 | 6 | 11;
+export type ConstructionSelector = 0 | 1 | 3 | 4 | 5 | 6 | 11;
 export interface ConstructionRules extends MotionTables {
   evidence: string;
   terrainBorder: readonly number[];

@@ -137,6 +137,7 @@ export function campaignStrategicContext(w: CampaignWorld, pack: Pack) {
     buildingThreatValues: ai.buildingThreatValues,
     specialistThreatWeights: ai.specialistThreatWeights,
     plantValues: ecology.plants,
+    recruitmentLandingOffset: pack.specialistRecruitmentRules?.associatedLandingOffset,
     spreadDirections: ecology.spreadDirections,
     water: w.source.source.terrain.rawWaterHeight,
     rules: campaignStrategicEngineerRules(pack),

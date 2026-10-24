@@ -54,6 +54,7 @@ import {
 } from "./recruitment-landing-adapter";
 import { issueCampaignHumanRoster, campaignHumanRosterView, campaignHumanRosterInitialPanel } from "./human-roster-adapter";
 import { stepStagedCampaignLandingBuilding } from "./landing-building-adapter";
+import { stepStagedCampaignRecruitmentCenter } from "./recruitment-center-adapter";
 import type { HumanRosterCommand } from "../mechanics/human-roster";
 import {
   findRoute,
@@ -302,6 +303,7 @@ export const CampaignCommandSchema = z.discriminatedUnion("type", [
       z.literal(1),
       z.literal(3),
       z.literal(4),
+      z.literal(5),
       z.literal(6),
       z.literal(11),
     ]),
@@ -2105,6 +2107,10 @@ export function stepCampaign(w: CampaignWorld, pack: Pack): void {
         },
         dispatchBuilding(staged, building) {
           const slot = building.owner * 64 + building.slot;
+          if (building.selector === 5) {
+            stepStagedCampaignRecruitmentCenter(staged, slot, pack, specialistServices(pack));
+            return true;
+          }
           if (!building.complete) {
             const result = stepIncompleteNativeBuilding(
               staged.buildingNative[slot],

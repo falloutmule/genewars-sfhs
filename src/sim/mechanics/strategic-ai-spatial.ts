@@ -1,6 +1,7 @@
 /** Source spatial queries used by the strategic specialist/construction plans.
  * Call inside the caller's staged transaction. Only8D7B0 mode1 changes RNG. */
 import { classifyConstructionSite } from "./construction";
+import { classifyRecruitmentCenterSite } from "./recruitment-center";
 import { ecologyTerrainClass } from "./ecology";
 import { wrap16, type MotionTables } from "./motion";
 import { queryMuleAirborneBuilding } from "./mule";
@@ -18,6 +19,8 @@ export interface StrategicSpatialContext extends Pick<StrategicSurveyContext, "c
   tables: Pick<MotionTables, "sine" | "cosine">;
   plantValues: readonly { growthDeltas: readonly number[]; crowdingLimit: number; nutrition: number }[];
   footprintSearchOffsets?: readonly (readonly [number, number])[];
+  /**1124F0, required lazily only for74E80's actual selector5 discriminator. */
+  recruitmentLandingOffset?: readonly [number, number];
 }
 function point(p: readonly number[]): asserts p is Point {
   if (p.length !== 2 || p.some(v => !aiInteger(v, -32768, 32767))) throw Error("Actual strategic spatial signed point required");
@@ -80,6 +83,11 @@ export function queryStrategicSite(s: StrategicAIState, r: { routine: 0x74e80; p
   c: StrategicSpatialContext): { routine: 0x74e80; blocked: boolean } {
   if (r.routine !== 0x74e80) throw Error("Actual74E80 site request required");
   point(r.point);
+  if (r.discriminator === 5) {
+    if (r.footprint !== 2) throw Error("Actual Recruitment Center footprint2 required");
+    return {routine: 0x74e80, blocked: classifyRecruitmentCenterSite(c.terrain(s), r.point, c.recruitmentLandingOffset,
+      cell => strategicPlantBlocked(s, cell, c)) !== "valid"};
+  }
   return { routine: 0x74e80, blocked: classifyConstructionSite(c.terrain(s), r.point, r.footprint,
     r.discriminator ?? 100, cell => strategicPlantBlocked(s, cell, c)) !== "valid" };
 }

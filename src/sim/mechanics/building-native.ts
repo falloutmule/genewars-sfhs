@@ -3,7 +3,7 @@
  * transactions. Pointer bytes remain logical nulls, unknown priors survive. */
 import { advanceAnimation, type AnimationProfile } from "./animation";
 export type BuildingNative = (number | null)[];
-export type NativeBuildingSelector = 0 | 1 | 3 | 4 | 6 | 11;
+export type NativeBuildingSelector = 0 | 1 | 3 | 4 | 5 | 6 | 11;
 export type BuildingNativeResult<T> =
   | { ok: true; value: T }
   | { ok: false; reason: string };
@@ -28,7 +28,7 @@ export interface NativeBuildingProgress {
 }
 const integer = (v: number, lo: number, hi: number) =>
   Number.isInteger(v) && v >= lo && v <= hi;
-const selectors: readonly number[] = [0, 1, 3, 4, 6, 11];
+const selectors: readonly number[] = [0, 1, 3, 4, 5, 6, 11];
 function validate(n: readonly (number | null)[]) {
   if (
     !Array.isArray(n) ||
@@ -104,6 +104,8 @@ export function createNativeBuilding(
     put32(n, 54, 0);
     n[45] = input.selector;
     if (input.selector === 0) put(n, 58, -1);
+    //43E30 selector5 resets the pad pulse/stamp;51 and53 remain prior bytes.
+    if (input.selector === 5) n[52] = n[54] = 0;
     n.fill(0, 39, 43);
     put(
       n,

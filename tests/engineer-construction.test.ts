@@ -547,13 +547,13 @@ describe("native534D0 ordinary Engineer task0", () => {
     cancelEngineerWork(retired.w, 0, 0, retired.c);
     expect(retired.w.missionPrefix[CRATER_JOB_COUNT]).toBe(255);
   });
-  it("keeps stage5 missing-building cancellation explicit and rejects unimplemented selector5", () => {
+  it("keeps stage5 missing-building cancellation explicit and rejects unimplemented selector12", () => {
     const f = fixture(5);
     f.n()[129] = 0;
     const out = stepStagedEngineerRole(f.w, 0, f.c);
     expect([out.status, f.n()[122], f.w.releases]).toEqual(["released", 3, 0]);
     const other = fixture();
-    other.n()[131] = 5;
+    other.n()[131] = 12;
     expect(() => stepStagedEngineerRole(other.w, 0, other.c)).toThrow(
       /unimplemented construction family/,
     );
@@ -629,6 +629,101 @@ describe("native534D0 ordinary Engineer task0", () => {
       stepEngineerCallback(loaded, 0, f.c);
       expect(loaded).toEqual(f.w);
     }
+  });
+});
+
+describe("selector5 native Engineer two-site construction", () => {
+  it("uses first 2x2 job, then actual offset target without a working-side RNG draw", () => {
+    const f = fixture();
+    f.n()[131] = 5;
+    put(f.n(), 73, 32);
+    f.primitive.recruitmentLandingOffset = [300, -600];
+    f.c.construction = makeEngineerConstructionServices(f.primitive);
+    const first = f.c.construction.step(f.w, 0);
+    expect(word(f.n(), 136)).toBe(1);
+    expect(f.w.missionPrefix[CRATER_JOB_BASE + 8]).toBe(3);
+    expect(first.terrainJobs?.[0].operation).toBe("allocated");
+    job(f, -1);
+    const draws = f.w.rng.draws;
+    f.c.construction.step(f.w, 0);
+    expect([word(f.n(), 136), word(f.n(), 96), word(f.n(), 98)]).toEqual([
+      0, 1323, 1447,
+    ]);
+    expect(f.w.rng.draws - draws).toBe(1);
+  });
+  it("releases the reached pad before allocating its 3x3 job, then75240 before deterministic return", () => {
+    const f = fixture();
+    f.n()[131] = 5;
+    put(f.n(), 73, 32);
+    put(f.n(), 11, 1323);
+    put(f.n(), 13, 1447);
+    const trace: unknown[] = [];
+    f.primitive.releaseRecruitmentSite = (w, point, size) => {
+      trace.push(["release", point, size, w.missionPrefix[CRATER_JOB_COUNT]]);
+      return [];
+    };
+    f.primitive.prepareRecruitmentSite = (w, point) => {
+      trace.push(["prepare", point, word(w.specialists.records[0], 136)]);
+      return [];
+    };
+    f.c.construction = makeEngineerConstructionServices(f.primitive);
+    f.c.construction.step(f.w, 0);
+    expect(trace).toEqual([["release", [1323, 1447], 3, 0]]);
+    expect(word(f.n(), 136)).toBe(2);
+    expect(f.w.missionPrefix[CRATER_JOB_BASE + 8]).toBe(4);
+    job(f, -1);
+    const draws = f.w.rng.draws;
+    f.c.construction.step(f.w, 0);
+    expect(trace[1]).toEqual(["prepare", [1323, 1447], 2]);
+    expect([word(f.n(), 136), word(f.n(), 96), word(f.n(), 98)]).toEqual([
+      3, 767, 2303,
+    ]);
+    expect(f.w.rng.draws - draws).toBe(1);
+  });
+  it("capacity false still performs the reached pad release and leaves stage0", () => {
+    const f = fixture();
+    f.n()[131] = 5;
+    put(f.n(), 73, 32);
+    put(f.n(), 11, 1323);
+    for (let i = 0; i < 25; i++)
+      put(f.w.missionPrefix, CRATER_JOB_BASE + i * 176 + 12, 1);
+    f.w.missionPrefix[CRATER_JOB_COUNT] = 25;
+    let released = 0;
+    f.primitive.releaseRecruitmentSite = () => {
+      released++;
+      return [];
+    };
+    f.c.construction = makeEngineerConstructionServices(f.primitive);
+    f.c.construction.step(f.w, 0);
+    expect(released).toBe(1);
+    expect(word(f.n(), 136)).toBe(0);
+  });
+  it("cancel releases both exact sites and retires only the one native job", () => {
+    const f = fixture(2);
+    f.n()[131] = 5;
+    job(f);
+    const released: unknown[] = [];
+    f.primitive.recruitmentLandingOffset = [300, -600];
+    f.primitive.releaseRecruitmentSite = (_w, point, size) => {
+      released.push([point, size]);
+      return [];
+    };
+    f.c.construction = makeEngineerConstructionServices(f.primitive);
+    cancelEngineerWork(f.w, 0, 0, f.c);
+    expect(released).toEqual([
+      [[1023, 2047], 2],
+      [[1323, 1447], 3],
+    ]);
+    expect(word(f.w.missionPrefix, CRATER_JOB_BASE + 12)).toBe(-1);
+    expect(f.w.missionPrefix[CRATER_JOB_COUNT]).toBe(0);
+  });
+  it("rolls back late missing pad profile after the completed second job", () => {
+    const f = fixture(2);
+    f.n()[131] = 5;
+    job(f, -1);
+    const before = structuredClone(f.w);
+    expect(() => stepEngineerCallback(f.w, 0, f.c)).toThrow("75240");
+    expect(f.w).toEqual(before);
   });
 });
 describe("source441C0 completed grade0 repair numeric obligations", () => {
