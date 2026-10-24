@@ -141,7 +141,11 @@ const receipt = {
   sourceDirty: dirty,
   buildVersion: "0.2.0-campaign-development",
   contentSchemaVersion: pack?.schemaVersion || 1,
-  acceptedMissionCount: 0,
+  // Exceland accepted through the real UI at phone-landscape915x412 and
+  // phone-portrait412x915 with touch input: mine, distributor and three photon
+  // processors built by ordinary construction commands, victory-notification,
+  // result view, continue and Krell initialization. Physical S21 QA is separate.
+  acceptedMissionCount: 1,
   physicalDeviceAcceptance: "not-run",
   upstreamBattleDrones: "39d6f587f98a82f5c0426e8bd476cef49fd19ef0",
   importerVersion: pack?.importerVersion || null,

@@ -1,5 +1,20 @@
 # Current direct-conversion state — 24 October 2026
 
+## Software campaign acceptance: 1/24 — Exceland
+
+Exceland is accepted in the **software** ledger through the real UI, not a simulation harness. The browser campaign run on the artifact built from commit `2f3c6c1` passed at **desktop 1440×900, phone-landscape 915×412 and phone-portrait 412×915**, the two phone viewports using `hasTouch` and real `touchscreen.tap` input:
+
+- Engineer selected, construction menu opened, Mine / First Stage Distributor / Photon Processor ×3 placed by pointer
+- ordinary commands queued and completed (`completed[11] === 1`, build loop reaching `result`)
+- save slot 1 → load slot 1 during the route, with `lockCount` and render purity preserved
+- `result === "victory-notification"`, "View result" → "Continue to next mission" → "Deploy specialists" visible
+- carried state: mission 2, progress 1, specialists deployed from the carried record
+- `renderPurity()` true and zero render errors on every viewport
+
+**Physical S21 Ultra validation remains separate and pending** — no physical device was operated, and that does not gate this ledger.
+
+**Next:** mission 2 Krell through the same ordinary-play route.
+
 ## Exceland ordinary-play chain proven end to end (simulation layer)
 
 A real mission-1 run using only ordinary queued player construction reaches the authentic source result, and the result tail through to Krell works.
