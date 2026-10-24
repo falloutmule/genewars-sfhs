@@ -1,5 +1,28 @@
 # Current direct-conversion state — 24 October 2026
 
+## Exceland ordinary-play chain proven end to end (simulation layer)
+
+A real mission-1 run using only ordinary queued player construction reaches the authentic source result, and the result tail through to Krell works.
+
+**Route:** Mine (`11`) → Power (`3`) → Solar ×3 (`6`). The objective is `completed-photons`, `sourcePlayerOffset 1542`, target 3 — it counts **selector 6**, not the pulper (`2`), which was the earlier mistaken assumption. Queued through `queueCampaign`, built by the Engineer with no injected buildings or fixtures.
+
+**Verified sequence (frame 4,951):**
+- objective ledger `completed-photons` current 3 / target 3, `thresholdReached: true`
+- `phase: "result"`, `result.phase: "victory-notification"`, zero error notices
+- **save/reload at that state: identical checksum, result preserved**
+- `continue-notification` → `victory-view-queued`
+- `enter-victory` → `victory-view`, `progress 1`, terminal `won/player0/winner0`
+- `advance-victory(runtimeInputFlags 1)` → `campaign-view-queued`
+- `continueCampaign` → **mission number 2 (Krell), phase `briefing`, frame 0, progress `[1,0,0,0]`**
+
+So the objective scan (`72ED0`), result stages, save/reload and campaign carry were already correctly wired: `world.ts:2695` evaluates each tick and `actOnCampaignResult` drives the tail. The mission was never blocked by a missing mechanic — the earlier chains simply built the wrong building.
+
+**Evidence:** `.private/build-probe-20261024/probe2.ts` (objective recipe, per-stage ledger dumps) and `probe4.ts` (result flow and carry), with `run3.log`.
+
+**Still required before `1/24`:** the same route played through the real UI at desktop and phone-landscape/portrait viewports, with save/reload during that play. Simulation-layer proof does not satisfy the human-playable gate, and acceptance remains **0/24**.
+
+**Next:** drive this route in the browser build and fix whatever the UI layer cannot yet express.
+
 ## Sealed continuation across the mortality boundary
 
 The sealed pre-step save `.private/madami-power-botanist-continuation-20261023/segment-003/save-last-valid-prestep.json` (frame **20,933**, sha256 `0ba30528…aadae2`) was re-hashed before use and is **byte-unchanged**; the continuation ran from a child in `.private/mortality-continuation-20261024/`.
