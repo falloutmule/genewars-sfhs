@@ -120,6 +120,43 @@ export interface EcologyStepResult {
   reason: string | null;
   callbacks: number[];
 }
+/** Immediate 6C4B0/6C780 host boundaries on the pass's isolated roots.
+ * Owned credit includes real 80780 and its interleaved effect-factory RNG.
+ * A host must isolate every additional root these hooks can mutate. */
+export interface PlantLifecycleContext {
+  publishBirth?(
+    state: EcologyState,
+    terrain: TerrainState,
+    rng: GeneRng,
+    child: EcologyPlant,
+    parent: EcologyPlant,
+  ): void;
+  creditBirth?(
+    state: EcologyState,
+    terrain: TerrainState,
+    rng: GeneRng,
+    child: EcologyPlant,
+  ): void;
+  unlinkRetiring?(
+    state: EcologyState,
+    terrain: TerrainState,
+    rng: GeneRng,
+    plant: EcologyPlant,
+  ): void;
+  cleanupRetiring?(
+    state: EcologyState,
+    terrain: TerrainState,
+    rng: GeneRng,
+    plant: EcologyPlant,
+  ): void;
+  completeRetirement?(
+    state: EcologyState,
+    terrain: TerrainState,
+    rng: GeneRng,
+    plant: EcologyPlant,
+  ): void;
+  validateCommit?(state: EcologyState): void;
+}
 export function cloneEcologyState(state: EcologyState): EcologyState {
   return {
     ...state,
@@ -367,6 +404,8 @@ function retire(
   plant: EcologyPlant,
   params: PlantRule,
   events: EcologyEvent[],
+  context?: PlantLifecycleContext,
+  rng?: GeneRng,
 ) {
   if (!(plant.plantFlags & 0x88)) {
     plant.animation = (plant.animation + 6) & 255;
@@ -379,8 +418,10 @@ function retire(
     plant.retirement -= 4;
     return;
   }
-  plant.active = false;
-  state.plantCount = (state.plantCount - 1) & 65535;
+  if (context && !rng)
+    throw new Error("Scheduled plant retirement RNG binding is missing");
+  syncPlant(plant);
+  context?.unlinkRetiring?.(state, terrain, rng!, plant);
   if (state.plantOrder) {
     const key = String(worldCell(...plant.position));
     state.plantOrder[key] = (state.plantOrder[key] ?? []).filter(
@@ -399,6 +440,11 @@ function retire(
     newCellOperand = oldCellOperand < 64 ? oldCellOperand + 2 : oldCellOperand;
   terrain.bytes[cell * 14 + 13] = newCellOperand;
   terrain.revision++;
+  context?.cleanupRetiring?.(state, terrain, rng!, plant);
+  plant.active = false;
+  state.plantCount = (state.plantCount - 1) & 65535;
+  syncPlant(plant);
+  context?.completeRetirement?.(state, terrain, rng!, plant);
   events.push({
     kind: "plant-retired",
     id: plant.id,
@@ -422,8 +468,13 @@ function reproduce(
   params: PlantRule,
   water: number,
   events: EcologyEvent[],
+  context?: PlantLifecycleContext,
 ) {
-  if (parent.owner !== 4)
+  if (parent.owner < 0 || parent.owner > 4)
+    throw new Error(
+      "Plant reproduction owner is outside original players/neutral",
+    );
+  if (parent.owner !== 4 && !context?.creditBirth)
     throw new Error(
       "Owned plant reproduction factory requires its original owner bookkeeping",
     );
@@ -445,6 +496,8 @@ function reproduce(
   if (groundHeight(terrain, ...requested) <= water + 512) return;
   const slot = state.plants.find((plant) => !plant.active);
   if (!slot) return;
+  if (slot.native[6] !== 0)
+    throw new Error("Inactive plant factory prior differs from native slot");
   const position = requested.map((v) =>
     i16((v & 0xff00) + ((v & 255) >> 2) + 96),
   ) as [number, number];
@@ -452,7 +505,7 @@ function reproduce(
   native[2] = 0;
   native[5] = 0;
   native[6] = 2;
-  native[24] = 4;
+  native[24] = parent.owner;
   put(native, 7, position[0]);
   put(native, 9, position[1]);
   native.fill(0, 11, 15);
@@ -460,7 +513,7 @@ function reproduce(
   const height = groundHeight(terrain, ...position);
   for (let byte = 0; byte < 4; byte++)
     native[17 + byte] = (height >> (byte * 8)) & 255;
-  native[21] = 5;
+  native[21] = 4;
   native[22] = 0;
   native[23] = shade(terrain, position);
   for (const at of [25, 26, 27, 29]) native[at] = 0;
@@ -470,13 +523,23 @@ function reproduce(
   put(native, 44, 4);
   native[46] = 0;
   native[47] = 0;
-  const child = plantFromNative(native, slot.index);
-  state.plants[slot.index] = child;
-  state.plantCount++;
+  slot.native.splice(0, slot.native.length, ...native);
+  Object.assign(slot, plantFromNative(slot.native, slot.index));
+  const child = slot;
   if (state.plantOrder) {
     const key = String(worldCell(...position));
     (state.plantOrder[key] ??= []).unshift(slot.index);
   }
+  context?.publishBirth?.(state, terrain, rng, child, parent);
+  state.plantCount++;
+  if (child.owner < 4) {
+    state.ownerPlantCounts[child.owner] =
+      (state.ownerPlantCounts[child.owner] + 1) & 65535;
+    context!.creditBirth!(state, terrain, rng, child);
+  }
+  //The source caller marks newborn only AFTER the complete factory/80780.
+  child.flags |= 1;
+  syncPlant(child);
   events.push({
     kind: "plant-born",
     id: child.id,
@@ -498,6 +561,7 @@ function callback(
   index: number,
   water: number,
   events: EcologyEvent[],
+  context?: PlantLifecycleContext,
 ) {
   const plant = state.plants[index];
   if (!plant.active) throw new Error("Scheduled plant slot is inactive");
@@ -532,12 +596,26 @@ function callback(
       if (
         plant.updateCounter % params.spreadPeriod === 0 &&
         state.plantCount < (plant.owner === 4 ? 412 : 512)
-      )
-        reproduce(state, terrain, rng, rules, plant, params, water, events);
+      ) {
+        //The factory and its recursive services see current native growth/counter.
+        syncPlant(plant);
+        reproduce(
+          state,
+          terrain,
+          rng,
+          rules,
+          plant,
+          params,
+          water,
+          events,
+          context,
+        );
+      }
     }
     plant.animation = Math.max(plant.animation, Math.min(plant.growth >> 3, 2));
   }
-  if (plant.growth <= 0) retire(state, terrain, plant, params, events);
+  if (plant.growth <= 0)
+    retire(state, terrain, plant, params, events, context, rng);
   else
     events.push({
       kind: "plant-growth",
@@ -555,14 +633,16 @@ export function advancePlantCursor(cursor: number): number {
   const next = cursor + 8;
   return next > 512 ? (next + 1) & 7 : next;
 }
-/** Source6D0B0 scheduling and neutral6CA90/6C4B0 lifecycle. Atomic on failure.
- * Shared-world link cleanup is returned explicitly and must be consumed. */
+/** Source 6D0B0 scheduling and 6CA90/6C4B0 lifecycle. Atomic on failure.
+ * Shared-world lifecycle hooks run immediately on these isolated roots;
+ * callers must isolate their additional roots before mutating them. */
 export function stepPlants(
   state: EcologyState,
   terrain: TerrainState,
   rng: GeneRng,
   rules: EcologyRules,
   rawWaterHeight: number,
+  context?: PlantLifecycleContext,
 ): EcologyStepResult {
   const staged = cloneEcologyState(state),
     map = { bytes: terrain.bytes.slice(), revision: terrain.revision },
@@ -581,7 +661,16 @@ export function stepPlants(
       if (!initial[index].active || initial[index].flags & 1) continue;
       if (callbacks.length < 2 && index === cursor) {
         callbacks.push(index);
-        callback(staged, map, random, rules, index, rawWaterHeight, events);
+        callback(
+          staged,
+          map,
+          random,
+          rules,
+          index,
+          rawWaterHeight,
+          events,
+          context,
+        );
         cursor = advancePlantCursor(cursor);
       }
       remaining--;
@@ -599,6 +688,7 @@ export function stepPlants(
     staged.pending.push(
       ...events.filter((event) => event.kind === "cleanup-required"),
     );
+    context?.validateCommit?.(staged);
     Object.assign(state, staged);
     Object.assign(terrain, map);
     Object.assign(rng, random);

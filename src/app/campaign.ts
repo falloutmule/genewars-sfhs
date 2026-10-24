@@ -1115,6 +1115,18 @@ export async function openCampaign(
         frame: profile.first + Math.min(n[27]!, profile.holds.length - 1),
       });
     }
+    for (const [slot, n] of w.collectors.records.entries()) {
+      if (n[6] === 0) continue;
+      const profile = animationProfile(pack.assets.EFF, n[25]!);
+      entities.push({
+        id: `source:6:${slot}`,
+        x: i16(n as number[], 7) / 256,
+        y: i16(n as number[], 9) / 256,
+        height: (u32(n as number[], 39) | 0) / 512,
+        art: "EFF",
+        frame: profile.first + Math.min(n[27]!, profile.holds.length - 1),
+      });
+    }
     const drawn = new Set(entities.map((e) => e.id));
     for (const [slot, e] of w.powerEffects.slots.entries()) {
       const n = e.nativePrior,

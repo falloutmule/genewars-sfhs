@@ -114,7 +114,27 @@ export interface SpecialistMotionReceipt {
   water: SpecialistWaterRequest | null;
   route: "idle" | "moving" | "backoff" | "detached";
 }
-function actor<W extends GeneticistWorld>(s: W, index: number): Native {
+/**Actualkind7 virtual68/A8, without a fabricated kind3 blueprint. */
+export interface CollectorGroundMotionAccess<W extends GeneticistWorld> {
+  native(world: W, index: number): Native;
+  dead(world: W, index: number): boolean;
+  blockedIdle(world: W, index: number, point: Point): void;
+}
+type CommonMotionContext<W extends GeneticistWorld> =
+  SpecialistMotionContext<W> & {
+    recordAccess?: CollectorGroundMotionAccess<W>;
+  };
+function actor<W extends GeneticistWorld>(
+  s: W,
+  index: number,
+  c?: CommonMotionContext<W>,
+): Native {
+  if (c?.recordAccess) {
+    const n = c.recordAccess.native(s, index);
+    if (!n || n.length !== 97 || b(n, 6) !== 7 || w(n, 15) !== index)
+      throw Error("Actualkind7 native97 motion record required");
+    return n;
+  }
   const n = s.specialists.records[index],
     binding = s.specialists.bindings[index];
   if (
@@ -165,7 +185,7 @@ function accepts<W extends GeneticistWorld>(
   nominated: number | null = null,
   mask: 0 | 1 = 1,
 ): boolean {
-  const n = actor(s, index),
+  const n = actor(s, index, c),
     obstacle = c.obstacle(s, p, mask, -1),
     terrainClass = ecologyTerrainClass(s.terrain, p);
   if (
@@ -291,7 +311,7 @@ function route<W extends GeneticistWorld>(
   early: boolean;
   route: SpecialistMotionReceipt["route"];
 } {
-  const n = actor(s, index),
+  const n = actor(s, index, c),
     current = at(n),
     phase = (s.frame + index) >>> 0;
   if (b(n, 22) & 64 || w(n, 73) & 1024)
@@ -308,15 +328,17 @@ function route<W extends GeneticistWorld>(
   const accept = (p: Point) => accepts(s, index, p, c, nominated),
     oldFlags = w(n, 73) & 65535;
   n[73] = b(n, 73) & 159;
-  const binding = s.specialists.bindings[index]!,
-    raw = s.players[binding.owner].raw,
-    offset = 22 + 36 * binding.blueprintIndex;
-  if (
-    !(oldFlags & 16) &&
-    (b(raw, offset + 26) << 24) >> 24 > 0 &&
-    (phase & 31) === 0 &&
-    !accept(current)
-  ) {
+  const access = (c as CommonMotionContext<W>).recordAccess,
+    dead = () =>
+      access
+        ? access.dead(s, index)
+        : (() => {
+            const binding = s.specialists.bindings[index]!,
+              raw = s.players[binding.owner].raw,
+              offset = 22 + 36 * binding.blueprintIndex;
+            return (b(raw, offset + 26) << 24) >> 24 <= 0;
+          })();
+  if (!(oldFlags & 16) && !dead() && (phase & 31) === 0 && !accept(current)) {
     const found = findSpecialistIdleRelocation(current, (p) =>
       accepts(s, index, p, c),
     );
@@ -325,10 +347,16 @@ function route<W extends GeneticistWorld>(
       const goal = resolveMovementTarget(current, found, c.tables, (p) =>
         accepts(s, index, p, c, null, 0),
       );
-      n[91] = 0;
-      setPoint(n, 11, goal);
-      setPoint(n, 92, goal);
-      n[87] = b(n, 87) | 2;
+      if (access) {
+        access.blockedIdle(s, index, goal);
+        if (actor(s, index, c) !== n)
+          throw Error("Collector cancellation replaced retained native record");
+      } else {
+        n[91] = 0;
+        setPoint(n, 11, goal);
+        setPoint(n, 92, goal);
+        n[87] = b(n, 87) | 2;
+      }
       n[73] = b(n, 73) & 254;
     }
   }
@@ -540,7 +568,7 @@ function relocated<W extends GeneticistWorld>(
   c: SpecialistMotionContext<W>,
   out: SpecialistMotionReceipt,
 ): void {
-  const n = actor(s, index),
+  const n = actor(s, index, c),
     after = at(n);
   if (worldCell(...before) === worldCell(...after) || b(n, 22) & 32) return;
   if (!c.relocate)
@@ -549,7 +577,7 @@ function relocated<W extends GeneticistWorld>(
     );
   c.relocate(s, index, before, after, phase);
   out.relocations.push({ before, after, phase });
-  if (actor(s, index) !== n)
+  if (actor(s, index, c) !== n)
     throw Error("Specialist relocation replaced retained native record");
 }
 function physics<W extends GeneticistWorld>(
@@ -558,7 +586,7 @@ function physics<W extends GeneticistWorld>(
   c: SpecialistMotionContext<W>,
   out: SpecialistMotionReceipt,
 ): void {
-  const n = actor(s, index),
+  const n = actor(s, index, c),
     before = n.slice(),
     origin = at(n),
     oldGround = d(n, 17),
@@ -622,7 +650,7 @@ function physics<W extends GeneticistWorld>(
         if (!c.damage)
           throw Error("Specialist fall requires actual hit callback");
         c.damage(s, index, impact);
-        if (actor(s, index) !== n)
+        if (actor(s, index, c) !== n)
           throw Error("Specialist damage replaced retained native record");
       }
       const cls = ecologyTerrainClass(s.terrain, candidate),
@@ -692,7 +720,7 @@ function physics<W extends GeneticistWorld>(
           );
         c.waterEffect(s, request);
         out.water = request;
-        if (actor(s, index) !== n)
+        if (actor(s, index, c) !== n)
           throw Error(
             "Specialist water factory replaced retained native record",
           );
@@ -701,7 +729,7 @@ function physics<W extends GeneticistWorld>(
         if (!c.damage)
           throw Error("Specialist water requires actual hit3 callback");
         c.damage(s, index, 3);
-        if (actor(s, index) !== n)
+        if (actor(s, index, c) !== n)
           throw Error("Specialist water hit replaced retained native record");
       }
     }
@@ -736,7 +764,38 @@ export function stepStagedSpecialistMotion<W extends GeneticistWorld>(
   index: number,
   c: SpecialistMotionContext<W>,
 ): SpecialistMotionReceipt {
-  const n = actor(s, index),
+  const n = actor(s, index);
+  if (
+    s.specialists.bindings[index]!.category !== 2 &&
+    ![3, 4, 5].includes(b(n, 85)) &&
+    !(s.specialists.bindings[index]!.category === 0 && b(n, 85) === 9) &&
+    !(s.specialists.bindings[index]!.category === 1 && b(n, 85) === 10) &&
+    !(s.specialists.bindings[index]!.category === 3 && b(n, 85) === 12) &&
+    (![1, 8].includes(b(n, 85)) || b(n, 88) & 1)
+  )
+    throw Error(
+      "Other specialist common motion requires ordinary idle/move without active role",
+    );
+  return stepStagedCommonGroundMotion(s, index, c);
+}
+/**Same6FB60 body with actualkind7 virtuals supplied by its retained97-byte pool.
+ * No specialist admission or blueprint is synthesized. Caller owns isolation. */
+export function stepStagedCollectorGroundMotion<W extends GeneticistWorld>(
+  s: W,
+  index: number,
+  c: SpecialistMotionContext<W>,
+  access: CollectorGroundMotionAccess<W>,
+): SpecialistMotionReceipt {
+  if (!Number.isInteger(index) || index < 0 || index >= 32)
+    throw Error("Actual collector motion slot required");
+  return stepStagedCommonGroundMotion(s, index, { ...c, recordAccess: access });
+}
+function stepStagedCommonGroundMotion<W extends GeneticistWorld>(
+  s: W,
+  index: number,
+  c: CommonMotionContext<W>,
+): SpecialistMotionReceipt {
+  const n = actor(s, index, c),
     out: SpecialistMotionReceipt = {
       actor: index,
       arrived: false,
@@ -744,17 +803,6 @@ export function stepStagedSpecialistMotion<W extends GeneticistWorld>(
       water: null,
       route: "idle",
     };
-  if (
-    (s.specialists.bindings[index]!.category !== 2 &&
-      ![3, 4, 5].includes(b(n, 85)) &&
-      !(s.specialists.bindings[index]!.category === 0 && b(n, 85) === 9) &&
-      !(s.specialists.bindings[index]!.category === 1 && b(n, 85) === 10) &&
-      !(s.specialists.bindings[index]!.category === 3 && b(n, 85) === 12) &&
-      (![1, 8].includes(b(n, 85)) || b(n, 88) & 1))
-  )
-    throw Error(
-      "Other specialist common motion requires ordinary idle/move without active role",
-    );
   const plan = route(s, index, c);
   out.route = plan.route;
   if (plan.route !== "detached") {
@@ -823,7 +871,7 @@ export function escapeStagedSpecialistRay<W extends GeneticistWorld>(
   distance: number,
   c: SpecialistMotionContext<W>,
 ): boolean {
-  const n = actor(s, index),
+  const n = actor(s, index, c),
     draw = nextRandom(s.rng),
     direction = draw % 2 === 0 ? -128 : 128;
   let yaw = headingValue & 2047;
@@ -876,7 +924,7 @@ export function resolveSpecialistMovePoint<W extends GeneticistWorld>(
   requested: Point,
   c: SpecialistMotionContext<W>,
 ): Point {
-  const current = at(actor(s, index));
+  const current = at(actor(s, index, c));
   return flatSquared(current, requested) <= 4096
     ? current
     : resolveMovementTarget(current, requested, c.tables, (p) =>
@@ -941,7 +989,7 @@ export function geneticistLineOfSight<W extends GeneticistWorld>(
   target: number,
   c: SpecialistMotionContext<W>,
 ): boolean {
-  const n = actor(s, index),
+  const n = actor(s, index, c),
     m = ref(s, 1, target, c)!;
   return specialistVisibilityRay(
     s.terrain,

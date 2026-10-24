@@ -37,7 +37,6 @@ import {
 } from "../mechanics/animation";
 import {
   createEcologyState,
-  stepPlants,
   sitePlantBlocked,
   plantBlockerWeight,
   ecologyTerrainClass,
@@ -199,9 +198,15 @@ import {
 import { campaignEngineerChargeServices, stepCampaignEngineerChargeEffect } from "./engineer-charge-adapter";
 import { issueCampaignHumanMuleTarget, stopCampaignHumanMule } from "./human-creature-command-adapter";
 import { stepCampaignPlantCarrier } from "./plant-carrier-adapter";
+import { stepCampaignPlants } from "./plant-reproduction-adapter";
 import { makeCampaignMuleMaterialServices } from "./mule-adapter";
 import { stepCampaignBuildingMaterial } from "./building-material-effect-adapter";
 import { stepStagedCampaignPulper } from "./pulper-adapter";
+import {
+  dispatchStagedCampaignProcessorCollection,
+  stepStagedCampaignProcessorCollectors,
+  damageStagedCampaignProcessorCollector,
+} from "./processor-collector-adapter";
 import { stepStagedCampaignBuildingDemolition, stepCampaignSalvageEffect } from "./building-demolition-adapter";
 import { revealCampaignRadius } from "./reveal-adapter";
 import {
@@ -1955,11 +1960,21 @@ function rewardFactoryOptions(
                 notice(staged, "Building destroyed", "warning");
             },
           }),
+        damageCollector: (s, index) => {
+          damageStagedCampaignProcessorCollector(s, index, pack, specialistServices(pack));
+        },
       }),
     destructionObstacle: (staged, p, height) => {
       const b = campaignAirborneBuilding(staged, pack, p, height);
       return b ? { position: b.position, ground: b.ground } : null;
     },
+  };
+}
+function processorServices(pack: Pack) {
+  return {
+    ...specialistServices(pack),
+    dispatchCollection: (s: CampaignWorld, slot: number, range: 1024 | 1536 | 2048) =>
+      dispatchStagedCampaignProcessorCollection(s, slot, range, pack, specialistServices(pack)),
   };
 }
 function specialistServices(pack: Pack): CampaignEngineerServices {
@@ -2157,7 +2172,7 @@ export function stepCampaign(w: CampaignWorld, pack: Pack): void {
     const economyReceipt = stepCampaignEconomyBuildings(
       w,
       pack,
-      specialistServices(pack),
+      processorServices(pack),
       {
         dispatchCommonBuilding(staged, building) {
           const slot = building.owner * 64 + building.slot;
@@ -2171,7 +2186,7 @@ export function stepCampaign(w: CampaignWorld, pack: Pack): void {
         dispatchBuilding(staged, building) {
           const slot = building.owner * 64 + building.slot;
           if (building.selector === 2) {
-            stepStagedCampaignPulper(staged, slot, pack, specialistServices(pack));
+            stepStagedCampaignPulper(staged, slot, pack, processorServices(pack));
             return true;
           }
           if (building.selector === 5) {
@@ -2587,34 +2602,10 @@ export function stepCampaign(w: CampaignWorld, pack: Pack): void {
         mirrorCampaignSpecialist(w, a.id);
         a.reason = "Being abducted";
       }
-    const plants = stepPlants(
-      w.ecology,
-      w.terrain,
-      w.rng,
-      pack.ecologyRules!,
-      w.source.source.terrain.rawWaterHeight,
-    );
+    const plants = stepCampaignPlants(w, pack, specialistServices(pack));
     if (!plants.committed)
       throw new Error(plants.reason ?? "Plant callback failed");
-    for (const event of plants.events) {
-      if (event.kind === "plant-born")
-        insertSpatial(
-          w.spatial,
-          w.terrain,
-          event.id,
-          worldCell(...event.position),
-        );
-      if (event.kind === "plant-retired" && w.spatial.nodes[event.id])
-        unlinkSpatial(w.spatial, w.terrain, event.id);
-      if (event.kind === "cleanup-required")
-        cleanupCampaignReferences(w, event.id);
-    }
-    w.ecology.pending = w.ecology.pending.filter(
-      (e) => e.kind !== "cleanup-required",
-    );
-    synchronizeCampaignPlantCounts(w);
-    if (w.collectors.count)
-      throw Error("Actual14EC0 processor collector callback pass is required");
+    stepStagedCampaignProcessorCollectors(w, pack, specialistServices(pack));
     if (w.collapse.count)
       stepCollapsePool(w, {
         directions: pack.ecologyRules!.spreadDirections as [number, number][],

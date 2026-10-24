@@ -34,6 +34,13 @@ export interface CampaignBlastServices<
     amount: number,
     attacker: SourceEntityId | null,
   ): void;
+  /**Actual kind7 virtual34/14320 cancels work without a health debit. */
+  damageCollector?(
+    world: W,
+    index: number,
+    amount: number,
+    attacker: SourceEntityId | null,
+  ): void;
   /** Must address this very staged world; ignition can allocate/replace effects inline. */
   effectOptions(world: W): EffectSchedulerOptions<W>;
 }
@@ -71,9 +78,11 @@ function retainedNative(
               ? w.powerEffects.slots[index]?.nativePrior
               : family === 5
                 ? w.collapse.records[index]
-                : family === 7
-                  ? w.ethereals.records[index]?.native
-                  : w.source.entities.find((e) => e.id === id)?.nativeBytes;
+                : family === 6
+                  ? w.collectors.records[index]
+                  : family === 7
+                    ? w.ethereals.records[index]?.native
+                    : w.source.entities.find((e) => e.id === id)?.nativeBytes;
   if (!n) throw Error("Blast retained native record missing");
   return n;
 }
@@ -264,8 +273,11 @@ export function campaignBlastAreaContext<W extends CampaignWorld>(
         if (typeof services.damageBuilding !== "function")
           throw Error("Original blast building damage service required");
         services.damageBuilding(w, e.index, amount, attacker);
-      } else if (e.kind === 7)
-        throw Error("Original blast kind7 damage service is not implemented");
+      } else if (e.kind === 7) {
+        if (!services.damageCollector)
+          throw Error("Original blast kind7 damage service is required");
+        services.damageCollector(w, e.index, amount, attacker);
+      }
       else throw Error("Unsupported original blast damage virtual");
       afterDamage();
     },

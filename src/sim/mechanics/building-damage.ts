@@ -23,7 +23,7 @@ export interface BuildingDamageContext<W extends BuildingDamageWorld=BuildingDam
   /**8ACC0 then724C0 and normalized binding cleanup while nativekind is4.
    * This port must not change owner counts/completion totals or clearkind. */
   unlinkBuilding(world:W,slot:number):void;
-  /**44380 selector4's8B2A0 operation1, after footprint/count cleanup and
+  /**44380 selector2/4's8B2A0 operation0/1, after footprint/count cleanup and
    * before selection/unlink. Clears the actual processing-front reservations;
    * does not unlink the plant/corpse, clear buildingkind or change balances. */
   clearProcessingFront?(world:W,slot:number):void;
@@ -120,14 +120,14 @@ export function restoreRecruitmentFootprint(
   terrain:TerrainState,position:[number,number],border:readonly number[],
 ):number[]{return setNativeBuildingFootprint(terrain,position,3,border);}
 function updateMean(w:BuildingDamageWorld,owner:number){const raw=w.players[owner].raw,count=(raw[0x4a2]<<24)>>24;if(count<=0)return;const live=partition(w,owner).filter(n=>n[6]!==0);if(live.length!==count)throw new Error("Source building mean/count differs");const sum=[0,0];for(const n of live){sum[0]+=(word(n,7)>>8)&255;sum[1]+=(word(n,9)>>8)&255;}put(raw,0x5fc,Math.trunc(sum[0]/count)<<8);put(raw,0x5fe,Math.trunc(sum[1]/count)<<8);}
-/** Native damage family for admitted Genepod/Turret/Distributor/Recycling Plant/
- * Recruitment Center/Photon/Extractor selectors0/1/3/4/5/6/11. Other selectors require their
+/** Native damage family for admitted Genepod/Turret/Pulper/Distributor/Recycling Plant/
+ * Recruitment Center/Photon/Extractor selectors0/1/2/3/4/5/6/11. Other selectors require their
  * special callbacks. The caller's transaction includes ordered front cleanup. */
 export function damageNativeBuilding<W extends BuildingDamageWorld>(w:W,slot:number,damage:number,attacker:{id:SourceEntityId;owner:number}|null,c:BuildingDamageContext<W>):BuildingDamageReceipt {
   if(!Number.isInteger(slot)||slot<0||slot>=256||!Number.isInteger(damage)||damage<0||damage>32767)throw new Error("Invalid source building damage request");
   const n=w.buildingNative[slot];if(!n||n.length!==67||n.slice(31,39).some(v=>v!==null)||n[6]!==4||word(n,15)!==slot)throw new Error("Original live67-byte building record is required");
   const owner=byte(n,24),selector=byte(n,45),grade=byte(n,46),raw=w.players[owner]?.raw,position:[number,number]=[word(n,7),word(n,9)],health=word(n,43),flags=word(n,49)&65535,footprint=c.rules.buildingFootprints[selector];
-  if(![0,1,3,4,5,6,11].includes(selector)||owner!==Math.trunc(slot/64)||!raw||raw.length!==1805||grade>2||c.rules.buildingHealth.length!==42||c.rules.buildingNameIndices.length!==14||c.rules.buildingFootprints.length!==14||![1,2,3].includes(footprint))throw new Error("Unadmitted source building damage selector/owner/rules");
+  if(![0,1,2,3,4,5,6,11].includes(selector)||owner!==Math.trunc(slot/64)||!raw||raw.length!==1805||grade>2||c.rules.buildingHealth.length!==42||c.rules.buildingNameIndices.length!==14||c.rules.buildingFootprints.length!==14||![1,2,3].includes(footprint))throw new Error("Unadmitted source building damage selector/owner/rules");
   const out:BuildingDamageReceipt={slot,damage,destroyed:damage>=health,effects:[],events:[],clearedCells:[],crater:null,capacityAfter:dword(raw,0x5e6),maximumGenepodGrade:raw[0x6e1]},emit=(event:BuildingDamageEvent)=>{out.events.push(event);c.onEvent?.(w,event);},effect=(request:BuildingDamageEffect)=>{if(!c.createEffect)throw new Error("Source48790 destruction effect factory is required");out.effects.push(request);c.createEffect(w,request);};
   if(word(raw,0x5ec)===0)put(raw,0x5ec,1000);put(raw,0x5f4,100);
   const debris=()=>{const speed=5120+(nextRandom(w.rng)%80)*64,pitch=nextRandom(w.rng)%320-160,yaw=nextRandom(w.rng)%2045,code=(27+nextRandom(w.rng)%5)as 27|28|29|30|31;effect({code,owner:0,position:[...position],height:groundHeight(w.terrain,...position),angles:[yaw,pitch,speed],parameter:80,delay:0});};
@@ -137,7 +137,7 @@ export function damageNativeBuilding<W extends BuildingDamageWorld>(w:W,slot:num
     effect({code:46,owner:0,position:[...position],height:groundHeight(w.terrain,...position),angles:[0,0,0],parameter:200,delay:0});
     emit({type:"destroyed-message",owner,nameIndex:c.rules.buildingNameIndices[selector]+grade,mode:2,volume:127,ratePercent:100,parameter:0,extra64:64});
     out.clearedCells=clearDestroyedFootprint(w.terrain,position,footprint);if(flags&1){const currentRaw=w.players[owner].raw;currentRaw[0x600+selector]=(currentRaw[0x600+selector]-1)&255;}
-    if(selector===4){if(!c.clearProcessingFront)throw new Error("Source44380/8B2A0 processing-front cleanup is required");c.clearProcessingFront(w,slot);}
+    if(selector===2||selector===4){if(!c.clearProcessingFront)throw new Error("Source44380/8B2A0 processing-front cleanup is required");c.clearProcessingFront(w,slot);}
     else if(selector===5){if(!c.restoreRecruitmentFootprint)throw Error("Source44380 Recruitment Center footprint restoration is required");c.restoreRecruitmentFootprint(w,slot);}
     if(c.selectedBuildingSlot===slot)emit({type:"selection-cleared",slot});
     if(!c.unlinkBuilding)throw new Error("Source8ACC0/724C0 building retirement service is required");c.unlinkBuilding(w,slot);w.buildingNative[slot][6]=0;const currentRaw=w.players[owner].raw;currentRaw[0x4a2]=(currentRaw[0x4a2]-1)&255;updateMean(w,owner);

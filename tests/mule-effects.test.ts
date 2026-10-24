@@ -111,6 +111,23 @@ function fixture() {
   return { w, pack, event, activate, sync };
 }
 describe("source Mule corpse-consumption effect adapter", () => {
+  it("publishes neighboring live collector links while retaining a stale registry overlay", () => {
+    const f = fixture(), n: Native = Array(97).fill(0);
+    n.fill(null, 31, 39); n[6] = 7;
+    const overlay = n.slice();
+    f.w.collectors = { records: [n] };
+    f.w.source.entities.push({ family: 6, index: 0, nativeBytes: overlay });
+    insertSpatial(f.w.spatial, f.w.terrain, "source:6:0", 257);
+    copySpatialLinks(f.w.spatial, "source:6:0", n);
+    const retained = overlay.slice();
+    consumeMuleEffects(f.w, [f.event], f.pack, { cleanupReferences: cleanupCampaignReferences });
+    const current = f.w.collectors!.records[0];
+    expect([word(current, 0), current[2]]).toEqual([0, 5]);
+    expect(f.w.source.entities[0].nativeBytes).toEqual(retained);
+    expect(f.w.spatial.nodes["source:6:0"].previous).toBe("source:4:0");
+    expect(n).not.toBe(current);
+    validateSpatial(f.w.spatial);
+  });
   it("allocates the lowest actual free shared slot, retaining fractions and counter and consuming zero RNG", () => {
     const f = fixture();
     f.activate(0);

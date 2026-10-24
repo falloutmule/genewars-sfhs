@@ -8,7 +8,7 @@ The enclosing owner/slot economy pass intercepts0800 demolition first.
 
 The retained pending byte51 enters unsigned stock54 on animation frame0,
 before the selector's energy gate. Positive energy and operational flags allow
-new work below40*(grade+2). Frame5 consumes the actual front-cell plant and
+new work below40\*(grade+2). Frame5 consumes the actual front-cell plant and
 records its byte48 in51; a later frame0 deposits it into54. Source audio2F/31,
 extra-drain arithmetic, stock clamping, dirty48 and signed ANB counter30 remain
 ordered. This stock is construction material; this callback awards no GOOP,
@@ -29,8 +29,10 @@ The authoritative collector state is the separate32x97 family6 pool and byte
 host transactions retain these records. Earlier development saves migrate only
 when both original counts and retained images prove that pool was empty; the
 original save checksum is verified first. Missing live records are rejected.
-The normal host explicitly rejects live collector callbacks until their full
-14EC0 pass is bound. This pool plumbing does not establish collector gameplay.
+The normal host now runs the actual live ascending14EC0 pass immediately after
+plants, before collapse/shared EFF. Current collector poses use their real EFF
+resource and native97 image. See [Processor collectors](PROCESSOR_COLLECTORS.md)
+for complete query, motion, work, pickup/drop, damage and retirement semantics.
 
 Public entry points:
 
@@ -42,11 +44,14 @@ Public entry points:
 
 Grade1/2 collection reaches the concrete112728→484E0/8D930→14040 service on
 low-byte(slot+frame)==0, with radii1024/2048 and modes0/1 respectively. That
-service is an explicit required port until the complete shared32-slot
-processor collector is installed. A false actual capacity allocation costs no
-extra drain; absence is an error and rolls back an atomic caller. Collector
-implementation continues as the same processor family, rather than treating
-this intermediate grade0 integration as complete upgraded gameplay.
+service is bound to the complete shared32-slot processor collector in the
+campaign host. A false actual capacity allocation costs no extra drain;
+absence remains an error for standalone callers and rolls back an atomic
+caller. Normal campaign tests cover grade1 burn-only work and grade2 actual
+plant pickup, return and material processing, with moving/carrying saves and
+full sealed replay. Recycler4 uses the same concrete collector family for
+corpse and plant delivery. Source Pulper damage and operation0 processing-front
+cleanup are documented in [Pulper damage](PULPER_DAMAGE.md).
 
 Evidence: preserved `building-update/instructions-000451f0.txt`, selector2
 46805..46B67 and shared451F0 tail; `building-loader-refs/instructions-00043e30.txt`;

@@ -285,6 +285,13 @@ describe("current campaign blast adapter", () => {
     f.w.source.entities.push(source);
     f.w.collectors.records[0] = source.nativeBytes.slice();
     f.w.collectors.count = f.w.missionPrefix[0x3558] = 1;
+    //6D390 follows the current retained header even after its active kind
+    //clears, rather than consulting the obsolete registry copy.
+    put16(f.w.collectors.records[0] as number[], 3, 12);
+    f.w.collectors.records[0][5] = 2;
+    f.w.collectors.records[0][6] = 0;
+    expect(c.next("source:6:0")).toBe("source:1:12");
+    f.w.collectors.records[0][6] = 7;
     expect(() => c.damage("source:6:0", 1, null)).toThrow(
       "kind7 damage service",
     );

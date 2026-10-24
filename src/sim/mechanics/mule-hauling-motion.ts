@@ -37,6 +37,29 @@ export function attachMuleMaterialPose(
 ): void {
   if (byte(parent, 6) !== 1 || byte(parent, 122) !== 4)
     throw Error("Attachment requires actual Mule4 parent");
+  attachGroundBody(carried, parent, c);
+}
+/**6EAF0 ground arm for the actualkind7 collector or established Mule4 parent.
+ * Kind7's virtual10 is1EE20; flight is a separate source arm. */
+export function attachGroundMaterialPose(
+  carried: HaulingNative,
+  parent: HaulingNative,
+  c: MuleAttachmentContext,
+): void {
+  if (
+    (byte(parent, 6) === 7 && parent.length !== 97) ||
+    (byte(parent, 6) !== 7 &&
+      (byte(parent, 6) !== 1 || byte(parent, 122) !== 4)) ||
+    word(parent, 73) & 0x400
+  )
+    throw Error("Actual admitted ground attachment parent required");
+  attachGroundBody(carried, parent, c);
+}
+function attachGroundBody(
+  carried: HaulingNative,
+  parent: HaulingNative,
+  c: MuleAttachmentContext,
+): void {
   if (![1, 5].includes(byte(carried, 6)))
     throw Error("Concrete carried creature/effect9C required");
   const old = worldCell(...point(carried));

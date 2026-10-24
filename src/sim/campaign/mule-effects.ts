@@ -173,8 +173,10 @@ function synchronizeLinks(w: MuleEffectWorld): void {
         m.native,
       );
   for (const e of w.source.entities)
-    if (e.nativeBytes[6] !== 0)
+    if (e.nativeBytes[6] !== 0 && (e.family !== 6 || !w.collectors))
       update(`source:${e.family}:${e.index}`, e.nativeBytes);
+  for (const [slot, n] of (w.collectors?.records ?? []).entries())
+    if (n[6] !== 0) update(`source:6:${slot}`, n);
   for (const [slot, n] of (w.buildingNative ?? []).entries())
     if (n[6] !== 0) update(`source:3:${slot}`, n);
   for (const [slot, n] of (w.specialists?.records ?? []).entries())
