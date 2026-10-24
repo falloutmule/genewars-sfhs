@@ -787,7 +787,7 @@ function tables(pack: Pack): ConstructionRules {
 function projection(w: CampaignWorld): ConstructionState {
   if (
     w.buildings.some(
-      (b) => ![0, 1, 3, 6, 11].includes(b.selector) || b.grade !== 0,
+      (b) => ![0, 1, 3, 4, 6, 11].includes(b.selector) || b.grade !== 0,
     )
   )
     throw Error(
