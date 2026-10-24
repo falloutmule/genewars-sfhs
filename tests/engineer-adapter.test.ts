@@ -40,6 +40,16 @@ describe("native Engineer campaign ports", () => {
   };
   let start: CampaignWorld;
   beforeAll(() => {
+    // Ordinary construction now enters the full native producer callback,
+    // including its required imported-resource boundary. Synthetic resource.
+    pack.buildingRules = {
+      schemaVersion: 1,
+      resources: [{ selector: 3, assetKey: "TEST", path: "SYNTHETIC/3.ANB" }],
+      unsupportedSelectors: [0, 1, 2, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13],
+      upkeep: Array(14).fill(1),
+      processingFrontOffset: [0, 0],
+      provenance: { executableSha256: "0".repeat(64), originalExecution: false },
+    };
     pack.assets.EFF = {
       ...pack.assets.EFF,
       frames: Array.from({ length: 9 }, () => ({

@@ -11,14 +11,12 @@ import type {
 } from "../mechanics/economy";
 import { stepEconomyBuildings } from "../mechanics/economy";
 import { allocateStagedGoopStorage } from "../mechanics/goop-storage";
-import { requestAudio } from "../mechanics/audio";
 import {
   cloneEffectHost,
   commitEffectHost,
   type EffectSchedulerOptions,
 } from "./effect-scheduler";
 import {
-  advancePowerProducerRng,
   applyPowerBuildingEvents,
   createExtractorContactSmoke,
   extractorNeedsContact,
@@ -28,6 +26,11 @@ import {
   stepStagedCampaignRecyclingPlant,
   type CampaignRecyclingServices,
 } from "./recycling-adapter";
+import {
+  refreshStagedCampaignPowerProducer,
+  resetStagedCampaignPowerGenerated,
+  stepStagedCampaignPowerProducer,
+} from "./power-producer-adapter";
 import { synchronizeCampaignLinks } from "./entity-view";
 import { i16, put16, put32, u16, u32 } from "./bytes";
 
@@ -41,9 +44,9 @@ export interface CampaignEconomyContacts {
     building: EconomyBuilding,
     queries: ReturnType<typeof planExtractorContactQueries>,
   ): void;
-  /** True means the COMPLETE source callback ran (upkeep/common tail included),
-   * so generic3/6/11 numeric work is skipped. Used for Genepod/incomplete native
-   * callbacks. Selector4 is owned by this adapter and never delegated twice. */
+  /** True means the COMPLETE source callback ran (upkeep/common tail included).
+   * Used for Genepod and other admitted native callbacks. Selectors3/4/6 are
+   * owned by this adapter and never delegated twice. */
   dispatchBuilding?(staged: CampaignWorld, building: EconomyBuilding): boolean;
   /** Complete451F0 common-prefix branch, before upkeep and selector work,
    * including selector4. True owns the entire callback and its common tail. */
@@ -198,6 +201,7 @@ export function stepCampaignEconomyBuildings(
   const hooks = hooksFor(services.effectOptions(w)),
     staged = cloneEffectHost(w, hooks);
   const resolved = new Set(contacts.resolvedIds ?? []);
+  const appliedProducerFactories = new Set<number>();
   const result = stepEconomyBuildings(
     staged.economy,
     {
@@ -207,27 +211,20 @@ export function stepCampaignEconomyBuildings(
       contactResolvedBuildingIds: [...resolved],
       services: {
         contactResolved: (_state, b) => resolved.has(b.id),
+        beforeOwner(state, player) {
+          staged.economy = state;
+          resetStagedCampaignPowerGenerated(staged, player.id);
+        },
         beforeBuilding(state, b, player) {
           staged.economy = state;
           syncPlayers(staged, state);
+          if ([3, 6].includes(b.selector))
+            refreshStagedCampaignPowerProducer(staged, b.owner * 64 + b.slot);
           syncBuilding(staged, b);
           //451F0 branches on0800 before producer work, upkeep or contacts.
           //The complete common callback is dispatched below in this same slot.
           if (u16(staged.buildingNative[b.owner * 64 + b.slot] as number[], 49) & 0x800)
             return;
-          if (b.complete && !b.disabled && [3, 6].includes(b.selector)) {
-            const producer = advancePowerProducerRng(staged, b, pack);
-            for (const a of producer.audio)
-              requestAudio(staged.audio, {
-                frame: staged.frame,
-                entity: `source:3:${b.owner * 64 + b.slot}`,
-                cue: a.channel,
-                mode: a.type === "stop" ? 4 : a.mode,
-                parameter: a.type === "stop" ? 0 : a.parameter,
-                gain: a.type === "stop" ? 1 : a.volume / 127,
-                range: a.type === "stop" ? null : a.range,
-              });
-          }
           if (
             extractorNeedsContact(
               b,
@@ -268,6 +265,21 @@ export function stepCampaignEconomyBuildings(
           if (common) return true;
           if (u16(staged.buildingNative[b.owner * 64 + b.slot] as number[], 49) & 0x800)
             throw Error("Actual451F0 timed demolition callback is required");
+          if ([3, 6].includes(b.selector)) {
+            const receipt = stepStagedCampaignPowerProducer(
+              staged,
+              b.owner * 64 + b.slot,
+              pack,
+              services,
+            );
+            // The generic pass publishes its power-change events once below.
+            events.push(...receipt.events.filter((event) =>
+              event.type !== "power-restored" && event.type !== "power-lost"));
+            if (!receipt.factoriesAlreadyApplied)
+              throw Error("Native producer must publish its actual factories inline");
+            appliedProducerFactories.add(b.id);
+            return true;
+          }
           if (b.selector === 4) {
             const receipt = stepStagedCampaignRecyclingPlant(
               staged,
@@ -298,7 +310,9 @@ export function stepCampaignEconomyBuildings(
             syncPlayers(staged, state);
             return;
           }
-          if (!b.complete && b.producer) {
+          if ([3, 6].includes(b.selector))
+            refreshStagedCampaignPowerProducer(staged, slot);
+          if (!b.complete && b.producer && ![3, 6].includes(b.selector)) {
             const n = staged.buildingNative[b.owner * 64 + b.slot];
             if (n.slice(25, 31).some((v) => v === null))
               throw Error("Incomplete producer animation prior is unknown");
@@ -314,7 +328,7 @@ export function stepCampaignEconomyBuildings(
           syncBuilding(staged, b);
           syncPlayers(staged, state);
           const launches = events.filter((e) => e.type === "packet-launched");
-          if (launches.length) {
+          if (launches.length && !appliedProducerFactories.has(b.id)) {
             applyPowerBuildingEvents(
               staged,
               { state, events: [...launches], reasons: [], powerSamples: [] },

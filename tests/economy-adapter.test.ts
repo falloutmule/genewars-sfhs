@@ -13,7 +13,7 @@ import { worldCell } from "../src/sim/mechanics/terrain";
 import { checksum } from "../src/sim/checksum";
 import type { EconomyBuilding } from "../src/sim/mechanics/economy";
 
-function fixture() {
+function fixture(frame = 1) {
   const pack = campaignFixture();
   pack.buildingRules = {
     schemaVersion: 1,
@@ -47,8 +47,8 @@ function fixture() {
   pack.assets.EFF = asset(9, 71);
   pack.assets.EFF.animations = Array.from({ length: 71 }, (_, code) => ({
     first: 0,
-    last: code === 61 ? 8 : 5,
-    rawTrailingWord: code === 61 ? 9 : 6,
+    last: code === 33 ? 3 : code === 61 ? 8 : 5,
+    rawTrailingWord: code === 33 ? 4 : code === 61 ? 9 : 6,
   }));
   pack.effectRules = {
     schemaVersion: 1,
@@ -69,11 +69,9 @@ function fixture() {
     store13: [120, 240, 360],
     unusedGoopWarningTicks: 100,
   };
-  pack.economyRules!.power.distributorPulsePeriod = 1;
-  pack.economyRules!.power.distributorPulsePhase = [0, 0, 0];
   const w = createCampaign(pack, "synthetic-economy-adapter");
   w.phase = "active";
-  w.frame = 1;
+  w.frame = frame;
   w.tick = 1;
   const services: CampaignRecyclingServices = {
     effectOptions: (): EffectSchedulerOptions<CampaignWorld> => ({
@@ -148,8 +146,25 @@ function fixture() {
 }
 
 describe("campaign ordered economy transaction", () => {
+  it("resets generated power at each owner's source prefix, including empty owners", () => {
+    const f = fixture(64);
+    f.add(0, 3); f.add(1, 3); f.add(64, 0);
+    for (const p of f.w.players) put16(p.raw, 0x4ad, 123);
+    const observed: number[][] = [];
+    stepCampaignEconomyBuildings(f.w, f.pack, f.services, {
+      dispatchCommonBuilding(w, b) {
+        observed.push([b.owner * 64 + b.slot, ...w.players.map(p => i16(p.raw, 0x4ad))]);
+        return false;
+      },
+      dispatchBuilding() { return true; },
+    });
+    expect(observed).toEqual([[0, 0, 123, 123, 123], [1, 2, 123, 123, 123], [64, 4, 0, 123, 123]]);
+    expect(f.w.players.map(p => i16(p.raw, 0x4ad))).toEqual([4, 0, 0, 0]);
+    expect(f.w.economy.players.map(p => p.generatedEnergy)).toEqual([4, 0, 0, 0]);
+  });
+
   it("interleaves native4/producer/host callbacks in exact owner-slot order, allocating before the next owner", () => {
-    const f = fixture();
+    const f = fixture(64); //Actual grade0 pulse, independent of legacy rates.
     f.add(0, 4);
     f.w.buildingNative[0][51] = 10;
     f.add(1, 3, 40);
@@ -159,12 +174,9 @@ describe("campaign ordered economy transaction", () => {
     const r = stepCampaignEconomyBuildings(f.w, f.pack, f.services, {
       dispatchBuilding(w, b) {
         order.push(b.owner * 64 + b.slot);
-        if (b.owner === 0) {
-          expect(w.players[0].goop).toBe(10);
-          expect(w.players[0].funds).toBe(4000);
-          expect(u32(w.players[0].raw, 13)).toBe(20);
-          return false;
-        }
+        expect(w.players[0].goop).toBe(10);
+        expect(w.players[0].funds).toBe(4000);
+        expect(u32(w.players[0].raw, 13)).toBe(20);
         expect(u32(w.buildingNative[0] as number[], 54)).toBe(10);
         expect(
           w.economy.buildings.find((v) => v.selector === 4)!.storedGoop,
@@ -174,7 +186,8 @@ describe("campaign ordered economy transaction", () => {
         return true;
       },
     });
-    expect(order).toEqual([1, 64]);
+    expect(order).toEqual([64]); //3/4 run internally before the later owner.
+    expect(f.w.economy.players[0].generatedEnergy).toBe(2);
     expect(r.reasons.map((v) => v.buildingId)).toEqual([1000, 1001, 1064]);
     expect(f.w.economy.players[0].goop).toBe(10);
     expect(u32(f.w.players[0].raw, 0x4a7)).toBe(10);
@@ -183,7 +196,7 @@ describe("campaign ordered economy transaction", () => {
     validateSpatial(f.w.spatial);
   });
   it("publishes real packet33 slots before a later native callback, preserving same staged aliases", () => {
-    const f = fixture();
+    const f = fixture(64);
     f.add(0, 3, 40);
     f.add(1, 4);
     f.add(2, 0);
@@ -310,8 +323,8 @@ describe("campaign ordered economy transaction", () => {
     expect(copy).toEqual(JSON.parse(JSON.stringify(f.w)));
   });
 
-  it("keeps full-pool33 replacement explicit and rolls back prior producer RNG/economy/native writes", () => {
-    const f = fixture();
+  it("rolls back prior producer RNG/economy/native writes when the real shared allocator has no replaceable slot", () => {
+    const f = fixture(64);
     f.add(0, 3, 40);
     f.add(1, 4);
     for (let slot = 0; slot < 200; slot++) {
@@ -334,12 +347,12 @@ describe("campaign ordered economy transaction", () => {
     put16(f.w.missionPrefix, 0x3554, 200);
     const before = structuredClone(f.w);
     expect(() => stepCampaignEconomyBuildings(f.w, f.pack, f.services)).toThrow(
-      "power-effect-pool-full-replacement-required",
+      "no allocatable slot",
     );
     expect(f.w).toEqual(before);
   });
 
-  it("does not overwrite an incomplete source callback's ANB with stale retained producer state", () => {
+  it("runs the actual incomplete3 callback internally and hydrates its ANB over stale producer state", () => {
     const f = fixture(),
       b = f.add(0, 3);
     b.complete = false;
@@ -361,22 +374,19 @@ describe("campaign ordered economy transaction", () => {
       lastDraw: null,
     };
     const draws = f.w.rng.draws;
+    let delegated = false;
     stepCampaignEconomyBuildings(f.w, f.pack, f.services, {
-      dispatchBuilding(w, current) {
-        expect(w.buildingNative[0][27]).toBe(0);
-        w.buildingNative[0].splice(25, 6, 0, 3, 4, 0, 2, 255);
-        current.energy--;
-        return true;
-      },
+      dispatchBuilding() { delegated = true; return true; },
     });
-    expect(f.w.buildingNative[0].slice(25, 31)).toEqual([0, 3, 4, 0, 2, 255]);
+    expect(delegated).toBe(false);
+    expect(f.w.buildingNative[0].slice(25, 31)).toEqual([0, 0, 0, 0, 0, 0]);
     expect(f.w.economy.buildings[0].producer!.animation).toEqual({
       action: 0,
-      hold: 3,
-      frame: 4,
+      hold: 0,
+      frame: 0,
       direction: 0,
-      delay: 2,
-      counter: -1,
+      delay: 0,
+      counter: 0,
     });
     expect(f.w.rng.draws).toBe(draws);
   });

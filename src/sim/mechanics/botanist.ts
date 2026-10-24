@@ -491,6 +491,8 @@ function activate<W extends GeneticistWorld>(
   }
   out.status = "active";
 }
+/**81080 category1 input envelope. Pending57-bit0 precedes conditional51E80;
+ * an interrupted state8 stops through virtual84 and clears active motion. */
 export function queueBotanistWork<W extends GeneticistWorld>(
   world: W,
   index: number,
@@ -510,7 +512,8 @@ export function queueBotanistWork<W extends GeneticistWorld>(
   )
     throw Error("Unsupported Botanist command");
   if (q.task === 1) row(c.rules, q.selector);
-  release(w, index, c, out);
+  n[87] = byte(n, 87) | 1;
+  if (byte(n, 130) !== 0) release(w, index, c, out);
   n[126] = q.task;
   put(n, 92, q.point[0]);
   put(n, 94, q.point[1]);
@@ -522,7 +525,15 @@ export function queueBotanistWork<W extends GeneticistWorld>(
       ? Math.trunc((a.skill * 768) / 100) + 768
       : Math.trunc((a.skill * 1024) / 100) + 512;
   put32(n, 142, Math.imul(radius, radius));
-  n[87] = byte(n, 87) | 1;
+  n[130] = 1;
+  if (byte(n, 85) === 8) {
+    //1EE50 retains physical velocity;57A10 performs the subsequent idle reset.
+    put(n, 63, 0);
+    put(n, 73, word(n, 73) & 0xefe8);
+    n[84] = 0;
+    n[22] = byte(n, 22) & 63;
+    n[88] = byte(n, 88) & 253;
+  }
   out.status = "pending";
   out.reason = "botanist-work-queued";
   Object.assign(world, w);

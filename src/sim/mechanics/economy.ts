@@ -172,6 +172,8 @@ export interface EconomyContext {
 }
 export interface EconomyPhaseServices {
   contactResolved?(state: EconomyState, building: EconomyBuilding): boolean;
+  /** Source482F2 owner prefix, including owners with no active buildings. */
+  beforeOwner?(state: EconomyState, player: EconomyPlayer): void;
   beforeBuilding?(
     state: EconomyState,
     building: EconomyBuilding,
@@ -558,6 +560,7 @@ function runEconomyPhase(
     name: Extract<EconomyEvent, { type: "audio" }>["cue"],
   ) => events.push({ type: "audio", buildingId: b.id, cue: name });
   for (const player of [...state.players].sort((a, b) => a.id - b.id)) {
+    context.services?.beforeOwner?.(state, player);
     for (const building of buildings.filter((b) => b.owner === player.id)) {
       const eventStart = events.length;
       context.services?.beforeBuilding?.(state, building, player);
