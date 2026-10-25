@@ -572,6 +572,30 @@ processing cell repeatedly.** Candidates, in order of plausibility:
 Until (1) is settled with evidence, do not weaken the occupancy check: it is what keeps buildings
 from overlapping.
 
+## Single-use recyclers confirmed; extractors are the replenishable source
+
+Direct test against a working recycler at (75,88), whose processing cell is (74,88):
+
+- the terrain occupancy bit at (74,88) reads **1** — the cell is building ground
+- the Botanist was walked to (73,89) and even onto (74,88); six "Plant selected type nearby"
+  orders all succeeded and none placed a plant on the processing cell (`onFront` false every round)
+- `goop` stayed at **14** through all six rounds while `energy` climbed 156 -> 186
+
+This matches the evidence rather than contradicting it: `OWNED_PLANT_REPRODUCTION.md` says
+reproduction retains the original "target-cell checks", and `reproduce` refuses a cell whose
+occupancy bit is set. So no vegetation can be re-established where a recycler can reach, and a
+recycler converts exactly the plant it was built over — one deposit each.
+
+**Consequence for Madami.** Recycling is a one-shot bonus, not an income stream, so the 1,400 GOOP
+objective cannot be met by stacking recyclers. The replenishable source is the **Extractor**
+(selector 11): it harvests the richest resource cell within radius 3 indefinitely, adds 600
+capacity, and needs power. Funds are the binding constraint: 800 buys one 650 extractor plus a 338
+distributor and little else, and nothing in the port replenishes funds once spent.
+
+Next: verify an extractor placed on a rich cell (v=100 at (72,59)) inside a distributor's radius
+actually accumulates goop over thousands of ticks, and measure the real rate. That is the only
+mechanic that can total 1,400.
+
 ## Next implementation work
 
 Complete Exceland's original startup/specialist preparation and complete construction/terrain/power/economy families using the existing source-backed contracts. Replace provisional scheduling with established observable behavior, integrate original result eligibility and continuation, and accept the whole first mission through save/reload and carried Krell initialization. Then expand complete mechanic families across all 24 original maps. Keep the workbench acceptance separate from campaign acceptance throughout.
