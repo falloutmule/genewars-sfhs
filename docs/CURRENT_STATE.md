@@ -1087,6 +1087,35 @@ too slow as written. Cheaper options for the next run:
 
 State unchanged: `mission4-planted.json` (score 199, funds 1600, 6 buildings, frame 9,289).
 
+## Mission 4: Genepod built, first Mule produced, Zone 2 draining on its own
+
+Placement without panning works: scanning every cell for one that is *valid* **and** already projects
+inside the canvas picked (34,65) at screen (296,225), the tap charged **538** (1600 -> 1062) and the
+pod completed at (34,63). That is the reliable recipe - choose by projection, never pan.
+
+Then:
+
+- "Produce Mule · 75" worked once (1062 -> 987) and put a Mule at (34,65). A second order did not
+  dispatch in the same window.
+- **Zone 2 keeps scoring by itself**: 343 -> 361 across the run with no new planting, so the plants
+  already inside keep depleting that quota. No further planting is needed until it plateaus.
+- **Zone 1 is still zero**: the Mule never left the pod.
+
+Two UI obstacles found, both procedural:
+
+1. `Mule N · health` rows do not exist unless the **Units** tab is open - the row lookup returned
+   null, so no herding order was ever issued.
+2. **"Show zone 1" did not recentre the camera onto a tappable cell**: after clicking it,
+   `project(59,64)` returned y = **713**, far below the 61..378 canvas band. So the zone buttons are
+   not a reliable recentre, and a destination tap there lands off-canvas.
+
+Checkpoint: **`.private/browser-campaign/mission4-herd.json`** - score 361, funds 987, Genepod at
+(34,63), one Mule at (34,65), frame 13,011.
+
+Next: open the Units tab, select the Mule, and get it into (59,64) - either by repeated
+visible-edge walk taps in the zone's direction, or by a single pan after reading the camera target,
+since the zone camera button did not do it.
+
 ## Next implementation work
 
 Complete Exceland's original startup/specialist preparation and complete construction/terrain/power/economy families using the existing source-backed contracts. Replace provisional scheduling with established observable behavior, integrate original result eligibility and continuation, and accept the whole first mission through save/reload and carried Krell initialization. Then expand complete mechanic families across all 24 original maps. Keep the workbench acceptance separate from campaign acceptance throughout.
