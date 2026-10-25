@@ -187,7 +187,13 @@ export function stepIncompleteNativeBuilding(
       byte(before, 6) !== 4 ||
       byte(before, 24) >= 4 ||
       !selectors.includes(selector) ||
-      (word(before, 49) & 0x841) !== 0
+      // Only genuinely contradictory states are refused here. A disabled or
+      // depleted under-construction building is ordinary: BUILDING_STARTUP.md
+      // records that disabled/incomplete cases bypass the complete-and-enabled
+      // upkeep branch and share inactive energy decay, so construction keeps
+      // stepping. Rejecting bit 0x40 here froze the world whenever an Ethereal
+      // damaged someone's in-progress building.
+      (word(before, 49) & 0x801) !== 0
     )
       throw new Error("unsupported-incomplete-building-state");
     const n = before.slice(),

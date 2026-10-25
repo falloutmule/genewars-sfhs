@@ -314,10 +314,17 @@ player's, so it cannot be avoided by playing differently: the opponent builds an
 continuously, which is why advance-only runs pass a few thousand ticks and then block at
 whatever frame the first damaged-under-construction event lands (3,232 and 6,612 observed).
 
-This is a fail-closed boundary, not a strategy problem. Supporting it means reproducing the
-original 451F0 handling of a disabled/depleted incomplete building (presumably pausing
-construction rather than aborting the step). That semantics has not been recovered from the
-preserved evidence, so inventing it is out of bounds; the fix must be evidence-led.
+That guard was a port defect, not a missing original behaviour. BUILDING_STARTUP.md states
+that disabled and incomplete cases bypass the complete-and-enabled upkeep branch and share
+inactive energy decay, so a damaged under-construction building keeps stepping its
+construction timer - the original never aborts the step. The guard now refuses only genuinely
+contradictory states, `word(n,49) & 0x801` (complete and collapse); bit 0x40 no longer stops
+the world.
+
+Verified on the rebuilt artifact from the pristine Madami start: the same building reaches
+flags 0x140 at frame 3,900 with the world still active, and completes by frame 4,900. Before
+the change the identical scenario blocked at frame 3,232. The full suite (1,651 tests across
+154 files) and `tsc --noEmit` are clean.
 
 ## Next implementation work
 
