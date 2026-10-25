@@ -628,6 +628,43 @@ Route shape now: keep two recyclers powered and let a growing Mule fleet feed th
 worth roughly 26 goop against the 1,400 objective. This replaces the "build plants on the front
 cell" approach that the 3x3 site rule makes impossible.
 
+## Madami's objective is STORED goop, and capacity is the real wall
+
+Settled from code, not from prose. The briefing says "collect 1400 units of GOOP", which reads
+cumulative, but the actual predicate in `src/sim/mechanics/mission-objectives.ts` is:
+
+```js
+const current = i32(p, 0x4a7);            // stored goop
+thresholdReached: current >= c.targetCount // c.targetCount = 1400 for Madami
+```
+
+So the win condition compares the **currently stored** goop against 1400. Storing 1400 therefore
+requires **capacity >= 1400**, and capacity is 400 per grade-0 Recycling Plant.
+
+Measured long segment (`.private/build-probe-20261024/w32.mjs`, saved madami-recycler segment,
+2 mules hauling into 2 powered recyclers):
+
+- goop rose repeatably `0 -> 78 -> 160 -> 236 -> 378 -> 464 -> 544 -> 594 -> 672 -> 800`
+- it then **clamped at 800 = capacity** and stayed there (`[9085,672],[9385,800],[9685,800]`)
+- funds fell 224 -> 149 -> 74 (one Mule is 75) and never rose across all those deposits
+
+So the deposit mechanic works and is repeatable; the objective is simply unreachable at capacity
+800. Two more grade-0 recyclers (238 each, 400 each) would give 1600 for about 476 funds, and the
+balance is 74. **Funds, not goop, is the binding constraint.**
+
+### The funds lever: salvage credits raw funds
+
+`src/sim/mechanics/salvage-effect.ts` states its credit is a "Raw unsigned32 funds add; no80780
+cap", and `building-demolition.ts` exposes `salvage(w, request): number | null` with the comment
+"timed demolition/salvage, never an ownership transfer". So demolition/salvage is the one verified
+route that writes to `player.funds`, unlike recycling deposits, which pay goop plus botanist credit.
+
+This also explains the preserved runs sitting at 11 funds with capacity 1600: they must have
+recouped funds from salvage rather than from recycling.
+
+Route to 1400 now: salvage enemy (or surplus own) buildings for raw funds -> build two more grade-0
+recyclers to reach capacity 1600 -> keep the Mule fleet hauling until stored goop reaches 1400.
+
 ## Next implementation work
 
 Complete Exceland's original startup/specialist preparation and complete construction/terrain/power/economy families using the existing source-backed contracts. Replace provisional scheduling with established observable behavior, integrate original result eligibility and continuation, and accept the whole first mission through save/reload and carried Krell initialization. Then expand complete mechanic families across all 24 original maps. Keep the workbench acceptance separate from campaign acceptance throughout.
