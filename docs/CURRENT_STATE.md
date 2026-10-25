@@ -518,6 +518,32 @@ recycling for income.
 Capacity is 400 per grade-0 plant, so the 1,400 objective needs four powered recyclers plus
 stores; `goop` is clamped to capacity, so capacity must lead collection.
 
+## Recycling pays goop and botanist credit, not funds
+
+Sampled at 50-tick resolution inside the construction window of a successful run:
+
+- frame 3260: funds 462 -> **224** (the 238 build charge)
+- frame 3710: goop 0 -> **14**, funds **224 -> 224**
+
+So the deposit fires correctly but adds no money. That is faithful, not a defect: the deposit's
+`credit(owner, 20)` calls 80780, which `planBotanistEconomy` implements
+(`docs/mechanics/BOTANIST.md:65`) and which writes the player's botanist economy counters
+(`raw+13`, clamped `raw+17`) — while funds live at `raw 0x4a3` (`world.ts:1517`) and only change
+through construction debit, demolition refund and ethereal events. `BUILDING_STARTUP.md:52`
+likewise says a deposit requires 80780. Do not "fix" this by redirecting the credit into funds.
+
+### What that means for the 1,400 objective
+
+Funds start at 800 and recycling does not replace them, so build order matters:
+
+- distributor 338 + recycler 238 = 576, leaving 224 — that is the run above.
+- capacity is 400 per grade-0 recycler, 600 per extractor, 500 per grade-0 store (selector 13).
+- reaching capacity 1,400 from the carried 400 needs ~two stores (300 each) rather than two more
+  recyclers that cannot be afforded.
+
+Next: check whether stores require power, then build capacity first and let the one powered
+recycler accumulate goop against it.
+
 ## Next implementation work
 
 Complete Exceland's original startup/specialist preparation and complete construction/terrain/power/economy families using the existing source-backed contracts. Replace provisional scheduling with established observable behavior, integrate original result eligibility and continuation, and accept the whole first mission through save/reload and carried Krell initialization. Then expand complete mechanic families across all 24 original maps. Keep the workbench acceptance separate from campaign acceptance throughout.
