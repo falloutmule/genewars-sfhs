@@ -815,6 +815,47 @@ Notable world event at frame 19105: an AI engineer logged "Native Engineer task0
 unimplemented construction family" - the AI is attempting a selector the port does not implement,
 which is the same fail-closed family gap as selector 13. It does not affect us yet.
 
+## Goop is spendable currency - and a drowning Mule now halts Madami
+
+Two decisive results from `madami-goop3.json` (goop 326, funds 11, capacity 1600, no Mule).
+
+### Goop pays for construction (`engineer-construction.ts:899-924`)
+
+`pay()` is a **two-pool debit**: it spends funds first, then drains goop for the remainder. That is
+live in the player UI, not just the AI path - ordering "Produce Mule · 75" spent exactly 11 funds +
+64 goop (326 -> 262) and produced a Mule. A second Mule cost 75 more goop (funds already 0).
+
+So goop is a currency and the mission is not funds-starved: 326 goop buys four Mules. Consequence
+for planning: keep enough goop to re-buy Mules, because Mules die and there is no other workforce
+source. (The "Mule produced" notices in `world.notices` are the *AI's* production - the Genepod does
+not make free player Mules; 2400 ticks with 0 owned Mules produced none.)
+
+### Accumulation works once Mules exist
+
+With two purchased Mules, stored goop went **273 -> 779 over 2000 ticks** (~0.25/tick), from
+`madami-goop4.json`. No collection order was needed; no recycler has a plant on its processing cell,
+so Mule biomass converts without one.
+
+### The blocker: Owned self-water damage
+
+At frame 30,556, one tick after "Ethereals are arriving", the world went `phase: blocked`:
+
+```
+Mule 39: Owned self-water damage requires lethal/action/reference continuation
+```
+
+`applyOwnedMuleSelfWaterDamage` (`mule.ts:1221-1245`) admits only a narrow state: `n[0x5e] === 8`
+(empty), `n[0x7a] === 4`, idle-or-commanded flags, health > 5, and no command references. Mule 39
+was **carrying 21** material, so `n[0x5e] !== 8` and it throws instead of resolving. The original's
+lethal/action/reference continuation for a laden mule entering water is unported.
+
+This is the next implementation task, and it is a hard gate on finishing Madami: once Mules exist
+they wander into water (the map has 42 water cells inside the distributor radius alone), and any
+laden one that does halts the whole world. Do not weaken the guard - port the continuation.
+
+Current best state: `madami-goop4.json` (goop 779, funds 0, capacity 1600, 2 Mules) and
+`madami-goop5.json` (same at the blocked frame 30556, kept as evidence).
+
 ## Next implementation work
 
 Complete Exceland's original startup/specialist preparation and complete construction/terrain/power/economy families using the existing source-backed contracts. Replace provisional scheduling with established observable behavior, integrate original result eligibility and continuation, and accept the whole first mission through save/reload and carried Krell initialization. Then expand complete mechanic families across all 24 original maps. Keep the workbench acceptance separate from campaign acceptance throughout.
