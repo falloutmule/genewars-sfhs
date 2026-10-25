@@ -544,6 +544,34 @@ Funds start at 800 and recycling does not replace them, so build order matters:
 Next: check whether stores require power, then build capacity first and let the one powered
 recycler accumulate goop against it.
 
+## A recycler deposits once, then starves: the material source is unresolved
+
+After the successful deposit (`goop 0 -> 14` at frame 3710), 2,000 further ticks left
+`goop: 14`, `cap: 800`, `funds: 224` completely flat. There is no second deposit, because the
+processing cell is a cell of the building's own 2x2: `reproduce` refuses any cell whose terrain
+occupancy bit is set (`ecology.ts:487`), so vegetation cannot regrow where the recycler can reach
+it. The one deposit came from a plant that was already under the footprint when the building went
+up.
+
+That makes a recycler a **single-use** machine as the port stands: one plant in, ~14 goop out. With
+1,400 GOOP required and capacity at 400 per recycler (extractors 600, and stores are not in the
+build menu at all — `NAMES` in `campaign.ts:41` lists only 0-6 and 11), the objective is not
+reachable this way.
+
+The unresolved question is therefore the one the handoff flagged: **how material legally reaches a
+processing cell repeatedly.** Candidates, in order of plausibility:
+
+1. Vegetation regrowth *on* the footprint in the original (i.e. the occupancy bit should not block
+   plant reproduction on a recycler's own cells). This needs source evidence for what 753F0's
+   occupancy bit means for reproduct77C0, not a guess.
+2. Corpses: `selectRecyclingCorpse` accepts dead creatures (state >= 25, native97 bit0 clear) on
+   the same cell, but a corpse also cannot occupy a footprint cell, so this has the same geometry
+   problem.
+3. Mules/herbivores delivering biomass to the plant through a separate route.
+
+Until (1) is settled with evidence, do not weaken the occupancy check: it is what keeps buildings
+from overlapping.
+
 ## Next implementation work
 
 Complete Exceland's original startup/specialist preparation and complete construction/terrain/power/economy families using the existing source-backed contracts. Replace provisional scheduling with established observable behavior, integrate original result eligibility and continuation, and accept the whole first mission through save/reload and carried Krell initialization. Then expand complete mechanic families across all 24 original maps. Keep the workbench acceptance separate from campaign acceptance throughout.
