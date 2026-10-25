@@ -758,6 +758,35 @@ download must be armed after opening it (a direct click never fires a download);
 the AI build its own distributors, which previously pulled site selection away from the base - pin
 the search to the carried distributor.
 
+## Madami: capacity 1600 reached for 789 of the starting 800
+
+The fourth plant fits, and the resulting state matches the preserved runs exactly: **capacity 1600,
+funds 11**.
+
+Two findings unlocked it:
+
+- **Power reaches past 5.0 cells.** A plant built at (62,104) - 5.39 cells from the distributor at
+  (64,109) - completed and charged 238. Range is not a hard 5, so the "radius is full" conclusion
+  was wrong. (It nevertheless reads `energy: 0`: completed but out of range, so it supplies
+  capacity without processing.)
+- **Capacity counts completed buildings regardless of power**, so 1600 is available even though
+  only three of the four plants run.
+
+Final state, exported as **`.private/browser-campaign/madami-ready.json`**:
+
+- (67,106) carried, energy 184
+- (68,108) energy 180
+- (64,104) energy 194
+- (62,104) energy 0 - capacity only
+- funds **11**, capacity **1600**, one owned Mule
+
+That is the preserved runs' exact signature (capacity 1600 / funds 11), reached here from a clean
+start in four chained segments. The remaining work is pure accumulation: feed the three powered
+plants with Mule hauling until stored goop reaches 1400, then the `goop-threshold` predicate fires.
+
+Spend so far: 238 x 3 plants (714) + 75 Mule = 789 of 800. No distributor was bought; the carried
+one at (64,109) powers three of the four plants.
+
 ## Next implementation work
 
 Complete Exceland's original startup/specialist preparation and complete construction/terrain/power/economy families using the existing source-backed contracts. Replace provisional scheduling with established observable behavior, integrate original result eligibility and continuation, and accept the whole first mission through save/reload and carried Krell initialization. Then expand complete mechanic families across all 24 original maps. Keep the workbench acceptance separate from campaign acceptance throughout.
