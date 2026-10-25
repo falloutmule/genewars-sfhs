@@ -393,6 +393,35 @@ Get a plant to stay on the front cell of the (76,92) recycler after power is up,
 `pending` -> `goop` + the 20 credit, then push capacity 800 -> 1400+ and start the extractor /
 power-ring work for the actual GOOP objective.
 
+## Recycling deposit: the two rules that make it hard
+
+Measured after the checkpoint, with a positive control each time:
+
+- **`classifyConstructionSite` validates a 3x3 area**, not the 2x2 footprint. For footprint 2 it
+  scans offsets -1..+1 and calls `sitePlantBlocked`, which counts **any** active plant
+  (`ecology.ts:331-335`, no owner filter). The processing-front cell is one west of the site, so
+  it sits inside that 3x3: **a plant on the front cell makes the site invalid**. Build-then-plant
+  is therefore the only possible order.
+- **Ecology does not fill the front cell on its own.** Over 4,000 ticks with a powered recycler at
+  (76,92) and a clear (75,92), plant total oscillated 31-38 and **no plant appeared within one
+  cell of the front cell at any sample**.
+- **Neutral plants do satisfy `selectRecyclingPlant`**: it filters only `byte(native,6) === 2`, so
+  the 24-42 neutral plants qualify and the Botanist is not required for material.
+
+Site validity is terrain-driven and not predictable from occupancy alone: with the same fresh
+order and a fresh notice, (76,92) charges 238 and builds, while (71,96) and the near-base cells
+(63,107), (62,105), (78,88), (80,89) are cancelled with **"Construction stopped:
+native-site-rejected"** (only visible in `world.notices`, never in `#campaign-notice`).
+(76,92) + a First Stage Distributor at (79,90) gives a powered recycler (`energy` 151-199);
+that pair is saved as `.private/browser-campaign/madami-recycler.json` (frame 2380, funds 224).
+
+### Untested lead
+
+`selectRecyclingCorpse` (`building-startup.ts:220`) processes **dead creatures** on the same front
+cell, requiring state >= 25 and native97 bit0 clear. Mules and creatures die routinely on Madami,
+so a corpse on the front cell is a far likelier trigger than a plant. Test that before trying to
+force a plant into the cell.
+
 ## Next implementation work
 
 Complete Exceland's original startup/specialist preparation and complete construction/terrain/power/economy families using the existing source-backed contracts. Replace provisional scheduling with established observable behavior, integrate original result eligibility and continuation, and accept the whole first mission through save/reload and carried Krell initialization. Then expand complete mechanic families across all 24 original maps. Keep the workbench acceptance separate from campaign acceptance throughout.
