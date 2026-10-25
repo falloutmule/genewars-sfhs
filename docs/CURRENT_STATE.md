@@ -787,6 +787,34 @@ plants with Mule hauling until stored goop reaches 1400, then the `goop-threshol
 Spend so far: 238 x 3 plants (714) + 75 Mule = 789 of 800. No distributor was bought; the carried
 one at (64,109) powers three of the four plants.
 
+## Accumulation works, then stalls at 326 when the local plants run out
+
+From `madami-ready.json` (capacity 1600, funds 11, one Mule, three powered plants):
+
+- **No collection order is needed.** With no dispatch at all, goop rose 0 -> 34 -> 132 -> 230 -> 300
+  over 2400 ticks. A single owned Mule hauls on its own.
+- Chained segments took goop to **326 at frame 18,600** (segment 2), about 0.09 goop/tick.
+- The next segment then held **flat at 326 for 2400 ticks** (frames 21k-24k), and a 600-tick
+  diagnostic reproduced the stall: goop 326 -> 326 while the Mule was alive and its carried value
+  moved 21 -> 1.
+
+So the Mule is not dead and not idle - the material supply is gone. At the stall the world had 34
+plants (down from 38) but only 5, 2 and 9 within 8 cells of the three powered recyclers, and the two
+remaining pumps sit at 5 and 2. Stored goop also has no other sink, so the flat reading is a supply
+limit rather than a deposit bug.
+
+Next step is therefore the Botanist, not the economy: replant around the powered recyclers
+(67,106), (68,108), (64,104) to refill the local biomass, then resume accumulation. Both the
+Botanist and the Engineer are still alive at skill 28 and 31.
+
+Two harness notes: the world phase is `"active"`, not `"playing"` (an exit test on `"playing"` ends a
+run after one chunk), and the run cost grows as the AI expands - 3600-tick segments now exceed a
+280s budget, so segments are capped near 2400 ticks.
+
+Notable world event at frame 19105: an AI engineer logged "Native Engineer task0 selector requires an
+unimplemented construction family" - the AI is attempting a selector the port does not implement,
+which is the same fail-closed family gap as selector 13. It does not affect us yet.
+
 ## Next implementation work
 
 Complete Exceland's original startup/specialist preparation and complete construction/terrain/power/economy families using the existing source-backed contracts. Replace provisional scheduling with established observable behavior, integrate original result eligibility and continuation, and accept the whole first mission through save/reload and carried Krell initialization. Then expand complete mechanic families across all 24 original maps. Keep the workbench acceptance separate from campaign acceptance throughout.
