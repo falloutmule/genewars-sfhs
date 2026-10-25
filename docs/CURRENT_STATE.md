@@ -980,6 +980,34 @@ the zones themselves are untouched.
 - The AI repeatedly logs `Native Engineer task0 selector requires an unimplemented construction
   family` - the opponent attempts selectors 7/8/10/12/13, which stay fail-closed.
 
+## Mission 4 opened: marked-zone scoring
+
+The carry recreates cleanly and is saved as **`.private/browser-campaign/mission4-start.json`**
+(phase `briefing`, progress 3, funds **1600**, capacity 600, buildings `11@46,74` and `3@46,70`,
+specialists at (40,70), 65-68 plants, frame 0). Replaying "View result" then
+"Continue to next mission" reproduces it.
+
+Two mechanics established, both from the source rather than guesswork:
+
+- **The briefing does not tick.** `phase: "briefing"` at frame 0 means `advanceCampaign` changes
+  nothing and every tap dispatches nothing - a whole run can be wasted this way. The control is
+  **"Deploy specialists"**; clicking it moves the world to `phase: "active"`.
+- **The zones are scored by life inside them**, not by building on them. `zones.ts` credits each
+  qualifying record inside a zone (`credit(...)` subtracts from the zone's remaining quota at
+  `prefix + 10/14` and rewards the owner), the objective reads `i32(player, 0xd) >= 5000`
+  (`terrain-score`) and `field34b9 === terrainCount` (`terrain-ranking`), and a zone flips
+  `0x34b9` when its quota reaches zero. Mission text: Mules into the Mule Zone, any life into the
+  Biomass Zone.
+
+Zone 1 is at **(59.0, 64.0)** with 2048 remaining, Zone 2 at **(37.0, 33.0)** with 2560 remaining,
+and the HUD already offers **"Show zone 1" / "Show zone 2"** buttons - that is the camera affordance
+to use, exactly as Krell used "Show zone 1".
+
+Blocker for the next run: Zone 2 is ~37 cells from the specialists at (40,70), so the Botanist walk
+alone exceeds one 340s segment. Use the "Show zone 2" camera button instead of manual panning (the
+manual drag loop is what ate the clock), and split the walk from the planting into separate exported
+segments.
+
 ## Next implementation work
 
 Complete Exceland's original startup/specialist preparation and complete construction/terrain/power/economy families using the existing source-backed contracts. Replace provisional scheduling with established observable behavior, integrate original result eligibility and continuation, and accept the whole first mission through save/reload and carried Krell initialization. Then expand complete mechanic families across all 24 original maps. Keep the workbench acceptance separate from campaign acceptance throughout.
