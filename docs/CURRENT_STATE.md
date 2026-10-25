@@ -665,6 +665,37 @@ recouped funds from salvage rather than from recycling.
 Route to 1400 now: salvage enemy (or surplus own) buildings for raw funds -> build two more grade-0
 recyclers to reach capacity 1600 -> keep the Mule fleet hauling until stored goop reaches 1400.
 
+## Stores are unreachable, but the mission may already be affordable
+
+Two dead ends checked and closed:
+
+- **No demolition/salvage affordance exists for the player.** `campaign.ts` has no Demolish or
+  Salvage control at all; `BuildingDemolitionContext.salvage` is only reachable from the timed
+  demolition path, which nothing in the UI issues. So salvage cannot be farmed as income today.
+- **Stores (selector 13) cannot be built.** The pack defines `capacity.store13 = [500,1000,1500]`
+  and the sim supports selector 13 (`goop-storage.ts:122`, `economy.ts:305`, `zones.ts:944`,
+  `constructionAvailable` accepts 0..13), but `building-native.ts:31` admits only
+  `[0,1,2,3,4,5,6,11]` for the native construction family, so a selector-13 order raises
+  "Native Engineer task0 selector requires an unimplemented construction family". Adding a name to
+  the build menu would not help; it needs a real native family with source evidence.
+
+### The arithmetic that matters
+
+Capacity is 400 per grade-0 Recycling Plant, and **recyclers only need power, not a new
+distributor** if they are sited within ~5 cells of one that already exists. The carried state has a
+distributor at (64,109) powering the carried recycler at (67,106).
+
+So: 3 new grade-0 recyclers at 238 each = **714 funds**, which fits inside the starting 800
+without any income at all, and gives 400 + 3x400 = 1600 capacity. That satisfies the 1400 stored
+goal by itself.
+
+The earlier plan spent 338 on a new distributor and 150 on two Mules before any capacity, which is
+what made funds look like a hard wall. **Build capacity first, inside the existing distributor's
+radius, and only then spend on Mules to feed it.**
+
+Next test: plant near (64,109), build a recycler over a plant within 5 cells of that distributor,
+and confirm it comes up with `energy > 0` and no new distributor.
+
 ## Next implementation work
 
 Complete Exceland's original startup/specialist preparation and complete construction/terrain/power/economy families using the existing source-backed contracts. Replace provisional scheduling with established observable behavior, integrate original result eligibility and continuation, and accept the whole first mission through save/reload and carried Krell initialization. Then expand complete mechanic families across all 24 original maps. Keep the workbench acceptance separate from campaign acceptance throughout.
