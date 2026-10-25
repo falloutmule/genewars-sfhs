@@ -856,6 +856,34 @@ laden one that does halts the whole world. Do not weaken the guard - port the co
 Current best state: `madami-goop4.json` (goop 779, funds 0, capacity 1600, 2 Mules) and
 `madami-goop5.json` (same at the blocked frame 30556, kept as evidence).
 
+## The self-water guard is port-side conservatism, not a source gate
+
+Read the saved disassembly (read-only research, not frame reproduction) to pin the failing branch:
+
+- `.private`-external listing `construction-command/instructions-0005b9f0.txt` (897 lines) in the
+  parked reconstruction repo.
+- At `0005c078` the source does `MOV DI,[EDX+0x6a]; SUB EDI,EAX; MOV [EDX+0x6a],DI` - **health is
+  debited with no state test at all**. The only state touch afterwards is `CMP CH,0x12; JZ 5c3c3`,
+  i.e. state 0x12 skips one branch. Everything else falls through the ordinary
+  blood/death/self-flag/positive-health chain.
+- Before that, `5BB42..5BB50` nulls the attacker and marks self, and `5BC1A` calls `5CC60` (the
+  action/reference release) - which is what actually depends on the mule's state.
+- `0x5e` is a **state code**, compared against 0xe, 0xf, 0x10, 0x11, 0x12 and 0x14 in this listing,
+  not "carried material". The port reads it as the carried byte in probes, which is what made the
+  guard look like a cargo check.
+
+So `applyOwnedMuleSelfWaterDamage`'s preconditions (`n[0x5e] === 8`, idle-or-commanded, specific
+reference bytes) are the port's conservative boundary around the part of `5CC60` it implements, not
+requirements of the source. The unported piece is `5CC60`'s release for other states -
+`releaseAction` already exists (`mule.ts:1901`) and itself throws when `n[0x60] & 2` has no
+`materialRuntime`, which is the attachment/cargo case a laden Mule hits.
+
+Next step: implement that release path (listing
+`mission-array-refs/instructions-0005cc60.txt`, 99 lines) so self-water damage is applied for any
+state and the mule either survives with references released or dies through the ordinary chain.
+Do not relax the guard without that release - a mule that keeps a stale cargo attachment after
+drowning would be the invention.
+
 ## Next implementation work
 
 Complete Exceland's original startup/specialist preparation and complete construction/terrain/power/economy families using the existing source-backed contracts. Replace provisional scheduling with established observable behavior, integrate original result eligibility and continuation, and accept the whole first mission through save/reload and carried Krell initialization. Then expand complete mechanic families across all 24 original maps. Keep the workbench acceptance separate from campaign acceptance throughout.
