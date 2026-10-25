@@ -294,6 +294,31 @@ The frame-6612 block is not a time bomb. A run that only advances passes 6612 an
 frame 7,300 active, while runs that build a plant block there, so the trip is an interaction
 effect around construction, not elapsed time.
 
+## Why long Madami runs block: damage to an incomplete building
+
+Every stalled Madami run traced back to one guard. `building-native.ts:184-192`
+(`stepIncompleteNativeBuilding`) throws `unsupported-incomplete-building-state` whenever an
+under-construction building fails any of: `byte(n,6) !== 4`, `byte(n,24) >= 4`, a selector
+outside `[0,1,2,3,4,5,6,11]`, or `(word(n,49) & 0x841) !== 0`.
+
+Measured on the pristine Madami start: building 1067 (slot 67, **selector 0 Genepod, owner 1**
+- the opponent's, not the player's) carried flags `0x0` while incomplete, then `0x140` at the
+frame the world blocked. `0x140` is `0x100 | 0x40`, and the adapters define those as
+`depleted` and `disabled` respectively (`building-damage-adapter.ts:86-90`). The notices in
+the same run read "Ethereals are arriving" and "Ethereal observation timer started".
+
+So the sequence is: an Ethereal damages the opponent's in-progress building, the damage pass
+sets disabled/depleted, and the incomplete-building stepper rejects the disabled state and
+freezes the whole campaign. The selector was never the issue, and the building is not the
+player's, so it cannot be avoided by playing differently: the opponent builds and is attacked
+continuously, which is why advance-only runs pass a few thousand ticks and then block at
+whatever frame the first damaged-under-construction event lands (3,232 and 6,612 observed).
+
+This is a fail-closed boundary, not a strategy problem. Supporting it means reproducing the
+original 451F0 handling of a disabled/depleted incomplete building (presumably pausing
+construction rather than aborting the step). That semantics has not been recovered from the
+preserved evidence, so inventing it is out of bounds; the fix must be evidence-led.
+
 ## Next implementation work
 
 Complete Exceland's original startup/specialist preparation and complete construction/terrain/power/economy families using the existing source-backed contracts. Replace provisional scheduling with established observable behavior, integrate original result eligibility and continuation, and accept the whole first mission through save/reload and carried Krell initialization. Then expand complete mechanic families across all 24 original maps. Keep the workbench acceptance separate from campaign acceptance throughout.
