@@ -1216,39 +1216,46 @@ function physics(
         damage:
           n[24] === 4
             ? applyNeutralMuleSelfWaterDamage(mule)
-            : applyOwnedMuleSelfWaterDamage(mule),
+            : applyOwnedMuleSelfWaterDamage(state, mule, c),
       });
   }
   put(n, 7, w(n, 7) & 32767);
   put(n, 9, w(n, 9) & 32767);
 }
 /** Owned counterpart of the admitted null-reference nonlethal5B9F0 reset.
- * Retained command7/high80 survives and ordinary AI can resume its goal. */
-export function applyOwnedMuleSelfWaterDamage(mule: EcologyMule): number {
-  const n = mule.native,
-    idle = [8, 0x88].includes(n[0x60]!) && n[0x61] === 0 && n[0x78] === 0,
-    commanded =
-      [0x18, 0x98].includes(n[0x60]!) && n[0x61] === 0x80 && n[0x78] === 7;
+ * Source5BB42..5BB50 nulls the attacker and marks self,5BC1A calls5CC60, and
+ * only then5C078..5C087 debits health - with no state test at all.5CC60 owns
+ * every state-dependent effect (cargo carrier detach, kind1/kind2 reservation
+ * release, stun gate) and the common reset tail, so it must run for any state
+ * rather than only the empty/idle case. Only the lethal outcome stays closed:
+ * that belongs to5CDB0, which is not ported. */
+export function applyOwnedMuleSelfWaterDamage(
+  state: EcologyState,
+  mule: EcologyMule,
+  c?: MuleContext,
+): number {
+  const n = mule.native;
   if (
     n[6] !== 1 ||
     n[24]! >= 4 ||
     n[0x7a] !== 4 ||
-    n[0x5e] !== 8 ||
-    !(idle || commanded) ||
-    n[0x76] === null ||
-    [0x4f, 0x52, 0x57, 0x5d].some((at) => n[at] !== 0) ||
-    w(n, 0x6a) <= 5
+    w(n, 15) < 0 ||
+    w(n, 15) >= 300
   )
     throw new Error(
-      "Owned self-water damage requires lethal/action/reference continuation",
+      "Owned self-water damage requires an actual live pool identity",
     );
-  const damage = Math.max(
-    1,
-    5 - Math.trunc((6 * (50 + Math.trunc((50 * n[0x76]!) / 100))) / 100),
-  );
-  resetAction(n);
-  put(n, 0x6c, 0);
-  put(n, 0x6a, w(n, 0x6a) - damage);
+  //5BB98..5BBD3:50+trunc(50*min(skill76,100)/100), then defense6*percent/100.
+  const health = w(n, 0x6a),
+    skill = Math.min(n[0x76]!, 100),
+    percent = 50 + Math.trunc((50 * skill) / 100),
+    damage = Math.max(1, 5 - Math.trunc((6 * percent) / 100));
+  if (health - damage <= 0)
+    throw new Error(
+      "Owned self-water damage requires the unported lethal continuation",
+    );
+  releaseAction(state, mule, c);
+  put(n, 0x6a, health - damage);
   return damage;
 }
 /** 5B9F0 attacker==self, neutral state8/null-reference, nonlethal domain.

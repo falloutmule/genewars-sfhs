@@ -884,6 +884,37 @@ state and the mule either survives with references released or dies through the 
 Do not relax the guard without that release - a mule that keeps a stale cargo attachment after
 drowning would be the invention.
 
+## Fixed: a drowning Mule no longer halts the world
+
+`applyOwnedMuleSelfWaterDamage` was gated on the port's narrow state case, so any Mule that entered
+water outside it threw and set `phase: blocked`. The 5B9F0 listing shows health is debited with no
+state test, and the state-dependent work belongs to **5CC60**, which the port already has as
+`releaseAction` (cargo detach, kind1/kind2 reservation release, stun gate, common reset tail).
+
+The function now takes `(state, mule, c)`, validates only the live-pool identity, computes the
+source damage (`50 + trunc(50*min(skill,100)/100)`, defense `6*percent/100`, floor 1), calls
+`releaseAction(...)`, then debits health. The **lethal** outcome still fails closed, because that
+belongs to the unported5CDB0 death chain - declining to invent a death sequence.
+
+Verified: replaying `madami-goop4.json` now runs **past** the old block to frame 34,023 with
+`phase: active` (previously blocked at 30,556). `tsc --noEmit` clean, **154 files / 1,651 tests
+pass**, artifact rebuilt to 43,873,770 bytes / `488716c9...`.
+
+### But Mules drown, and replacing them costs more than they haul
+
+Mule deaths continued after the fix (both original Mules gone by frame 34,087; plants around the
+recyclers were plentiful at 13/3/13/9). Rebuying 4 Mules with goop took 779 -> 661, and hauling
+lifted stored goop to **941**; rebuying 3 more took it back down to 749, then it climbed to 822 and
+stalled with 4 Mules alive.
+
+So the binding constraint is no longer a crash but a **negative-carrying economy**: one Mule costs 75
+goop and returns roughly 26 per delivery, so a Mule has to complete about three deliveries just to
+break even, and drowning/(ethereal) attrition keeps cancelling that out. Best saved state is
+`madami-goop7.json` at **goop 941 / capacity 1600**.
+
+Next: find why deliveries stall (822 held flat for 1,400 ticks with four live Mules) before buying
+more Mules - most likely the recyclers' processing cell, not the workforce.
+
 ## Next implementation work
 
 Complete Exceland's original startup/specialist preparation and complete construction/terrain/power/economy families using the existing source-backed contracts. Replace provisional scheduling with established observable behavior, integrate original result eligibility and continuation, and accept the whole first mission through save/reload and carried Krell initialization. Then expand complete mechanic families across all 24 original maps. Keep the workbench acceptance separate from campaign acceptance throughout.
