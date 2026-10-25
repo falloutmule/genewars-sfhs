@@ -915,6 +915,29 @@ break even, and drowning/(ethereal) attrition keeps cancelling that out. Best sa
 Next: find why deliveries stall (822 held flat for 1,400 ticks with four live Mules) before buying
 more Mules - most likely the recyclers' processing cell, not the workforce.
 
+## A recycler deposits every 256 ticks, not once
+
+Correction to the earlier "recycler deposits once then starves" conclusion. In
+`stepStagedRecyclingPlant` the deposit gate is `byte(n, 27) === 0`, and `n[27]` is not a mode flag -
+it is **overwritten every tick** at `building-startup.ts:106` with `a.frame & 255`. So the gate opens
+only when the frame counter wraps to 0, roughly once per 256 ticks per plant, and pending material
+is released in a batch at that moment:
+
+- pending lives in `byte(n, 51)`; a deposit moves it into stored goop (capacity-clamped) and zeroes it
+- `n[27] = 1` is set when a plant or corpse is consumed (`:374`, `:393`) but that value only survives
+  until the next tick's `frame & 255` write, which is why the single-use reading was wrong
+- the pre-deposit branch therefore fires repeatedly across the mission, not once
+
+This explains the stepped goop curve observed in the last segments (e.g. 751 -> 927 across ~320
+ticks, then flat), and it means **a flat 1,400-tick stretch spanning ~5 wrap windows had nothing to
+deposit**: the stall is on the supply side, not the plant or the gate.
+
+That re-frames the remaining question: with four live Mules and plants at 13/3/13/9 around the
+powered recyclers, why is no material arriving? Next probe should track each Mule's actual position
+(`native[7]/[9]`) and state byte over time - the earlier "carried" readings were `0x5e`, which the
+5B9F0 listing shows is the **state code**, not cargo, so those numbers cannot be used as a haul
+progress indicator.
+
 ## Next implementation work
 
 Complete Exceland's original startup/specialist preparation and complete construction/terrain/power/economy families using the existing source-backed contracts. Replace provisional scheduling with established observable behavior, integrate original result eligibility and continuation, and accept the whole first mission through save/reload and carried Krell initialization. Then expand complete mechanic families across all 24 original maps. Keep the workbench acceptance separate from campaign acceptance throughout.
