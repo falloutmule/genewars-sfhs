@@ -938,6 +938,48 @@ powered recyclers, why is no material arriving? Next probe should track each Mul
 5B9F0 listing shows is the **state code**, not cargo, so those numbers cannot be used as a haul
 progress indicator.
 
+## Madami accepted - ledger 3/24
+
+Madami is won and carried. The end state, reached entirely through the real UI from the Krell carry:
+
+- stored GOOP **1425/1400** with capacity **1600**
+- `phase: "result"`, `result.phase: "victory-notification"`, `terminal`
+  `{kind: "won", player: 0, winner: 0}`
+- "View result" -> `victory-view` (progress 2 -> 3) -> "Continue to next mission" -> `briefing`
+
+`tools/build-sfhs/build.mjs` now records `acceptedMissionCount: 3`.
+
+The route that worked, in order:
+
+1. Four grade-0 Recycling Plants, each 238: (68,108), (64,104) and (62,104) added to the carried
+   plant at (67,106). No distributor was bought - the carried one at (64,109) powers three; the
+   fourth at (62,104), 5.39 cells out, supplies capacity only (`energy: 0`).
+2. Mules produced with the **two-pool debit** - funds first, then GOOP - which is what makes Madami
+   affordable at 0 funds.
+3. Passive hauling accumulated GOOP in steps every 256 ticks (the `frame & 255` deposit gate),
+   chained through exported segments to 1425.
+
+Two port fixes were needed to get there and are in this build:
+
+- `applyOwnedMuleSelfWaterDamage` now runs `5CC60` (`releaseAction`) for any state instead of only
+  the empty/idle case, so a drowning Mule no longer sets `phase: blocked`.
+- That fix is what let the run continue past frame 30,556 at all.
+
+### Next mission in view
+
+Mission 4 briefing: **"Reach score from marked zones: 0/5000"** and
+"Finish marked zones for final score comparison: 0/2", with Zone 1 at (59.0, 64.0) 2048 remaining
+and Zone 2 at (37.0, 33.0) 2560 remaining, both "Awaiting Ethereal inspection". The carry is proven;
+the zones themselves are untouched.
+
+### Known remaining gaps
+
+- `Mule food acquisition requires prior action cleanup` (`mule.ts:3033`) still fails closed when an
+  attachment bit is set: the campaign provides no material runtime, so `releaseAction` cannot detach
+  cargo. It fires rarely but will eventually stop a long run.
+- The AI repeatedly logs `Native Engineer task0 selector requires an unimplemented construction
+  family` - the opponent attempts selectors 7/8/10/12/13, which stay fail-closed.
+
 ## Next implementation work
 
 Complete Exceland's original startup/specialist preparation and complete construction/terrain/power/economy families using the existing source-backed contracts. Replace provisional scheduling with established observable behavior, integrate original result eligibility and continuation, and accept the whole first mission through save/reload and carried Krell initialization. Then expand complete mechanic families across all 24 original maps. Keep the workbench acceptance separate from campaign acceptance throughout.

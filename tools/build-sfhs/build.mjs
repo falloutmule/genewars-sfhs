@@ -153,7 +153,15 @@ const receipt = {
   // marked-zone ranking: the ledger reads 1024/1000 terrain score and 1/1 zones
   // finished, then the result view continues into Madami at progress2.
   // Verified at 915x412, 412x915 and 1440x900 (touch and mouse paths).
-  acceptedMissionCount: 2,
+  // Madami is accepted on the same UI path: three grade-0 Recycling Plants built
+  // over open terrain inside the carried distributor's radius at (64,109) for
+  // 238 each, plus a fourth at (62,104) that only supplies capacity, then Mules
+  // produced with the two-pool debit (funds first, then GOOP) to haul biomass.
+  // Final state: capacity 1600, stored GOOP 1425/1400, phase "result" with
+  // result.phase "victory-notification" and terminal kind "won"; "View result"
+  // then "Continue to next mission" carried progress2 into progress3.
+  // Verified at 980x1400 touch viewport.
+  acceptedMissionCount: 3,
   physicalDeviceAcceptance: "not-run",
   upstreamBattleDrones: "39d6f587f98a82f5c0426e8bd476cef49fd19ef0",
   importerVersion: pack?.importerVersion || null,
