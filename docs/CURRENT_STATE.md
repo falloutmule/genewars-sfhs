@@ -326,6 +326,73 @@ flags 0x140 at frame 3,900 with the world still active, and completes by frame 4
 the change the identical scenario blocked at frame 3,232. The full suite (1,651 tests across
 154 files) and `tsc --noEmit` are clean.
 
+## Night checkpoint 2026-10-24: Madami economy, everything proven except the deposit
+
+Ledger is unchanged at **2/24** (Exceland and Krell accepted). Mission 3 remains open.
+
+### Landed this run
+
+- `af46b13` admits selector 4 in the legacy construction projection (Madami carries a
+  Recycling Plant) and adds the segment runner.
+- `adeabae` builds from `.private/imported-ai-host-priors` (`b8872317...`), the only pack that
+  carries `strategicAIRules.creatureControlPrior`; without it `w.strategy` is null and every
+  step throws "Campaign lacks established strategic state", pinning the world at
+  `phase: blocked`, `frame: 0`.
+- `c9f2af3` stops `stepIncompleteNativeBuilding` refusing a disabled under-construction
+  building. This was the real ceiling on every long run: an Ethereal damaging the **opponent's**
+  in-progress building set flags `0x140` (disabled|depleted), which the guard rejected, freezing
+  the campaign at frames 3232 and 6612. BUILDING_STARTUP.md records that disabled/incomplete
+  cases bypass the upkeep branch and share inactive energy decay, so construction keeps
+  stepping. The guard now refuses only `0x801` (complete|collapse). Verified: the same scenario
+  reaches flags 0x140 at frame 3900 with `phase: active` and completes by 4900.
+
+### Madami economy: verified pieces
+
+- **Mules**: none are carried. "Produce Mule - 75 total" creates player-owned mules from the
+  default view; three survived 4000+ ticks with health recovering to 67. All plants and all
+  carried mules are neutral-owned.
+- **Plants**: the Botanist works. Samples cap at 40/40; "Plant selected type nearby" creates
+  owned plants around the Botanist; "Collect plant samples nearby" refreshes. Owned plants are
+  **transient** - one planted on a front cell was gone two rounds later - so plant last.
+- **Recycling Plant**: consumes a plant at `processingFrontOffset` = **[-256, 0]**, the cell one
+  west of the building. On deposit it does `goop += pending` clamped to capacity and credits 20.
+  Site needs a **clear 2x2** (footprint 2); (76,92) builds reliably for 238, while (63,107),
+  (62,105), (78,88) and (80,89) are silently dropped (order accepted, never charged).
+- **Power**: recycler at (76,92) reads `energy: 0` until a First Stage Distributor is built at
+  (79,90) (338); it then reads 139-183. Power range is about 5 cells.
+- **Capacity**: 400 per grade-0 Recycling Plant; two plants give 800. Harvest clamps goop to
+  capacity, so 1400 needs four.
+- **Extractor**: harvests the richest cell within radius 3 of `w.economy.resources` and needs
+  power; resource values peak at 100 at (72,59) and 1,240 cells within 20 of the base are
+  non-zero. Plant death deposits +2 per cell (ecology.ts:439).
+
+### Unproven
+
+No deposit has fired yet: every attempt has plants a few cells off the front cell, or the plant
+on it disappears before the recycler can take it. The last run had the recycler at (76,92)
+powered (167-183), the Botanist standing at (76,92), four plant rounds producing (75,93),
+(76,93), (77,93), (76,94) - and `pending: 0`, `goop: 0`, capacity 800.
+
+### Probe-harness lessons (cost several iterations)
+
+- `#campaign-notice` keeps its previous text, so a stale "Construction order queued" reads like
+  a fresh result. Clear it before every tap and require non-empty output.
+- Playwright `click()` never settles on the re-rendering sidebar; dispatch `b.click()` via
+  `page.evaluate`. Specialist rows are disabled until `a.ready`, and a skipped click leaves the
+  previous unit selected with the build tool armed.
+- `issue()` picks the first selected actor by id, so the Engineer (id 0) steals orders unless
+  the row click actually landed.
+- Map taps after construction activity in the same session return empty - do movement first,
+  and prefer sidebar buttons (planting) last.
+- `advanceCampaign` runs at ~25 ticks/sec; keep simulation under ~300s per probe or the run
+  hits the 420s tool cap and prints nothing.
+
+### Next session
+
+Get a plant to stay on the front cell of the (76,92) recycler after power is up, confirm
+`pending` -> `goop` + the 20 credit, then push capacity 800 -> 1400+ and start the extractor /
+power-ring work for the actual GOOP objective.
+
 ## Next implementation work
 
 Complete Exceland's original startup/specialist preparation and complete construction/terrain/power/economy families using the existing source-backed contracts. Replace provisional scheduling with established observable behavior, integrate original result eligibility and continuation, and accept the whole first mission through save/reload and carried Krell initialization. Then expand complete mechanic families across all 24 original maps. Keep the workbench acceptance separate from campaign acceptance throughout.
