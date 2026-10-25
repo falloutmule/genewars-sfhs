@@ -488,6 +488,36 @@ Next step: build a small distributor ring from open ground proven admissible in 
 ((79,90) charged 338), then place the plant-over recycler within 5 cells of *that*, keeping the
 target cell on flat ground so the tap lands where projected.
 
+## The recycling economy now works end to end
+
+First observed deposit on Madami. One run, start save, real touch input only:
+
+- First Stage Distributor at (79,90) — charged **338** (funds 800 -> 462), reads energy 570.
+- Botanist walked to (76,88); four plant rounds produced five owned plants.
+- Recycling Plant tapped at (75,88), one cell east of the plant at (74,88) which became its
+  processing cell — charged **238** (462 -> 224).
+- The new building resolved exactly where tapped (no offset in this region) and read
+  `energy: 182` on completion, `166` a few hundred ticks later.
+- Plant count dropped and **`goop` went 0 -> 14** within 400 ticks.
+
+The 14 is a real deposit, not biomass drift: earlier powered recyclers with plants elsewhere on
+the map held `goop: 0` for thousands of ticks across five separate runs.
+
+Open detail: `funds` stayed 224 rather than gaining the documented +20 credit. Either the credit
+lands elsewhere or the adapter's mirror of `raw 0x4a3` misses it — check before relying on
+recycling for income.
+
+### The working recipe
+
+1. Build a First Stage Distributor on open ground (79,90 is proven; 338).
+2. Walk the Botanist to open ground inside its radius and plant until an owned plant exists.
+3. Tap the cell **one east** of that plant — the plant lands under the new footprint and becomes
+   the processing cell. Build cost 238.
+4. Confirm `energy > 0` on completion, then `goop` rises as plants are eaten.
+
+Capacity is 400 per grade-0 plant, so the 1,400 objective needs four powered recyclers plus
+stores; `goop` is clamped to capacity, so capacity must lead collection.
+
 ## Next implementation work
 
 Complete Exceland's original startup/specialist preparation and complete construction/terrain/power/economy families using the existing source-backed contracts. Replace provisional scheduling with established observable behavior, integrate original result eligibility and continuation, and accept the whole first mission through save/reload and carried Krell initialization. Then expand complete mechanic families across all 24 original maps. Keep the workbench acceptance separate from campaign acceptance throughout.
