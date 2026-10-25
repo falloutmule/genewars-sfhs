@@ -264,6 +264,36 @@ Packed4 creatures/BONES, fonts, CD music, residual sound bank records, runtime p
 
 Physical Galaxy S21 Ultra testing is outstanding. No phone performance measurements exist. No remote CI run, GitHub repository creation/push or public release has occurred. The build artifact is for local use only.
 
+## Mission 3 (Madami) route, measured on the carried save
+
+Mission 3 cannot be won by building alone; three separate limits were measured on the
+carried campaign save rather than inferred:
+
+- **The carried base has no player-owned mule.** Filtering ecology mules by owner shows
+  zero owned mules at frame 600; every mule on the map (9, rising to 12) belongs to the
+  neutral owner. All 42 plants are neutral too, so edible food exists but nothing eats it.
+  The workforce has to be created.
+- **"Produce Mule · 75 total" works from the default view.** Clicking it queues the order
+  ("Mule production order queued") and 800 ticks later the player owns one mule with funds
+  800 -> 725. This is the entry point for every later economy step.
+- **Extractors need power, not just resource.** Extractor 1064 at cell (79,65) sits on a
+  cell whose 7x7 resource neighbourhood peaks at 99, is neither disabled nor depleted, and
+  cycles 199/240; it never harvests because `energy` is 0. Its nearest distributor is 5.8
+  cells away with spare energy, while an extractor that did read `energy: 163` was 5.1
+  cells from its distributor. Treat the power radius as about five cells.
+- **Capacity is a separate ceiling.** The economy player reads `capacity: 400` because one
+  grade-0 Recycling Plant is standing. Harvest clamps `goop` to `capacity`, so plants must
+  reach 1,400 before the objective can count. Plants cost 238 each and add 400 capacity.
+
+Two measurement traps worth keeping: the campaign world has no `width`/`height` (the
+resource array must be indexed with `w.economy.width`/`height`, or every read is `res[NaN]`
+and looks empty), and `players[0].capacity` is undefined on the world player - capacity and
+goop live on `w.economy.players[0]`.
+
+The frame-6612 block is not a time bomb. A run that only advances passes 6612 and reaches
+frame 7,300 active, while runs that build a plant block there, so the trip is an interaction
+effect around construction, not elapsed time.
+
 ## Next implementation work
 
 Complete Exceland's original startup/specialist preparation and complete construction/terrain/power/economy families using the existing source-backed contracts. Replace provisional scheduling with established observable behavior, integrate original result eligibility and continuation, and accept the whole first mission through save/reload and carried Krell initialization. Then expand complete mechanic families across all 24 original maps. Keep the workbench acceptance separate from campaign acceptance throughout.
