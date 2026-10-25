@@ -1063,6 +1063,30 @@ frame 9,224, phase active).
   zero Mules, funds 1600 and no Genepod, so a Genepod (600) plus Mule production (75) has to come
   first, then the Mules must be herded into (59,64).
 
+## Mission 4: Genepod costs 538, and the build fails only because sites are off-canvas
+
+Diagnosed instead of guessed, with a direct button-state dump:
+
+- build buttons are **disabled until a specialist is selected**; after clicking the Engineer row they
+  enable, and the live prices are **Extractor 588, First Stage Distributor 338, Genepod 538**
+  (`base - 2 * skill 31`). The Genepod is 538, not the 600 on the face of the pack table.
+- the tap itself is fine: with the Engineer armed and a `+14 px` x-offset tap, the notice read
+  **"Construction order queued"** immediately.
+
+So the earlier NOT_BUILT was not a mechanic problem: `project()` returned **x = 615.8** for the
+candidate site, i.e. past the 604 px canvas edge, and the probe skipped every out-of-bounds
+candidate instead of panning to it.
+
+Panning with CDP touch-drag loops exceeded the 340 s budget before the first tap, so that approach is
+too slow as written. Cheaper options for the next run:
+
+1. read the camera target and pick a valid site that already projects inside the canvas, or
+2. use the HUD camera buttons ("Show zone 1" / "Show zone 2") to recentre near a known zone, then
+   build beside it, or
+3. pan once with a single large drag instead of a per-site loop.
+
+State unchanged: `mission4-planted.json` (score 199, funds 1600, 6 buildings, frame 9,289).
+
 ## Next implementation work
 
 Complete Exceland's original startup/specialist preparation and complete construction/terrain/power/economy families using the existing source-backed contracts. Replace provisional scheduling with established observable behavior, integrate original result eligibility and continuation, and accept the whole first mission through save/reload and carried Krell initialization. Then expand complete mechanic families across all 24 original maps. Keep the workbench acceptance separate from campaign acceptance throughout.
