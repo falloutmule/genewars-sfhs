@@ -696,6 +696,32 @@ radius, and only then spend on Mules to feed it.**
 Next test: plant near (64,109), build a recycler over a plant within 5 cells of that distributor,
 and confirm it comes up with `energy > 0` and no new distributor.
 
+## There is no buildable site near the carried distributor
+
+Tested the "capacity first, no new distributor" hypothesis directly (`.private/build-probe-20261024/
+w34.mjs`, start save, funds 800, capacity 400, one distributor at (64,109) with the carried
+recycler at (67,106) at energy 196, 46 plants):
+
+- the Botanist walked to (62,105) as ordered and four plant rounds left plants including (64,105)
+  and (66,104)
+- the best candidate was a plant at (64,105) with a free east cell (65,105), **4.1 cells** from the
+  distributor — comfortably inside the ~5-cell power radius
+- tapping (65,105) with "Recycling Plant · 238" armed reported "Construction order queued", then
+  **funds stayed 800** and no building appeared, twice
+
+So the site is rejected on terrain/occupancy, not on power. Every buildable site found so far is
+far from existing distributors ((70,104), (75,88), (76,92)), and every site near one is rejected.
+That is why a new distributor (338) keeps being needed, and why the 714-funds-for-three-recyclers
+plan does not work as written.
+
+Also fixed a probe bug worth remembering: **plants expose `position`, not `native[7]/[9]`** — reading
+native coordinates gave cells like (1,0) and produced a false NO_CANDIDATE. Mules do use
+`native[7]/[9]`.
+
+Open question for the next run: is the near-base terrain genuinely inadmissible, or is
+`classifyConstructionSite` rejecting because of the cluster's own buildings within the 3x3 window?
+Test a candidate whose 3x3 does not intersect any building but is still within 5 cells of (64,109).
+
 ## Next implementation work
 
 Complete Exceland's original startup/specialist preparation and complete construction/terrain/power/economy families using the existing source-backed contracts. Replace provisional scheduling with established observable behavior, integrate original result eligibility and continuation, and accept the whole first mission through save/reload and carried Krell initialization. Then expand complete mechanic families across all 24 original maps. Keep the workbench acceptance separate from campaign acceptance throughout.
