@@ -596,6 +596,38 @@ Next: verify an extractor placed on a rich cell (v=100 at (72,59)) inside a dist
 actually accumulates goop over thousands of ticks, and measure the real rate. That is the only
 mechanic that can total 1,400.
 
+## Mules haul biomass into recyclers: the repeatable deposit source
+
+The single-use finding above is only true for the plant that happens to be under the footprint at
+construction. Material *carried in by a Mule* is the repeatable source, and it is proven.
+
+Starting from the saved segment `.private/browser-campaign/madami-recycler.json` (frame 2486,
+funds 224, capacity 800, two powered recyclers at (67,106) energy 177 and (76,92) energy 173,
+three distributors, one Genepod, 32 plants, no owned Mule):
+
+1. "Produce Mule · 75 total" queued (`Mule production order queued`), funds 224 -> **149**, an owned
+   Mule appears within ~900 ticks.
+2. Clicking the Mule row (`Mule 1 · health 67/67`) then "Collect material" queued
+   `Mule collection order queued`.
+3. Over the next ~500 ticks the Mule's carried byte went null -> 192 -> 108 -> 92 and **goop rose
+   0 -> 26** at frame 8356, with funds unchanged at 149 and recycler energy climbing 171 -> 195.
+
+So a Mule delivers biomass to a recycling plant and the plant fires a deposit. Note the target
+select `#campaign-mule-target` was NOT found in the DOM (`targets: "NO_SELECT"`) and the order still
+queued - so the button works with a default material choice and the Mule selects material itself.
+Do not assume an explicit target selection is required.
+
+Two further consequences:
+- **Funds do not grow from recycling** (149 before and after the deposit), consistent with the
+  80780-credit finding. Mules cost 75 each against a 224-fund balance, so the fleet cannot be bought
+  outright.
+- **Mule reproduction is therefore the scaling lever**, not purchases. `OWNED_MULE.md` documents
+  same-species pairing/birth, so the hauling fleet grows without funds.
+
+Route shape now: keep two recyclers powered and let a growing Mule fleet feed them; each delivery is
+worth roughly 26 goop against the 1,400 objective. This replaces the "build plants on the front
+cell" approach that the 3x3 site rule makes impossible.
+
 ## Next implementation work
 
 Complete Exceland's original startup/specialist preparation and complete construction/terrain/power/economy families using the existing source-backed contracts. Replace provisional scheduling with established observable behavior, integrate original result eligibility and continuation, and accept the whole first mission through save/reload and carried Krell initialization. Then expand complete mechanic families across all 24 original maps. Keep the workbench acceptance separate from campaign acceptance throughout.
