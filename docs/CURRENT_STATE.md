@@ -422,6 +422,51 @@ cell, requiring state >= 25 and native97 bit0 clear. Mules and creatures die rou
 so a corpse on the front cell is a far likelier trigger than a plant. Test that before trying to
 force a plant into the cell.
 
+## The recycling front cell is inside the recycler's own footprint
+
+Measured, not inferred. A completed Recycling Plant at world cell (76,92) stores `native[7],[9]`
+exactly equal to its world position (19456, 23552), and `stepStagedRecyclingPlant` scans
+`native + processingFrontOffset` = `(76,92) + (-256,0)` = **(75,92)**.
+
+`clearDestroyedFootprint` computes `shift = footprint === 1 ? 0 : -1`, so a footprint-2 building
+occupies `(cx-1..cx, cy-1..cy)`: the stored position is the **south-east corner**. The occupancy
+grid (`terrain.bytes[cell*14+11] & 1`) confirms it — cells (75,91), (76,91), (75,92), (76,92) are
+marked for that building, and (78..80, 89..90) for the distributor at (79,90).
+
+Therefore **the processing cell (75,92) is one of the building's own four cells**. Consequences,
+all observed:
+
+- No plant can ever sit there: `reproduce` rejects a cell whose occupancy bit is set, and 4,000+
+  ticks of soak with a powered recycler never produced one.
+- Map taps there are swallowed by the building's screen footprint, so the Botanist cannot even be
+  walked onto it (a tap 4 cells away reports "Move order queued" and moves her; the front-cell tap
+  dispatches nothing).
+- The pack value is genuinely `[-256,0]` — decompressing `.private/imported-ai-host-priors/
+  genewars.gpwpack` shows `"buildingRules":{"processingFrontOffset":[-256,0],...}` — so the port is
+  faithful here and the original must have **built the recycler over vegetation and eaten it**.
+
+This contradicts `engineer-adapter.ts:544-552`, which passes `sitePlantBlocked` as the `occupied`
+callback, making any plant in the 3x3 window (and therefore any plant under the building) reject
+the site as class 3. If the original 74E80 classification ignored plants, that callback is the
+defect and Madami's economy is unreachable for the wrong reason.
+
+**Resolved: plants are not occupancy.** The docs never establish plants as blocking 74E80, and
+`resolveTaskTarget` already treats them as non-blocking ("plant weight<10", "not made traversable
+through plants"). Combined with the geometry above, a site is only ever valid if a plant may sit
+under the building. `engineer-adapter.ts` now passes `() => false` as the classification's
+`occupied` callback; building-blocking still comes from the terrain occupancy bit.
+
+Verified end to end: a Recycling Plant ordered at (70,104) with an owned plant already at (69,104)
+— its processing cell — was accepted and **charged 238** (funds 800 -> 562), where the same class
+of site previously reported "Construction order queued" and silently dropped. Full suite still
+passes (154 files, 1,651 tests) and `tsc --noEmit` is clean; artifact rebuilt as `b9731fda...`.
+
+**Remaining blocker: power.** That build site is ~8 cells from the nearest distributor, so the new
+recycler reads `energy: 0` and never deposits. A First Stage Distributor ordered at (73,104) was
+*not* charged (funds stayed 562), i.e. that site was rejected on terrain. The next run should try
+several distributor sites within 5 cells of the plant-over site until one charges 338, then watch
+`pending` -> `goop` while a plant sits on the processing cell.
+
 ## Next implementation work
 
 Complete Exceland's original startup/specialist preparation and complete construction/terrain/power/economy families using the existing source-backed contracts. Replace provisional scheduling with established observable behavior, integrate original result eligibility and continuation, and accept the whole first mission through save/reload and carried Krell initialization. Then expand complete mechanic families across all 24 original maps. Keep the workbench acceptance separate from campaign acceptance throughout.

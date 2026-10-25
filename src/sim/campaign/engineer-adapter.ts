@@ -545,9 +545,13 @@ export function campaignEngineerContext(
         (
           ({ valid: 0, blocked: 1, water: 2, occupied: 3, mineral: 4 }) as const
         )[
-          classifyConstructionSite(s.terrain, p, size, 100, (cell) =>
-            sitePlantBlocked(s.ecology, cell),
-          )
+          // Plants do not occupy a site. footprint(4)=2 places a 2x2 whose footprint spans
+          // (cx-1..cx, cy-1..cy) (clearDestroyedFootprint's shift=-1), while the pack's
+          // processingFrontOffset is [-256,0]: the Recycling Plant's processing cell is one of
+          // its own four cells. That is only reachable if the plant sits under the building,
+          // so a plant must not reject the site. Building-blocking still comes from the terrain
+          // occupancy bit inside classifyConstructionSite.
+          classifyConstructionSite(s.terrain, p, size, 100, () => false)
         ],
       reserveSite: (s, p, size, selector) => {
         //42B90 calls753F0(BL1,ECX0). For5 retain the native X borrow/carry
