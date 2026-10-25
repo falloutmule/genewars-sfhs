@@ -722,6 +722,42 @@ Open question for the next run: is the near-base terrain genuinely inadmissible,
 `classifyConstructionSite` rejecting because of the cluster's own buildings within the 3x3 window?
 Test a candidate whose 3x3 does not intersect any building but is still within 5 cells of (64,109).
 
+## Capacity raised to 1200 on the starting funds, in chained segments
+
+The cheap route works. Replicating `classifyConstructionSite` in-page (footprint 2: the 2x2 at
+`(px-1..px, py-1..py)` must be occupancy-free, and the whole 3x3 must clear `bytes[at+5] & 7` water)
+reproduced every observed outcome exactly - valid at (70,104), (75,88), (76,92); blocked at (65,105);
+water at (62,105) - and found four valid sites inside the carried distributor's 5-cell radius:
+(67,109) d=3, (67,108) d=3.2, (68,108) d=4.1, (64,104) d=5.
+
+Chained one build per segment, each exported:
+
+- `madami-cap1.json` - recycler at (68,108) - capacity 800 - funds 562
+- `madami-cap2.json` - recycler at (64,104) - capacity 1200 - funds 324
+- `madami-cap3.json` - no site left in radius - capacity 1200 - funds 324
+
+Every build charged 238 and came up **powered** from the carried distributor - no new distributor
+was bought, and no plant had to sit under the site. Three recyclers now read energy 194/190/140.
+
+### The last 200 capacity
+
+Capacity 1200 is short of the 1400 the objective needs, so one more recycler (238, affordable at 324)
+would reach 1600 and leave 86 - close to the preserved runs' signature of capacity 1600 with 11
+funds after one 75 Mule. But the four valid sites are used up, and a replacement distributor costs
+338 against 324 funds: **14 short**.
+
+Open questions, in order:
+1. Does an AI-owned distributor power a player recycler? Sites exist near (74,62) (e.g. (74,65) at
+   d=2). A short run that builds there and reads `energy` answers it; if yes the fourth plant is
+   affordable today.
+2. If not, capacity 1200 caps stored goop at 1200 - and only 14 funds are missing for a distributor,
+   so any small income source would unblock it.
+
+Probe notes worth keeping: the export control only exists inside the **Save / load** dialog, so the
+download must be armed after opening it (a direct click never fires a download); and long runs let
+the AI build its own distributors, which previously pulled site selection away from the base - pin
+the search to the carried distributor.
+
 ## Next implementation work
 
 Complete Exceland's original startup/specialist preparation and complete construction/terrain/power/economy families using the existing source-backed contracts. Replace provisional scheduling with established observable behavior, integrate original result eligibility and continuation, and accept the whole first mission through save/reload and carried Krell initialization. Then expand complete mechanic families across all 24 original maps. Keep the workbench acceptance separate from campaign acceptance throughout.
