@@ -467,6 +467,27 @@ recycler reads `energy: 0` and never deposits. A First Stage Distributor ordered
 several distributor sites within 5 cells of the plant-over site until one charges 338, then watch
 `pending` -> `goop` while a plant sits on the processing cell.
 
+## Build-over-plant works; two calibration problems remain
+
+After `98580ef`, a Recycling Plant ordered on a cell holding an owned plant is accepted and
+**charged 238** (funds 800 -> 562) in three consecutive runs. The remaining failures are not the
+construction gate:
+
+- **Tap-to-placement offset.** Tapping cell (64,103) produced a building at **(64,101)** — two
+  cells north. The tap is projected on flat ground, so elevated terrain near the base shifts the
+  raycast. Always identify the new building by diffing `w.buildings` before pairing it with a
+  plant; never assume `placed === tapped`.
+- **Power near the base is still unavailable.** With the recycler at (64,101), a First Stage
+  Distributor ordered at (64,104) was cancelled with "Construction stopped: native-site-rejected"
+  and never charged. That is no longer the plant gate (plants are non-blocking now), so the rejection
+  is terrain/occupancy. The result is a recycler at `energy: 0` that cannot deposit.
+- A recycler at (64,103) also sat 6 cells from the distributor at (64,109), just outside the ~5-cell
+  power range.
+
+Next step: build a small distributor ring from open ground proven admissible in an earlier run
+((79,90) charged 338), then place the plant-over recycler within 5 cells of *that*, keeping the
+target cell on flat ground so the tap lands where projected.
+
 ## Next implementation work
 
 Complete Exceland's original startup/specialist preparation and complete construction/terrain/power/economy families using the existing source-backed contracts. Replace provisional scheduling with established observable behavior, integrate original result eligibility and continuation, and accept the whole first mission through save/reload and carried Krell initialization. Then expand complete mechanic families across all 24 original maps. Keep the workbench acceptance separate from campaign acceptance throughout.
