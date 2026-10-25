@@ -1008,6 +1008,29 @@ alone exceeds one 340s segment. Use the "Show zone 2" camera button instead of m
 manual drag loop is what ate the clock), and split the walk from the planting into separate exported
 segments.
 
+## Mission 4: deploy works, the zone walk does not yet dispatch
+
+Confirmed in the UI from `mission4-start.json`:
+
+- **"Deploy specialists"** moves `phase: "briefing"` -> `"active"` and the frame starts advancing.
+- **"Show zone 2"** is a real control and returns a button label, so the camera affordance exists.
+
+What failed: ordering the Botanist into the zone. Selection worked (`Matt · Botanist · skill 28`),
+but three taps on the projected zone centre produced **no notice at all**, and after 4,700 ticks the
+specialists had not moved (0 stayed near (42,70), 1 at (42,71)) while stored score stayed **0**.
+
+A tap that produces *no* notice is the same signature as the very first tap of a session, which
+never dispatches - so the first attempt should be treated as a primer and retried with an offset
+from the projected centre, not assumed to have registered.
+
+Saved checkpoint: **`.private/browser-campaign/mission4-zone2.json`** - mission 4 deployed,
+`phase: active`, frame 4,700, 68 plants, nothing scored yet. Every later attempt can start here
+instead of replaying the carry.
+
+Note for the next run: the specialists are at (40,70) and the Biomass Zone centre is (37,33), so the
+order must actually issue before any long advance is worth spending - verify the notice text first,
+then advance in segments and watch actor cells, not just the score.
+
 ## Next implementation work
 
 Complete Exceland's original startup/specialist preparation and complete construction/terrain/power/economy families using the existing source-backed contracts. Replace provisional scheduling with established observable behavior, integrate original result eligibility and continuation, and accept the whole first mission through save/reload and carried Krell initialization. Then expand complete mechanic families across all 24 original maps. Keep the workbench acceptance separate from campaign acceptance throughout.
