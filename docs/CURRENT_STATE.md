@@ -1031,6 +1031,38 @@ Note for the next run: the specialists are at (40,70) and the Biomass Zone centr
 order must actually issue before any long advance is worth spending - verify the notice text first,
 then advance in segments and watch actor cells, not just the score.
 
+## Mission 4: zone scoring proven (score 0 -> 199)
+
+Both blockers from the last iteration are solved.
+
+**The tap fix.** A tap at the projected zone centre dispatches nothing, but an offset tap of
+**+14 px on x** does: the notice reads "Move order queued" and the Botanist walks. The dead first tap
+of a session also needs a primer first. With `[14,0]` the Botanist went (42,71) -> (37,33) and has
+since drifted to (35,35).
+
+**Scoring works.** Planting inside the Biomass Zone raised the terrain score at player raw `0xd`
+monotonically:
+
+- plant 0: 3 plants in zone, score **27**
+- plant 1: 5 plants, score **63**
+- plant 2: 6 plants, score **99**
+- plant 3: 8 plants, score **135**
+- 700 ticks later: 8 plants, score **199**
+
+So `credit(...)` in `zones.ts` fires as the source describes: life inside a zone depletes that zone's
+quota and rewards the owner. The objective is `i32(0xd) >= 5000` plus both quotas at zero.
+
+Checkpoint: **`.private/browser-campaign/mission4-planted.json`** (score 199, 8 plants in zone 2,
+frame 9,224, phase active).
+
+### What remains for mission 4
+
+- Zone 2 (37,33) quota 2560: keep planting - score accrues roughly 36 per 490 ticks with 3-8 plants,
+  so this needs sustained planting, not a single burst.
+- Zone 1 (59,64) quota 2048 is the **Mule Zone** and needs Mules living in it. The carry starts with
+  zero Mules, funds 1600 and no Genepod, so a Genepod (600) plus Mule production (75) has to come
+  first, then the Mules must be herded into (59,64).
+
 ## Next implementation work
 
 Complete Exceland's original startup/specialist preparation and complete construction/terrain/power/economy families using the existing source-backed contracts. Replace provisional scheduling with established observable behavior, integrate original result eligibility and continuation, and accept the whole first mission through save/reload and carried Krell initialization. Then expand complete mechanic families across all 24 original maps. Keep the workbench acceptance separate from campaign acceptance throughout.
