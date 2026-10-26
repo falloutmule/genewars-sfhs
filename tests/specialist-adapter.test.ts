@@ -206,8 +206,11 @@ describe("campaign specialist services", () => {
         .reason,
     ).toMatch(/Geneticist/);
     expect(
-      queueCampaign(w, { type: "heal-mule", actorId: 1, muleIndex: 0 }).reason,
-    ).toMatch(/Mule/);
+      queueCampaign(w, { type: "heal-mule", actorId: 1, muleIndex: 0 }),
+    ).toEqual({
+      ok: false,
+      reason: "Select a creature available for this interaction",
+    });
     expect(
       queueCampaign(w, {
         type: "construct",
