@@ -1,53 +1,55 @@
-# Current direct-conversion state — 24 October 2026
+> Current facts: see [CAMPAIGN_PROGRESS.md](CAMPAIGN_PROGRESS.md). The material below is historical and includes superseded Mission 4 hypotheses.
+
+# Current direct-conversion state â€” 24 October 2026
 
 ## Krell (mission 2) proven in ordinary play, simulation layer
 
 The carried Exceland state now plays Krell end to end with public commands only.
 
-**Objective:** `terrain-score` (source player byte `0x0D`) target 1000 from the single marked zone at **(256, 24320)**, decoded from the mission prefix at `BASE 0x2ff8`, stride 19 — selector **12** (gene category 4), chain −1, quota present. The mission *target* (1536,15360) is a different point and is not the zone; moving Mules there scores nothing.
+**Objective:** `terrain-score` (source player byte `0x0D`) target 1000 from the single marked zone at **(256, 24320)**, decoded from the mission prefix at `BASE 0x2ff8`, stride 19 â€” selector **12** (gene category 4), chain âˆ’1, quota present. The mission *target* (1536,15360) is a different point and is not the zone; moving Mules there scores nothing.
 
 **Route, all ordinary commands:**
 - Power (`3`) then Gene Pod (`0`) at Krell's own anchor
-- Geneticist `research-mule` on a wild Mule with `native[122] === 4` — research quality 3 → 7 → 18, which is what makes the pod's birth roll succeed
+- Geneticist `research-mule` on a wild Mule with `native[122] === 4` â€” research quality 3 â†’ 7 â†’ 18, which is what makes the pod's birth roll succeed
 - `produce-mule` repeatedly: each birth costs 75 total and yields an **owner 0** Mule (pod-born Mules are player-owned; the mission's wild Mules are owner 4)
 - `move-mule` each owned Mule to the zone centre, re-issued as new Mules are born
 
-**Result:** nine live Mules in the zone, `terrain-score` reached **1008/1000** at frame **9,921**, `phase: "result"`, `result.phase: "victory-notification"`, zero error notices. Save → reload at that state gives an identical checksum and the same result. `continue-notification` → `enter-victory` → `advance-victory(1)` → `campaign-view-queued` with `progress 2`, and `continueCampaign` initialises **mission 3 Madami** at frame 0, `briefing`, `progress [2,1,0,0]`, funds 800.
+**Result:** nine live Mules in the zone, `terrain-score` reached **1008/1000** at frame **9,921**, `phase: "result"`, `result.phase: "victory-notification"`, zero error notices. Save â†’ reload at that state gives an identical checksum and the same result. `continue-notification` â†’ `enter-victory` â†’ `advance-victory(1)` â†’ `campaign-view-queued` with `progress 2`, and `continueCampaign` initialises **mission 3 Madami** at frame 0, `briefing`, `progress [2,1,0,0]`, funds 800.
 
-**Mechanics confirmed, not defects:** the zone pass runs only while the mission countdown `0x355c` is zero, so credit accrues in windows; and Mules starve in the zone because it is barren (`reserve 12 → 0`, `health 67 → 0`, zero plants nearby), so sustained production and herding is the actual requirement. Both match `ZONES.md` and `mule.ts` mortality rather than indicating missing code.
+**Mechanics confirmed, not defects:** the zone pass runs only while the mission countdown `0x355c` is zero, so credit accrues in windows; and Mules starve in the zone because it is barren (`reserve 12 â†’ 0`, `health 67 â†’ 0`, zero plants nearby), so sustained production and herding is the actual requirement. Both match `ZONES.md` and `mule.ts` mortality rather than indicating missing code.
 
 **Evidence:** `.private/build-probe-20261024/probe10.ts`, `probe11.ts`, `probe12.ts`, `probe13.ts`, with `krell6.log`, `krell7.log`, `krell8.log`, `krell9.log`, and `zones.log` (zone geometry decode).
 
-**Acceptance: Krell is accepted in the software ledger through the real UI.** The browser campaign run against the built artifact (`outputSha256 eb4ca213…`) played this route with real taps at **phone-landscape 915×412, phone-portrait 412×915 and desktop 1440×900**:
+**Acceptance: Krell is accepted in the software ledger through the real UI.** The browser campaign run against the built artifact (`outputSha256 eb4ca213â€¦`) played this route with real taps at **phone-landscape 915Ã—412, phone-portrait 412Ã—915 and desktop 1440Ã—900**:
 
-- Extractor (`11`), First Stage Distributor (`3`) and Gene Pod (`0`) placed by pointer from the Construct menu — the Photon Processor is not a Krell prerequisite (`pre[0] = 3`, `pre[3] = 11`)
-- Mules produced from the **Economy** panel ("Produce Mule · 75 total"), up to three per round until funds run out
+- Extractor (`11`), First Stage Distributor (`3`) and Gene Pod (`0`) placed by pointer from the Construct menu â€” the Photon Processor is not a Krell prerequisite (`pre[0] = 3`, `pre[3] = 11`)
+- Mules produced from the **Economy** panel ("Produce Mule Â· 75 total"), up to three per round until funds run out
 - each Mule selected in the **Units** panel, the camera centred with **"Show zone 1"**, then a ground tap to issue the move
 - `victory-notification` with the objective ledger reading **`terrain-score 1024/1000`** and **`Finish marked zones 1/1`**, both complete
-- "View result" → "Continue to next mission" → Madami initialised at frame 0, progress 2, briefing
+- "View result" â†’ "Continue to next mission" â†’ Madami initialised at frame 0, progress 2, briefing
 
-Portrait needs the Mission/Units/Economy tab switches; the other viewports show every panel at once. The tap lands a few pixels off the exact zone centre because the camera focuses precisely on it and the centre ray otherwise misses the ground intersection — a projection quirk, not a game defect.
+Portrait needs the Mission/Units/Economy tab switches; the other viewports show every panel at once. The tap lands a few pixels off the exact zone centre because the camera focuses precisely on it and the centre ray otherwise misses the ground intersection â€” a projection quirk, not a game defect.
 
 The route is verified in two invocations because one full run exceeds the 420 s execution budget: `CAMPAIGN_SKIP_REPLAY=1` exercises the Krell play-through, `CAMPAIGN_SKIP_KRELL=1` exercises the Exceland replay export/import and restart block. Both pass; neither is a weakened assertion.
 
-Evidence: `.private/build-probe-20261024/ui-krell915k.log`, `ui-krell412j.log`, `ui-krell1440b.log`, `ui-replay1440.log`, plus `.private/browser-campaign/report.json` (artifact hash `eb4ca2131834acff…`). Simulation-layer reasoning remains in the probe logs above.
+Evidence: `.private/build-probe-20261024/ui-krell915k.log`, `ui-krell412j.log`, `ui-krell1440b.log`, `ui-replay1440.log`, plus `.private/browser-campaign/report.json` (artifact hash `eb4ca2131834acffâ€¦`). Simulation-layer reasoning remains in the probe logs above.
 
 ## Madami (mission 3) route research
 
 Objective: **1400 current GOOP**, with storage capacity 1600 tracked separately. Decoded from the pack (`economyRules`, printed by `.private/build-probe-20261024/madami1.ts`):
 
-- `extractor.goopPerResource = 2`, `harvestUnits = [2, 4, 6]` by grade, `cycleLength = 240`, harvest on frames 7–10, `harvestRadius = 3`, `upkeep = 1`
+- `extractor.goopPerResource = 2`, `harvestUnits = [2, 4, 6]` by grade, `cycleLength = 240`, harvest on frames 7â€“10, `harvestRadius = 3`, `upkeep = 1`
 - `capacity.extractor = 600`, `capacity.store4 = [400, 800, 1200]` (Recycling Plant), `capacity.store13 = [500, 1000, 1500]` (Stores)
 
-So **capacity 1600 is exactly four grade-1 Recycling Plants** (4 × 400), which is what the preserved Madami runs built, and it is a *separate* requirement from the GOOP total.
+So **capacity 1600 is exactly four grade-1 Recycling Plants** (4 Ã— 400), which is what the preserved Madami runs built, and it is a *separate* requirement from the GOOP total.
 
-**GOOP is credited only by Extractor harvesting** (`economy.ts:736`): `player.goop = min(goop + consumed × goopPerResource, capacity)`. A grade-0 Extractor therefore yields 4 GOOP per 240-frame cycle, i.e. ~60 GOOP per 3,600 frames per Extractor. Reaching 1400 at grade 0 needs roughly 21,000 frames with four Extractors.
+**GOOP is credited only by Extractor harvesting** (`economy.ts:736`): `player.goop = min(goop + consumed Ã— goopPerResource, capacity)`. A grade-0 Extractor therefore yields 4 GOOP per 240-frame cycle, i.e. ~60 GOOP per 3,600 frames per Extractor. Reaching 1400 at grade 0 needs roughly 21,000 frames with four Extractors.
 
-**Correction to an earlier reading of this section:** grade upgrades are *not* a lever available today. `capacity.store4[building.grade]` and `harvestUnits[building.grade]` read a grade that is fixed at construction or startup — nothing in `src/sim/` increments a building's `grade` during play, and `src/app/campaign.ts` has no upgrade affordance at all (`grep -n "upgrade" src/app/campaign.ts` returns nothing). Adding one would invent behaviour without source evidence, so the implementable route is **more grade-0 Extractors plus sustained harvesting time**, not upgrading. Four Extractors reach 1400 in ~21,000 frames; six reach it in ~14,000.
+**Correction to an earlier reading of this section:** grade upgrades are *not* a lever available today. `capacity.store4[building.grade]` and `harvestUnits[building.grade]` read a grade that is fixed at construction or startup â€” nothing in `src/sim/` increments a building's `grade` during play, and `src/app/campaign.ts` has no upgrade affordance at all (`grep -n "upgrade" src/app/campaign.ts` returns nothing). Adding one would invent behaviour without source evidence, so the implementable route is **more grade-0 Extractors plus sustained harvesting time**, not upgrading. Four Extractors reach 1400 in ~21,000 frames; six reach it in ~14,000.
 
-This explains the preserved runs: they grew GOOP 294 → 444 → 558 → 640 over ~20,000 ticks with four Recycling Plants and Botanist planting, because the Botanist path only feeds corpses/plants into recycling and never matches extractor throughput. It is not a missing mechanic — it is the wrong economy emphasis, and the prior chains simply built too few Extractors.
+This explains the preserved runs: they grew GOOP 294 â†’ 444 â†’ 558 â†’ 640 over ~20,000 ticks with four Recycling Plants and Botanist planting, because the Botanist path only feeds corpses/plants into recycling and never matches extractor throughput. It is not a missing mechanic â€” it is the wrong economy emphasis, and the prior chains simply built too few Extractors.
 
-**Funds answer:** `player.funds` is mirrored from `raw 0x4a3` rather than computed in the converted economy, and `recycling-adapter.ts` re-reads it after consumption — so Recycling Plants are the income as well as the capacity (they convert corpses/plants into funds). That reconciles the preserved runs, which sat at 11 funds with capacity 1600 and four plants: they had already spent down, and the plants were the running income. Construction costs read from `rules.tables.constructionCosts`: Extractor 650, Recycling Plant 300, Stores 300, First Stage Distributor 400, Genepod 600.
+**Funds answer:** `player.funds` is mirrored from `raw 0x4a3` rather than computed in the converted economy, and `recycling-adapter.ts` re-reads it after consumption â€” so Recycling Plants are the income as well as the capacity (they convert corpses/plants into funds). That reconciles the preserved runs, which sat at 11 funds with capacity 1600 and four plants: they had already spent down, and the plants were the running income. Construction costs read from `rules.tables.constructionCosts`: Extractor 650, Recycling Plant 300, Stores 300, First Stage Distributor 400, Genepod 600.
 
 **Consequence for the route:** a single grade-0 Extractor takes ~22,000 ticks for 1400 GOOP, and capacity must reach 1400 first (extractor 600 + two Recycling Plants at 400 each), so the opening move is plants for capacity and income, then Extractors paid for out of recycling, then harvesting time. This is a long mission by construction and will not fit a 420 s browser run in one pass.
 
@@ -55,24 +57,24 @@ This explains the preserved runs: they grew GOOP 294 → 444 → 558 → 640 ove
 
 Madami would not advance at all: the world sat in phase `blocked` with `frame` pinned at 0 and the notice `Campaign lacks established strategic state`, thrown at `strategic-state.ts:50` because `w.strategy` was null.
 
-`w.strategy` is created in `world.ts:478` **only** when `pack.strategicAIRules.creatureControlPrior` exists. The `.private/imported` pack does not contain that 600-byte prior; `.private/imported-ai-host-priors` does (objectOffset 544124, virtualAddress 1592700, provenance recorded), and its hash `b8872317…` is the pack the sealed saves were built against.
+`w.strategy` is created in `world.ts:478` **only** when `pack.strategicAIRules.creatureControlPrior` exists. The `.private/imported` pack does not contain that 600-byte prior; `.private/imported-ai-host-priors` does (objectOffset 544124, virtualAddress 1592700, provenance recorded), and its hash `b8872317â€¦` is the pack the sealed saves were built against.
 
-Building with the priors pack fixes it outright. Measured on the rebuilt artifact: `hasStrategy: true`, phase stays `active`, frames advance 0 → 600, specialists land and report ready at frame 200. Every earlier symptom — disabled specialist rows, taps producing no notice, `placing` never arming — was the blocked world, not the UI.
+Building with the priors pack fixes it outright. Measured on the rebuilt artifact: `hasStrategy: true`, phase stays `active`, frames advance 0 â†’ 600, specialists land and report ready at frame 200. Every earlier symptom â€” disabled specialist rows, taps producing no notice, `placing` never arming â€” was the blocked world, not the UI.
 
 Build with `npm run build:sfhs:priors` (or `--assets .private/imported-ai-host-priors`). The plain `--assets .private/imported` pack still builds, but its artifact cannot run mission 3 and must not be used for campaign acceptance beyond mission 2.
 
-## Software campaign acceptance: 2/24 — Exceland and Krell
+## Software campaign acceptance: 2/24 â€” Exceland and Krell
 
-Exceland is accepted in the **software** ledger through the real UI, not a simulation harness. The browser campaign run on the artifact built from commit `2f3c6c1` passed at **desktop 1440×900, phone-landscape 915×412 and phone-portrait 412×915**, the two phone viewports using `hasTouch` and real `touchscreen.tap` input:
+Exceland is accepted in the **software** ledger through the real UI, not a simulation harness. The browser campaign run on the artifact built from commit `2f3c6c1` passed at **desktop 1440Ã—900, phone-landscape 915Ã—412 and phone-portrait 412Ã—915**, the two phone viewports using `hasTouch` and real `touchscreen.tap` input:
 
-- Engineer selected, construction menu opened, Mine / First Stage Distributor / Photon Processor ×3 placed by pointer
+- Engineer selected, construction menu opened, Mine / First Stage Distributor / Photon Processor Ã—3 placed by pointer
 - ordinary commands queued and completed (`completed[11] === 1`, build loop reaching `result`)
-- save slot 1 → load slot 1 during the route, with `lockCount` and render purity preserved
-- `result === "victory-notification"`, "View result" → "Continue to next mission" → "Deploy specialists" visible
+- save slot 1 â†’ load slot 1 during the route, with `lockCount` and render purity preserved
+- `result === "victory-notification"`, "View result" â†’ "Continue to next mission" â†’ "Deploy specialists" visible
 - carried state: mission 2, progress 1, specialists deployed from the carried record
 - `renderPurity()` true and zero render errors on every viewport
 
-**Physical S21 Ultra validation remains separate and pending** — no physical device was operated, and that does not gate this ledger.
+**Physical S21 Ultra validation remains separate and pending** â€” no physical device was operated, and that does not gate this ledger.
 
 **Next:** mission 2 Krell through the same ordinary-play route.
 
@@ -80,18 +82,18 @@ Exceland is accepted in the **software** ledger through the real UI, not a simul
 
 A real mission-1 run using only ordinary queued player construction reaches the authentic source result, and the result tail through to Krell works.
 
-**Route:** Mine (`11`) → Power (`3`) → Solar ×3 (`6`). The objective is `completed-photons`, `sourcePlayerOffset 1542`, target 3 — it counts **selector 6**, not the pulper (`2`), which was the earlier mistaken assumption. Queued through `queueCampaign`, built by the Engineer with no injected buildings or fixtures.
+**Route:** Mine (`11`) â†’ Power (`3`) â†’ Solar Ã—3 (`6`). The objective is `completed-photons`, `sourcePlayerOffset 1542`, target 3 â€” it counts **selector 6**, not the pulper (`2`), which was the earlier mistaken assumption. Queued through `queueCampaign`, built by the Engineer with no injected buildings or fixtures.
 
 **Verified sequence (frame 4,951):**
 - objective ledger `completed-photons` current 3 / target 3, `thresholdReached: true`
 - `phase: "result"`, `result.phase: "victory-notification"`, zero error notices
 - **save/reload at that state: identical checksum, result preserved**
-- `continue-notification` → `victory-view-queued`
-- `enter-victory` → `victory-view`, `progress 1`, terminal `won/player0/winner0`
-- `advance-victory(runtimeInputFlags 1)` → `campaign-view-queued`
-- `continueCampaign` → **mission number 2 (Krell), phase `briefing`, frame 0, progress `[1,0,0,0]`**
+- `continue-notification` â†’ `victory-view-queued`
+- `enter-victory` â†’ `victory-view`, `progress 1`, terminal `won/player0/winner0`
+- `advance-victory(runtimeInputFlags 1)` â†’ `campaign-view-queued`
+- `continueCampaign` â†’ **mission number 2 (Krell), phase `briefing`, frame 0, progress `[1,0,0,0]`**
 
-So the objective scan (`72ED0`), result stages, save/reload and campaign carry were already correctly wired: `world.ts:2695` evaluates each tick and `actOnCampaignResult` drives the tail. The mission was never blocked by a missing mechanic — the earlier chains simply built the wrong building.
+So the objective scan (`72ED0`), result stages, save/reload and campaign carry were already correctly wired: `world.ts:2695` evaluates each tick and `actOnCampaignResult` drives the tail. The mission was never blocked by a missing mechanic â€” the earlier chains simply built the wrong building.
 
 **Evidence:** `.private/build-probe-20261024/probe2.ts` (objective recipe, per-stage ledger dumps) and `probe4.ts` (result flow and carry), with `run3.log`.
 
@@ -101,44 +103,44 @@ So the objective scan (`72ED0`), result stages, save/reload and campaign carry w
 
 ## Sealed continuation across the mortality boundary
 
-The sealed pre-step save `.private/madami-power-botanist-continuation-20261023/segment-003/save-last-valid-prestep.json` (frame **20,933**, sha256 `0ba30528…aadae2`) was re-hashed before use and is **byte-unchanged**; the continuation ran from a child in `.private/mortality-continuation-20261024/`.
+The sealed pre-step save `.private/madami-power-botanist-continuation-20261023/segment-003/save-last-valid-prestep.json` (frame **20,933**, sha256 `0ba30528â€¦aadae2`) was re-hashed before use and is **byte-unchanged**; the continuation ran from a child in `.private/mortality-continuation-20261024/`.
 
-- **Continuation A:** frame 20,933 (hash `f3b28716…`) → **20,960**, phase active, **no error notices** — the guard that previously stopped the run at 20,933 no longer fires.
-- **Continuation B:** save at frame 20,940, reload, continue → same frame and **identical hash `513c21bb…`**, so save/reload continuation is deterministic across the boundary.
+- **Continuation A:** frame 20,933 (hash `f3b28716â€¦`) â†’ **20,960**, phase active, **no error notices** â€” the guard that previously stopped the run at 20,933 no longer fires.
+- **Continuation B:** save at frame 20,940, reload, continue â†’ same frame and **identical hash `513c21bbâ€¦`**, so save/reload continuation is deterministic across the boundary.
 - The dying record entered state 24 at frame 20,934 with its attachment bit cleared, and 13 records were in post-death states, all with `0x60` bit 2 clear.
-- The pack the sealed world belongs to is content hash `b8872317…`; the current `.private/imported/genewars.gwpack` is a later rebuild (`ff9853…`) and cannot be used to load this save. The preserved `b8872317` pack is `.private/imported-ai-host-priors/genewars.gwpack`.
+- The pack the sealed world belongs to is content hash `b8872317â€¦`; the current `.private/imported/genewars.gwpack` is a later rebuild (`ff9853â€¦`) and cannot be used to load this save. The preserved `b8872317` pack is `.private/imported-ai-host-priors/genewars.gwpack`.
 
 **Not proven:** canonical acceptance stays **0/24**. Nothing here is a mission result.
 
 **Next executable task:** continue the child continuation past 20,960 until the next genuine unsupported family appears, then implement that family.
 
-## Checkpoint — Mule mortality cleanup as a reusable creature-lifecycle family
+## Checkpoint â€” Mule mortality cleanup as a reusable creature-lifecycle family
 
 **Canonical acceptance remains 0/24.**
 
-The pre-death guard that refused the frame-20,933 record is replaced by a general family. `releaseMuleMortalityReferences` runs before the numeric death at every `5CDB0` entry and follows the source order already expressed by the runtime: `releaseAction` (`5CC60` through the callback-owned `5C920` attachment detach, preserving its own state-18 stun gate and timer, releasing the kind-1 target reservation through `5CCEF/5CD14` and the kind-2 plant flags), then the `5CCA0/5CDB0` null-reference convention for the remaining task envelope — the `0x4D`/`0x50` association kinds are cleared while their indices stay opaque, exactly as `installTarget` and `5CCA0` already leave them. All four `enterDeath` call sites (selector-4 combat, cold, hunger and starvation/old-age) now take the staged state and context, so cleanup participates in the existing transaction rather than bypassing it.
+The pre-death guard that refused the frame-20,933 record is replaced by a general family. `releaseMuleMortalityReferences` runs before the numeric death at every `5CDB0` entry and follows the source order already expressed by the runtime: `releaseAction` (`5CC60` through the callback-owned `5C920` attachment detach, preserving its own state-18 stun gate and timer, releasing the kind-1 target reservation through `5CCEF/5CD14` and the kind-2 plant flags), then the `5CCA0/5CDB0` null-reference convention for the remaining task envelope â€” the `0x4D`/`0x50` association kinds are cleared while their indices stay opaque, exactly as `installTarget` and `5CCA0` already leave them. All four `enterDeath` call sites (selector-4 combat, cold, hunger and starvation/old-age) now take the staged state and context, so cleanup participates in the existing transaction rather than bypassing it.
 
 One shape is still refused, deliberately: an attachment bit that survives the tray release. `5CDB0`'s D71A mask preserves `0x60` bit 2, so a caller whose carrier service leaves it set must reject and roll back rather than enter mortality with a live attachment. The old blanket refusal is gone; this narrower one is source-backed.
 
 The draft inherited from the interrupted run was audited rather than trusted: its ordering, addresses and transactional threading were checked against `releaseAction`, the state-27 retirement block and the preserved audit record, and were retained. Three tests were added for coverage the draft lacked.
 
-**Verification:** focused mortality 11/11 (`tests/mule-mortality-cleanup.test.ts` 11, `tests/campaign-mule-mortality-cleanup.test.ts` 3 — normal old-age death, absent carrier binding, carrier leaving the attachment bit set, kind-1 reservation release exactly once, multiple deaths in one update, living referrer retained until `716F0` retirement, `4D`/`50` nulling, full 300-slot pool, near-full 299-slot pool with every other record byte-identical, two identical worlds producing identical cleanup, unrelated settled state preserved, save before and after with reload and replay across the boundary, older imported pack). Full TypeScript suite **1651 tests across 154 suites** (previous baseline 1637/152 — increased). Importer **116 OK, 3 skipped**. `tsc --noEmit` clean. Leak check pass: 506 public files scanned, 255 private hashes compared, no failures.
+**Verification:** focused mortality 11/11 (`tests/mule-mortality-cleanup.test.ts` 11, `tests/campaign-mule-mortality-cleanup.test.ts` 3 â€” normal old-age death, absent carrier binding, carrier leaving the attachment bit set, kind-1 reservation release exactly once, multiple deaths in one update, living referrer retained until `716F0` retirement, `4D`/`50` nulling, full 300-slot pool, near-full 299-slot pool with every other record byte-identical, two identical worlds producing identical cleanup, unrelated settled state preserved, save before and after with reload and replay across the boundary, older imported pack). Full TypeScript suite **1651 tests across 154 suites** (previous baseline 1637/152 â€” increased). Importer **116 OK, 3 skipped**. `tsc --noEmit` clean. Leak check pass: 506 public files scanned, 255 private hashes compared, no failures.
 
 **Not yet proven:** the sealed frame-20,933 save has not been continued through this boundary. The campaign test uses the public synthetic pack only; the real continuation is the next task.
 
 **Next executable task:** create an immutable child of the last valid sealed campaign save and continue it through the mortality boundary, then resume family-by-family work.
 
-## Checkpoint — complete Extractor family and conditional audio proof (Hermes, DeepSeek V4.1 Flash 1017)
+## Checkpoint â€” complete Extractor family and conditional audio proof (Hermes, DeepSeek V4.1 Flash 1017)
 
 Interrupted-after-Codex work resumed and completed. **Canonical acceptance remains 0/24.**
 
 **Extractor11 is now one complete reusable mechanic family.** Additive `extractorRules` profile (schema-versioned, `contactOffset`, per-grade `frameHolds`, provenance with executable hash and per-grade ANB geometry) admits the full native callback; grade-zero/older packs keep their separately bounded legacy profile and no new profile is synthesized. The callback owns, in source order, upkeep/energy drain, powered-state and warning transitions, ordered conditional work audio, cycle counting, grade resource harvest, terrain byte13 depletion through the standalone mineral pass with row-major dirty points, foreign-before-own contact chains with alliance masks and `virtual+68` exclusion, in-place contact damage, smoke6 publication with retained native priors, capacity refresh, exhaustion/empty handling with footprint-keyed cue pitch, and building-queue and terrain-dirty presentation requests. `nativeExtractorCallbacks` marks explicit native11 ownership so the legacy economy validator no longer double-admits the row, and a missing handler fails closed.
 
-**Fixture correction, disclosed:** the new extractor fixture inherited the synthetic grade-zero `workDelay: 1`, which the admitted callback rejects because `base − grade` must stay positive for grade 2. It now uses `5`, the value `tools/import-original/economy_profile.py` actually emits, cited in the fixture. No assertion, expected hash or skip was changed.
+**Fixture correction, disclosed:** the new extractor fixture inherited the synthetic grade-zero `workDelay: 1`, which the admitted callback rejects because `base âˆ’ grade` must stay positive for grade 2. It now uses `5`, the value `tools/import-original/economy_profile.py` actually emits, cited in the fixture. No assertion, expected hash or skip was changed.
 
 **Conditional audio proof:** playback-device availability stays outside authoritative simulation state. Ordered `if-playing-stop-play` requests are presentation-only; the proof covers live, missing and already-ended consumers and asserts identical authoritative state, RNG, saves and the headless sealed replay in every case.
 
-**Verification at this checkpoint:** Extractor-focused 34/34 (adapter 9 including grade0/1/2 priors, contact chains, alliance masks, smoke and ordered journal, late-mineral rollback with alias preservation, running/empty save continuation, absent-profile refusal; material 3; native 11; profile 11). Conditional audio 10/10. Full TypeScript suite **1637 tests across 152 suites, all passing** (previous baseline 1593/146 — increased, not decreased). Importer **116 tests OK, 3 skipped** (baseline 109). `tsc --noEmit` clean. Leak check pass: 504 public files scanned, 255 private hashes compared, no failures. Single heavyweight job at a time; no browser or campaign job ran concurrently.
+**Verification at this checkpoint:** Extractor-focused 34/34 (adapter 9 including grade0/1/2 priors, contact chains, alliance masks, smoke and ordered journal, late-mineral rollback with alias preservation, running/empty save continuation, absent-profile refusal; material 3; native 11; profile 11). Conditional audio 10/10. Full TypeScript suite **1637 tests across 152 suites, all passing** (previous baseline 1593/146 â€” increased, not decreased). Importer **116 tests OK, 3 skipped** (baseline 109). `tsc --noEmit` clean. Leak check pass: 504 public files scanned, 255 private hashes compared, no failures. Single heavyweight job at a time; no browser or campaign job ran concurrently.
 
 **Unchanged and preserved:** the sealed frame-15,585 save, the frame-20,933 valid prefix and its separately preserved failed attempted world, all `.private` receipts. Nothing was reset, cleaned, stashed or pushed.
 
@@ -153,7 +155,7 @@ The complete native Distributor3/Photon6 callback now owns all three grades, sou
 
 The human Botanist work-command wrapper now preserves the complete81080 envelope: pending bit before conditional prior-task release, native130 setup stamp and state8 movement interruption/active-bit clearing. The previous wrapper could retain a stopped state8 actor with pending work indefinitely. All864 whole-caller source cases match865,736 interpreted instructions and1,750,464 numeric bytes with zero differences in their documented scope, including96 actual area-release scans, ordered service requests and RNG. Six dedicated regressions and65 focused tests pass, including ordinary planting, JSON continuation, complete command replay and late rollback. This prospective command fix does not repair already-saved pending afterimages; any corrected-runtime reissue is a distinct ordinary input with its own provenance.
 
-A distinct frozenfa6afc9/b887 continuation verifies the original15585 save first and loads the new runtime with zero serialized changes or migrations. One explicitly recorded ordinary Botanist reissue uses the retained requested point/selector;22 later commands come from the unchanged Botanist policy. All2000 forward ticks and their complete2000-tick replay match frame17585/tick38498 checksum5fb3fd38, with nine save/native/alias checks and no guards, errors or service warnings. The Botanist actually moves, plants and refills;11 ordinary sample-availability warnings remain recorded. GOOP294→444, funds11/capacity1600/research102400 persist. No new Mule, research, production or construction commands occur. Exact final saveecf41e11e4d628051cf28cc19c9557ceb365fcd02dcee81110ea07bf968b29a7 and policy state remain sealed;1400 current GOOP and canonical acceptance are not claimed.
+A distinct frozenfa6afc9/b887 continuation verifies the original15585 save first and loads the new runtime with zero serialized changes or migrations. One explicitly recorded ordinary Botanist reissue uses the retained requested point/selector;22 later commands come from the unchanged Botanist policy. All2000 forward ticks and their complete2000-tick replay match frame17585/tick38498 checksum5fb3fd38, with nine save/native/alias checks and no guards, errors or service warnings. The Botanist actually moves, plants and refills;11 ordinary sample-availability warnings remain recorded. GOOP294â†’444, funds11/capacity1600/research102400 persist. No new Mule, research, production or construction commands occur. Exact final saveecf41e11e4d628051cf28cc19c9557ceb365fcd02dcee81110ea07bf968b29a7 and policy state remain sealed;1400 current GOOP and canonical acceptance are not claimed.
 
 The current host binds ordinary selector2 Pulper construction and material processing, including the source two-cell site, real payment/appearance, retained pending51 and unsigned stock54 order. Shared36 building material has its actual mode6 motion and factory. Upgraded Pulper/Recycler callbacks dispatch the concrete ordered collection queries and actual32x97 collector factory. Its live ascending14EC0 pass runs after plants and before collapse/shared effects, with source motion, burning, plant/corpse carrying, cancellation, damage and unmarked10 retirement. Saved native identity, byte3558 count, current spatial reads, neighboring headers and recursive cleanup stay concrete; provably empty earlier saves migrate only after their original checksum passes. Ordinary host tests separately verify grade1 Pulper burning, grade2 plant delivery into stock and Recycler corpse delivery into GOOP, with moving/carrying saves and complete replay. Pulper damage uses source processing-front operation0 and retains pending material/stock without a refund. This work is included in the latest browser artifact below and does not change campaign acceptance.
 
@@ -167,19 +169,19 @@ The Botanist query fix binds actual intrusive-map membership independently of ac
 
 The latest mechanic work completes shared44 building appearance through the existing6DF30 motion service, including changed ground, water contact, actual odd74270 queries, source timer/ANB retirement and same-callback spatial/reference cleanup. Private comparisons match256 numeric callbacks and12 literal shared-host callbacks with zero differences in their documented scope. A separate source-backed correction completes Geneticist packet81080: conditional prior-task release, retained130 stamp and interruption of active state8 movement. The previous wrapper could leave a moving Geneticist stopped with pending work undispatched. All576 complete static caller cases match; normal host movement-to-research, pending JSON save continuation, full replay and late rollback pass. Both changes are included in the latest verified HTML below; earlier evidence remains preserved.
 
-A distinct frozen5d1332d/b887 diagnostic continues the exact old009 Madami save for2000 ordinary ticks and reproduces the entire2000-tick replay, ending frame8000/tick28913 checksum2954bb77. Nine saves match, with no guards or service warnings. Three additional Recycling Plants complete through ordinary commands and actual3×238 payment, leaving86 funds/capacity1600/currentGOOP0. Research stays81920; the selected corpses retire, no production or hauling commands occur, and the Geneticist retains the now-diagnosed old81080 stopped-movement afterimage. This valid outcome and its exact save are immutable. No capacity-only win, Mule birth or canonical mission acceptance is claimed. Corrected-runtime continuation requires ordinary new commands and separate provenance.
+A distinct frozen5d1332d/b887 diagnostic continues the exact old009 Madami save for2000 ordinary ticks and reproduces the entire2000-tick replay, ending frame8000/tick28913 checksum2954bb77. Nine saves match, with no guards or service warnings. Three additional Recycling Plants complete through ordinary commands and actual3Ã—238 payment, leaving86 funds/capacity1600/currentGOOP0. Research stays81920; the selected corpses retire, no production or hauling commands occur, and the Geneticist retains the now-diagnosed old81080 stopped-movement afterimage. This valid outcome and its exact save are immutable. No capacity-only win, Mule birth or canonical mission acceptance is claimed. Corrected-runtime continuation requires ordinary new commands and separate provenance.
 
 A separate frozenec9adc6/b887 diagnostic then issues one ordinary Geneticist research order to a living neutral Mule and preserves the same research-first resource constraints. Its704 successful forward ticks and entire704-tick valid-prefix replay match at frame8704/tick29617 checksum16318c0c; three save continuations pass. The next attempted callback stops on the explicit owned-plant reproduction service guard. The Geneticist has actually travelled toward the herd and remains in active research work; research81920, funds86, capacity1600 and currentGOOP0 remain unchanged. The valid save, failed attempted world and policy state are sealed separately.
 
-The distinct frozen2f44789/b887 continuation starts from that exact valid8704 save, verifies its original checksum and adds only the proven empty collector root. Its881 successful forward ticks and entire881-tick replay match at frame9585/tick30498 checksum5a490b01; three periodic save continuations pass. Research reaches102400 at9257, the policy places one paid75 Genepod order at9280, Mule0 is born at9355 and one ordinary plant-hauling order follows at9376. Funds are11/currentGOOP0/capacity1600. The next attempted callback stops on the Botanist shared-cell completeness guard: carried plant11 remains active kind2 but has been deliberately unlinked by its actual carrier67. The failed world remains separate. This identifies a linked-query contract gap; no material delivery, sustainable biomass or mission win is claimed. The distinct23064db continuation verifies that exact valid9585 save and already-paid/born/hauling policy state with zero serialized-world changes or migrations. All2000 forward ticks and their complete2000-tick replay match at frame11585/tick32498 checksum96f8c756, with nine save checks and no guard, error or service warning. Real delivery raises currentGOOP0→18 by256 ticks→40 by512, then remains40; funds11/capacity1600/research102400 persist. The only new commands are ordinary Botanist refill10496 and planting10528; no research, production or Mule orders are repeated. Exact final saveb90de15a948a8827569fa3a4931a196eaae65d43e0970cda051bc902f962331e and policy state remain sealed. A separate source audit identifies an omitted failed-material-work return join into normal movement choices; the older proof stopped before that join. Its correction passes the full local suite and is included in the separately verified artifact below. No replacement order or saved-state repair masks that gap.
+The distinct frozen2f44789/b887 continuation starts from that exact valid8704 save, verifies its original checksum and adds only the proven empty collector root. Its881 successful forward ticks and entire881-tick replay match at frame9585/tick30498 checksum5a490b01; three periodic save continuations pass. Research reaches102400 at9257, the policy places one paid75 Genepod order at9280, Mule0 is born at9355 and one ordinary plant-hauling order follows at9376. Funds are11/currentGOOP0/capacity1600. The next attempted callback stops on the Botanist shared-cell completeness guard: carried plant11 remains active kind2 but has been deliberately unlinked by its actual carrier67. The failed world remains separate. This identifies a linked-query contract gap; no material delivery, sustainable biomass or mission win is claimed. The distinct23064db continuation verifies that exact valid9585 save and already-paid/born/hauling policy state with zero serialized-world changes or migrations. All2000 forward ticks and their complete2000-tick replay match at frame11585/tick32498 checksum96f8c756, with nine save checks and no guard, error or service warning. Real delivery raises currentGOOP0â†’18 by256 ticksâ†’40 by512, then remains40; funds11/capacity1600/research102400 persist. The only new commands are ordinary Botanist refill10496 and planting10528; no research, production or Mule orders are repeated. Exact final saveb90de15a948a8827569fa3a4931a196eaae65d43e0970cda051bc902f962331e and policy state remain sealed. A separate source audit identifies an omitted failed-material-work return join into normal movement choices; the older proof stopped before that join. Its correction passes the full local suite and is included in the separately verified artifact below. No replacement order or saved-state repair masks that gap.
 
 A distinct frozenb4b26bb/b887 continuation verifies the original11585 envelope/world checksums before loading with zero serialized changes or migrations. Two bounded segments each pass2000 forward ticks and their entire2000-tick replay, with nine save checks per segment and no guards, errors or new commands. The first ends frame13585/tick34498 checksum8febc890/currentGOOP174; the second ends frame15585/tick36498 checksum508a087d/currentGOOP294. Funds11/capacity1600/research102400 persist. The Mule continues actual travel/carrying without a replacement order. The Botanist's entire200-byte record and normalized actor remain unchanged across the second segment's checkpoints, preserving the diagnosed old human81080 afterimage. Exact save9614eeca4dbb563338c7234cb05dd51f128106374153dac52e8d6d679ce78eff and unchanged policy are sealed separately. No saved-state repair,1400-GOOP goal or canonical acceptance is claimed.
 
 Importer 0.2.0/schema 2 admits the exact QA BETA V5 candidate: all 24 serialized startups, original RNG, four players/eight source pools, numeric rules, correct terrain/water, 91 visual resources and 669 WAVE records. All 26 packed4 resources decode. Owned/neutral Mule palettes, actual MAIN/FADE rows and raw gameplay frame metadata are implemented. Private numeric profiles include all25 species trait rows, Mule combat/cold parameters, crater textures, specialist reveal radii, Geneticist projectile/capture descriptors, all71 shared effect descriptors,16 specialist speech resource rows/100 audio allocation classes,13 building resource rows/upkeep/front offsets and bounded strategic group/gene/production metadata. The separately admitted building combat reach table is distinct from collision extents. Preserved importer-folder pack SHA-256: `ff985386a14d4ec592c4860eb582162acd286b599b2ca5a8a36f8cd30a0d28f6` (31,803,886 compressed bytes), including seven Shepherd projectile rows and settlement value/threat tables. The preserved24d9eaf7 pack remains the frozen campaign run input. The verifiedb8872317 host pack(31,804,349 compressed bytes) adds hash-admitted Engineer priorities, creature command displacement/ordered footprint samples and the cold600-byte control image; all24 AI payloads and actual Exceland storage validate. Earlier73b552a3 remains preserved. The later strategic-host graphs retainb8872317; the latest HTML uses the additiveced8fd7f pack described below; the older packs and receipts remain preserved. All32 hurt/death SPE samples resolve to existing imported records. Retail equivalence, fonts, CD music, remaining narration/subtitles and other dynamic palette wrappers remain unresolved. Earlier18147b77 packs and their replay evidence are preserved privately.
 
-The normal campaign host implements blueprint selection, full 20×200 specialist native records/bindings, landing, construction travel/payment/terraforming/cancellation/completion/appearance, live power/GOOP, plants, owned/neutral Mule orders, feeding/aging/death/reveal, mating/birth and Genepod production. Creature corpse/BONES feeding and bounded selector4 combat are implemented; immediate blood factories use isolated full-host transactions with retained native identities. Original startup zone lighting/marker visitors, pre-actor zone scoring, countdown, 16-slot visitor pass and 200-slot effect scheduling are integrated. Real native crater jobs retain their original 25×176 priors and ordered linked-height updates. Some complete services remain unimplemented below; imported pools and generic predicates do not establish complete gameplay.
+The normal campaign host implements blueprint selection, full 20Ã—200 specialist native records/bindings, landing, construction travel/payment/terraforming/cancellation/completion/appearance, live power/GOOP, plants, owned/neutral Mule orders, feeding/aging/death/reveal, mating/birth and Genepod production. Creature corpse/BONES feeding and bounded selector4 combat are implemented; immediate blood factories use isolated full-host transactions with retained native identities. Original startup zone lighting/marker visitors, pre-actor zone scoring, countdown, 16-slot visitor pass and 200-slot effect scheduling are integrated. Real native crater jobs retain their original 25Ã—176 priors and ordered linked-height updates. Some complete services remain unimplemented below; imported pools and generic predicates do not establish complete gameplay.
 
-After correcting landing placement to actual candidate XY, the earlier Engineer bridge route reaches Exceland victory at frame4002 and carries into Krell frame250 (`6636364c`). The new native Engineer route reaches the same original predicate at frame2750, saves/reloads construction and each result stage, and actually carries into Krell: progress1, selected blueprints0/5/10, funds2000, four neutral Mules,25 plants and one marked zone. Its complete replay matches10 checks/11 events through Krell frame250 (`68022bc1`) without ecology errors. The native route also passes with the preservedfe420891 pack: all10 checks/11 events match`dce56bdf`, with its exact production graph frozen privately. The earlier runs use preserved18147b77. From the earlier carry, an ordinary Geneticist order fires at frame478, captures a Mule for219 frames and raises research quality71680→85078; its1200-tick replay matches at frame1450 (`ef8d1756`). These are development checks, not mission acceptance.
+After correcting landing placement to actual candidate XY, the earlier Engineer bridge route reaches Exceland victory at frame4002 and carries into Krell frame250 (`6636364c`). The new native Engineer route reaches the same original predicate at frame2750, saves/reloads construction and each result stage, and actually carries into Krell: progress1, selected blueprints0/5/10, funds2000, four neutral Mules,25 plants and one marked zone. Its complete replay matches10 checks/11 events through Krell frame250 (`68022bc1`) without ecology errors. The native route also passes with the preservedfe420891 pack: all10 checks/11 events match`dce56bdf`, with its exact production graph frozen privately. The earlier runs use preserved18147b77. From the earlier carry, an ordinary Geneticist order fires at frame478, captures a Mule for219 frames and raises research quality71680â†’85078; its1200-tick replay matches at frame1450 (`ef8d1756`). These are development checks, not mission acceptance.
 
 A legal segmented Krell run from that earlier carry completes Extractor/Distributor/Photon/Genepod, preserves failed production attempts, produces two owned Mules and uses ordinary movement/healing/feeding. Real Ethereal observation earns the zone credit. The original predicate wins at frame13697/score1002 while22 quota remains; a pre-eligibility save reproduces the win on its next ordinary tick. Every frozen segment replays its own complete input/events/checksum; the final result sequence matches`a8cc9518` and carries progress2. The chain does not claim one latest runtime replays every earlier segment. Actual mission3 continuation on a clone of the preserved valid result stops at opponent initialization. Opponent entry and serialized buildings are bound. The current host now composes the concrete strategic37870 planning/action services and runs them in source order; downstream missing mechanic branches still reject explicitly. A fresh frozen df63585 chain wins Exceland atframe2742 and carries normally into Krell. Its first complete legal strategy attempt remainsactive atframe16222/score564 after its owned herd and nearby neutral contributors die in ordinarycombat. Every segment replays exactly with no actor/service errors; resources and failures are preserved. The fresh safer-herd strategy on the same immutable production/24d9eaf7 graph wins Krell atframe17921/tick20667, score1024/quota0, with two owned Mules alive athealth60/59. All six segments replay exactly, including515 ordinary commands, with no actor/service errors. The independent pre-eligibility step reproduces the win; normal result actions carry progress2 into mission3 checksum2ebad21c. Its actual five buildings and opponent1progress1 are retained. The entered pre-step save remains valid; an isolated active probe hits the explicit37870 guard before gameplay. The42,019 converted verification ticks are bounded per invocation and preserved separately from the failed first attempt. Canonical acceptance remains0/24.
 
@@ -201,9 +203,9 @@ Native Shepherd control, movement, interaction, cancellation and the shared moti
 
 Campaign save/replay schema2 stores every implemented authoritative root, including native pools, actual terrain-job bytes, RNG, pending work, results and carry. IndexedDB has three manual/four transactional recovery slots, with export/import and restart recipes. Replays include commit/dirty state, content, initial RNG, entry/command/result/transition events and final world/result/carry checks. JSON alias-dependent Engineer motion and eaten-plant retirement/reused-slot bugs are fixed. The source ordered crater native height can differ from a later terrain sample within the same callback; the host preserves its actual afterimage rather than inventing an extra resample.
 
-Explicit human recruitment now binds packets7/8/9/10, the signed-skill four-candidate picker, actual native constructor, pending removal and shared80830 landing. The initial manual panel opens once after72AD0 at its source progress/special gate; input-only iterations preserve native frame/RNG/countdown while runflag4 holds AI and ordinary callbacks. Saved launch-producer state preserves AI gate→UI flag write→packet ordering, including mode1 and later allocation failure. Special human frame0 entry activates immediately before zones/64, without allocating49. The normal UI exposes initial selection and actual selector5 center routing, including mutual allies, with source landing admission. There is no generic active unassociated resupply control. Nine host regressions cover complete queued/initial replay, pending-input saves, cancellation, special entry, source ordering and late rollback. The existing automatic early-campaign picker is preserved.
+Explicit human recruitment now binds packets7/8/9/10, the signed-skill four-candidate picker, actual native constructor, pending removal and shared80830 landing. The initial manual panel opens once after72AD0 at its source progress/special gate; input-only iterations preserve native frame/RNG/countdown while runflag4 holds AI and ordinary callbacks. Saved launch-producer state preserves AI gateâ†’UI flag writeâ†’packet ordering, including mode1 and later allocation failure. Special human frame0 entry activates immediately before zones/64, without allocating49. The normal UI exposes initial selection and actual selector5 center routing, including mutual allies, with source landing admission. There is no generic active unassociated resupply control. Nine host regressions cover complete queued/initial replay, pending-input saves, cancellation, special entry, source ordering and late rollback. The existing automatic early-campaign picker is preserved.
 
-The complete selector64 marker/generic51 feedback and parameter1/associated49 family is bound, including real shared smoke/departure allocation, source-returned inactive identities, player references and exact activation→nine-cell75240 order. Private comparisons match364 human caller/access cases,228 effect cases,144 whole49 callbacks and64 full-map site cases with their documented ports/exclusions; no original executable runs. Water contact in the established vertical49 model remains explicit. The new privateced8fd7f pack(31,804,814 bytes) adds only the hash-admitted associated offset and landing-site profile; every earlier decoded field remains deeply equal tob8872317. The latest verified HTML below uses this pack; earlier packs and immutable campaign graphs remain preserved. See the human roster and recruitment-effect mechanic documents for exact scope.
+The complete selector64 marker/generic51 feedback and parameter1/associated49 family is bound, including real shared smoke/departure allocation, source-returned inactive identities, player references and exact activationâ†’nine-cell75240 order. Private comparisons match364 human caller/access cases,228 effect cases,144 whole49 callbacks and64 full-map site cases with their documented ports/exclusions; no original executable runs. Water contact in the established vertical49 model remains explicit. The new privateced8fd7f pack(31,804,814 bytes) adds only the hash-admitted associated offset and landing-site profile; every earlier decoded field remains deeply equal tob8872317. The latest verified HTML below uses this pack; earlier packs and immutable campaign graphs remain preserved. See the human roster and recruitment-effect mechanic documents for exact scope.
 
 Selector5 Recruitment Center now has its actual owner/slot callback, one upkeep/ANB pass, real7F480 automatic associated landing, native constructor and complete two-site Engineer construction. The full74E80 discriminator5 checks the additional3x3 pad;507D0 retains its source100 main-only admission. Source75240 pad preparation, both terrain jobs, cancellation, payment,44 appearance and completion run through existing services. Ordinary host tests retain a live second-job save and replay the full build, then separately exercise actual associated human selection/landing and automatic7F480 without an80830 actor-reset prefix. Private core comparisons match432 cases/258,541 interpreted instructions. The destruction family matches15 whole damage/44380/724C0 cases and16 full-map2/3 footprint cases. Its unusual original-point3x3 SET after the main clear is preserved, including the literal-1 row-pointer sentinel and active/inactive landing references. Neighboring-pool terrain writes remain an explicit atomic guard. The new source family is verified by the full suite and included in the latest browser artifact below.
 
@@ -211,13 +213,13 @@ Human Mule input now binds the actual27AE0/6A760 classifier, packet17/81D30 targ
 
 Recent completed checks: **1564 TypeScript tests across142 suites,109 Python cases (three private-only skips), strict TypeScript and leak/license checks pass.** The complete human, Recruitment Center, Mule material, processor collector and immediate plant lifecycle families pass, including preserved role-command, economy, strategic-state and verification suites. Existing checks cover actual Geneticist pending movement/replay, child20 capture/shared scheduling, injury/death/ANB9 corpse69, persistent blueprint deletion, Botanist lifecycle/economy, hostile specialist/building encounters and Ethereal abduction. The ordinary synthetic host also verifies lifting across next-frame synchronization/save/load, retirement without death counters and projectile aim from the current visitor pose. A retained visitor afterimage shares the canonical record during destructive calls, so recursive reference cleanup survives callback publication. Source feeding-target validation runs every odd callback, while only damage uses the16-tick cadence; dangling inactive links still reject. Botanist empty-area/full-storage/missing-sample feedback produces explicit reasons and alerts. Bounded source comparisons cover destruction, plant ignition, collapse, specialist motion/lifecycle/abduction, Geneticist projectiles, attack25, Botanist work, Engineer534D0/commands and opponent entry. Those proofs do not transfer the old Rust campaign acceptance.
 
-The expanded normal campaign UI passed mouse1440×900, landscape touch915×412 and portrait touch412×915 through actual construction, result, carried Krell entry, Geneticist and Botanist controls, generated replay import and restart on artifact`1d406d68…`; desktop and portrait screenshot review passes. Each export payload was validated, but managed Chrome also cancels a minimal asset-free Blob download. Downloads remain explicitly unverified; the test records cancellation and captures the actual UI-generated JSON. No HTTP requests or renderer errors occurred. The ordered-building economy artifact passes the complete route, private/synthetic offline smoke and desktop/portrait screenshot review.
+The expanded normal campaign UI passed mouse1440Ã—900, landscape touch915Ã—412 and portrait touch412Ã—915 through actual construction, result, carried Krell entry, Geneticist and Botanist controls, generated replay import and restart on artifact`1d406d68â€¦`; desktop and portrait screenshot review passes. Each export payload was validated, but managed Chrome also cancels a minimal asset-free Blob download. Downloads remain explicitly unverified; the test records cancellation and captures the actual UI-generated JSON. No HTTP requests or renderer errors occurred. The ordered-building economy artifact passes the complete route, private/synthetic offline smoke and desktop/portrait screenshot review.
 
-Latest verified private HTML: **43,858,200 bytes**, SHA-256 `a3e2799f1e82247559355b657fbb12aaf7d399dcf3b2d6771d963da213ab0a1d`, built from clean checkpoint `fa6afc9f18cd8a64897eec6614d91292eaaa303f` with the ced8fd7f pack. Five private suites pass at1440×900,915×412 and412×915: offline smoke, normal construction/save-load/result/carryKrell/Geneticist/Botanist/generated-replay-import/restart, manual initial recruitment, associated Recruitment Center recruitment/save-load/landing, and human Mule material collection/save-load/retirement/GOOP/Stop. The processor collector route also passes all three viewports, including movement, carrier67 save/load and delivery; the separate synthetic smoke passes all three. Seven suites/twenty-one main viewport runs and six additional collector zoom/save-load cases pass, with33 fresh captures reviewed by root. No page, console, renderer or network errors occurred in the selected successful runs. An initial construction/result wait timed out without preserving its full failed world. That failure remains pinned; a separate diagnostic reached the original victory predicate, and a fresh full run passed all three viewports with stronger per-building count assertions and failure-state capture. No source, timeout or simulation guard was changed to obtain the successful run; the initial cause is not claimed resolved.
+Latest verified private HTML: **43,858,200 bytes**, SHA-256 `a3e2799f1e82247559355b657fbb12aaf7d399dcf3b2d6771d963da213ab0a1d`, built from clean checkpoint `fa6afc9f18cd8a64897eec6614d91292eaaa303f` with the ced8fd7f pack. Five private suites pass at1440Ã—900,915Ã—412 and412Ã—915: offline smoke, normal construction/save-load/result/carryKrell/Geneticist/Botanist/generated-replay-import/restart, manual initial recruitment, associated Recruitment Center recruitment/save-load/landing, and human Mule material collection/save-load/retirement/GOOP/Stop. The processor collector route also passes all three viewports, including movement, carrier67 save/load and delivery; the separate synthetic smoke passes all three. Seven suites/twenty-one main viewport runs and six additional collector zoom/save-load cases pass, with33 fresh captures reviewed by root. No page, console, renderer or network errors occurred in the selected successful runs. An initial construction/result wait timed out without preserving its full failed world. That failure remains pinned; a separate diagnostic reached the original victory predicate, and a fresh full run passed all three viewports with stronger per-building count assertions and failure-state capture. No source, timeout or simulation guard was changed to obtain the successful run; the initial cause is not claimed resolved.
 
 The manual route uses its disclosed progress4 mission1 fixture; selection freezes native frame/RNG, saves both choices and lands both. The center route retains its prebuilt/powered progress3 fixture and naturally level site. The material route uses an explicitly arranged fresh mission3 entry with unchanged fresh-carry progress0, the five actual serialized source buildings and ordinary ongoing power. Real factories create the hauler and a neutral Mule; actual fatal damage and ordinary settling create its corpse. No later power/resource/ANB writes occur. Collection carries at500, drops532, retires/unlinks533 and credits98GOOP599; carrying save/load and Stop600 pass. Actual AI slot reuse560 is recorded separately from retirement. Exact earlier fixture saves verify their original checksums before the proven empty collector root is added; every other original field and RNG is retained. Bounded UI observations are checked on this artifact; no earlier whole-world checksum is relabeled as a new-runtime result.
 
-The separate collector fixture retains its disclosed one-time native construction grant and grade2/max-health Pulper, with two actual grade0 Photons and a Distributor. Real33 power packets support movement769, carrier67 pickup872 and stock0→6 delivery1022. Its exact prior entry save passes the original checksum before a zero-change new-runtime load; no migration or reconstruction occurs. The complete current preflight replay matches276a3059, and all six browser world checksums match the current frozen graph. Actual raw4AD callback changes make these world hashes distinct from the priorb730966d run; all18 fresh image hashes happen to remain equal. Camera-only zoom/pan and UI save/load leave gameplay unchanged. Small original collector art blends with terrain/plants; capture review does not independently establish exact animation fidelity. Earlier setup/assertion failures remain preserved and excluded from successful route totals.
+The separate collector fixture retains its disclosed one-time native construction grant and grade2/max-health Pulper, with two actual grade0 Photons and a Distributor. Real33 power packets support movement769, carrier67 pickup872 and stock0â†’6 delivery1022. Its exact prior entry save passes the original checksum before a zero-change new-runtime load; no migration or reconstruction occurs. The complete current preflight replay matches276a3059, and all six browser world checksums match the current frozen graph. Actual raw4AD callback changes make these world hashes distinct from the priorb730966d run; all18 fresh image hashes happen to remain equal. Camera-only zoom/pan and UI save/load leave gameplay unchanged. Small original collector art blends with terrain/plants; capture review does not independently establish exact animation fidelity. Earlier setup/assertion failures remain preserved and excluded from successful route totals.
 
 The fresh material route additionally records normal post-delivery movement before Stop: the hauler moves from its retirement point while the actual98 GOOP credit still occurs at599, and the ordinary Stop clears its task at600. Exact current observations are sealed separately; no prior whole-world checksum is claimed on the corrected runtime.
 
@@ -235,7 +237,7 @@ An explicit cross-runtime regression starts from the unchanged valid old Krell f
 
 Converted-runtime profiling identified repeated transaction copies as the dominant local cost. Typed spatial, economy, effect-pool, specialist-pool and campaign-root copies preserve mutable isolation and actor/builder aliases; ordinary Mule relocation now stages mutable host roots instead of the entire immutable mission input. The public default transaction remains available. Isolation, alias, late-failure and save/replay tests pass. Frozen runtimes on identical valid inputs produce deeply equal complete states through Exceland400 and Krell450, including own undefined fields. Local Node timings improve from20.82 to8.87ms per tick for Exceland and30.59 to12.36ms for Krell. These concurrent-load diagnostics are not browser or physical-phone measurements.
 
-Construction and craters share the original25×176 job pool, first-free capacity and one ascending79220 pass. Native Engineer task0 stages0..5 now own actual travel, terrain work, reservation/release, payment, placement, contribution and source departure inside one common6FB60/7AC00 envelope. Current native task/job bytes are authoritative; legacy normalized builder tasks no longer drive category0. Existing-building repair, sabotage and grade0..2 upgrade work are bound; selector12 double effects, remaining construction selectors and conditional441C0 active-UI audio remain separate unfinished families. A missing empty collapse pool can migrate only from proven inactive retained priors. Nested staged services preserve rollback and held identities. Shared factories/retirements update saved3554 immediately. Hurt/death speech uses imported SPE samples and source policy/allocation in the browser; device outcomes never enter gameplay.41780 caps, original service polling latency, subtitle mapping and total order across numeric/speech journals remain unresolved. Physical Galaxy S21 Ultra testing/performance is unattempted; emulated viewports are not a device pass. Continue through Krell and all remaining missions. This checkpoint is not a closeout.
+Construction and craters share the original25Ã—176 job pool, first-free capacity and one ascending79220 pass. Native Engineer task0 stages0..5 now own actual travel, terrain work, reservation/release, payment, placement, contribution and source departure inside one common6FB60/7AC00 envelope. Current native task/job bytes are authoritative; legacy normalized builder tasks no longer drive category0. Existing-building repair, sabotage and grade0..2 upgrade work are bound; selector12 double effects, remaining construction selectors and conditional441C0 active-UI audio remain separate unfinished families. A missing empty collapse pool can migrate only from proven inactive retained priors. Nested staged services preserve rollback and held identities. Shared factories/retirements update saved3554 immediately. Hurt/death speech uses imported SPE samples and source policy/allocation in the browser; device outcomes never enter gameplay.41780 caps, original service polling latency, subtitle mapping and total order across numeric/speech journals remain unresolved. Physical Galaxy S21 Ultra testing/performance is unattempted; emulated viewports are not a device pass. Continue through Krell and all remaining missions. This checkpoint is not a closeout.
 
 ## Archived starting baseline (superseded by the active status above)
 
@@ -254,7 +256,7 @@ Construction and craters share the original25×176 job pool, first-free capacity
 
 ## Fresh checks
 
-Strict TypeScript, 18 TS tests and nine Python tests comprise the final check suite (results in `.private/verification.json`). Local leak/license scan passed. Synthetic and private offline Chromium checks passed at 1440×900, 915×412 and 412×915. Browser screenshot review caught/fixed an obscuring minimap bug. Browser construction tests exercise mouse and touch through the workbench to its predicate and open Krell for inspection. Private conformance passed 123 RNC hashes, 60 indexed8 resources / 2,983 sprite records, 24 mission pairs and 393,216 map cells; one compound RNC resource is explicitly skipped. The local evidence reports, exact latest artifact hashes and final rerun results are in ignored `.private/` and `dist/*.receipt.json`; no final campaign or real-phone pass is asserted here.
+Strict TypeScript, 18 TS tests and nine Python tests comprise the final check suite (results in `.private/verification.json`). Local leak/license scan passed. Synthetic and private offline Chromium checks passed at 1440Ã—900, 915Ã—412 and 412Ã—915. Browser screenshot review caught/fixed an obscuring minimap bug. Browser construction tests exercise mouse and touch through the workbench to its predicate and open Krell for inspection. Private conformance passed 123 RNC hashes, 60 indexed8 resources / 2,983 sprite records, 24 mission pairs and 393,216 map cells; one compound RNC resource is explicitly skipped. The local evidence reports, exact latest artifact hashes and final rerun results are in ignored `.private/` and `dist/*.receipt.json`; no final campaign or real-phone pass is asserted here.
 
 ## Important implementation limits
 
@@ -273,7 +275,7 @@ carried campaign save rather than inferred:
   zero owned mules at frame 600; every mule on the map (9, rising to 12) belongs to the
   neutral owner. All 42 plants are neutral too, so edible food exists but nothing eats it.
   The workforce has to be created.
-- **"Produce Mule · 75 total" works from the default view.** Clicking it queues the order
+- **"Produce Mule Â· 75 total" works from the default view.** Clicking it queues the order
   ("Mule production order queued") and 800 ticks later the player owns one mule with funds
   800 -> 725. This is the entry point for every later economy step.
 - **Extractors need power, not just resource.** Extractor 1064 at cell (79,65) sits on a
@@ -430,7 +432,7 @@ exactly equal to its world position (19456, 23552), and `stepStagedRecyclingPlan
 
 `clearDestroyedFootprint` computes `shift = footprint === 1 ? 0 : -1`, so a footprint-2 building
 occupies `(cx-1..cx, cy-1..cy)`: the stored position is the **south-east corner**. The occupancy
-grid (`terrain.bytes[cell*14+11] & 1`) confirms it — cells (75,91), (76,91), (75,92), (76,92) are
+grid (`terrain.bytes[cell*14+11] & 1`) confirms it â€” cells (75,91), (76,91), (75,92), (76,92) are
 marked for that building, and (78..80, 89..90) for the distributor at (79,90).
 
 Therefore **the processing cell (75,92) is one of the building's own four cells**. Consequences,
@@ -441,8 +443,8 @@ all observed:
 - Map taps there are swallowed by the building's screen footprint, so the Botanist cannot even be
   walked onto it (a tap 4 cells away reports "Move order queued" and moves her; the front-cell tap
   dispatches nothing).
-- The pack value is genuinely `[-256,0]` — decompressing `.private/imported-ai-host-priors/
-  genewars.gpwpack` shows `"buildingRules":{"processingFrontOffset":[-256,0],...}` — so the port is
+- The pack value is genuinely `[-256,0]` â€” decompressing `.private/imported-ai-host-priors/
+  genewars.gpwpack` shows `"buildingRules":{"processingFrontOffset":[-256,0],...}` â€” so the port is
   faithful here and the original must have **built the recycler over vegetation and eaten it**.
 
 This contradicts `engineer-adapter.ts:544-552`, which passes `sitePlantBlocked` as the `occupied`
@@ -457,7 +459,7 @@ under the building. `engineer-adapter.ts` now passes `() => false` as the classi
 `occupied` callback; building-blocking still comes from the terrain occupancy bit.
 
 Verified end to end: a Recycling Plant ordered at (70,104) with an owned plant already at (69,104)
-— its processing cell — was accepted and **charged 238** (funds 800 -> 562), where the same class
+â€” its processing cell â€” was accepted and **charged 238** (funds 800 -> 562), where the same class
 of site previously reported "Construction order queued" and silently dropped. Full suite still
 passes (154 files, 1,651 tests) and `tsc --noEmit` is clean; artifact rebuilt as `b9731fda...`.
 
@@ -473,7 +475,7 @@ After `98580ef`, a Recycling Plant ordered on a cell holding an owned plant is a
 **charged 238** (funds 800 -> 562) in three consecutive runs. The remaining failures are not the
 construction gate:
 
-- **Tap-to-placement offset.** Tapping cell (64,103) produced a building at **(64,101)** — two
+- **Tap-to-placement offset.** Tapping cell (64,103) produced a building at **(64,101)** â€” two
   cells north. The tap is projected on flat ground, so elevated terrain near the base shifts the
   raycast. Always identify the new building by diffing `w.buildings` before pairing it with a
   plant; never assume `placed === tapped`.
@@ -492,10 +494,10 @@ target cell on flat ground so the tap lands where projected.
 
 First observed deposit on Madami. One run, start save, real touch input only:
 
-- First Stage Distributor at (79,90) — charged **338** (funds 800 -> 462), reads energy 570.
+- First Stage Distributor at (79,90) â€” charged **338** (funds 800 -> 462), reads energy 570.
 - Botanist walked to (76,88); four plant rounds produced five owned plants.
 - Recycling Plant tapped at (75,88), one cell east of the plant at (74,88) which became its
-  processing cell — charged **238** (462 -> 224).
+  processing cell â€” charged **238** (462 -> 224).
 - The new building resolved exactly where tapped (no offset in this region) and read
   `energy: 182` on completion, `166` a few hundred ticks later.
 - Plant count dropped and **`goop` went 0 -> 14** within 400 ticks.
@@ -504,14 +506,14 @@ The 14 is a real deposit, not biomass drift: earlier powered recyclers with plan
 the map held `goop: 0` for thousands of ticks across five separate runs.
 
 Open detail: `funds` stayed 224 rather than gaining the documented +20 credit. Either the credit
-lands elsewhere or the adapter's mirror of `raw 0x4a3` misses it — check before relying on
+lands elsewhere or the adapter's mirror of `raw 0x4a3` misses it â€” check before relying on
 recycling for income.
 
 ### The working recipe
 
 1. Build a First Stage Distributor on open ground (79,90 is proven; 338).
 2. Walk the Botanist to open ground inside its radius and plant until an owned plant exists.
-3. Tap the cell **one east** of that plant — the plant lands under the new footprint and becomes
+3. Tap the cell **one east** of that plant â€” the plant lands under the new footprint and becomes
    the processing cell. Build cost 238.
 4. Confirm `energy > 0` on completion, then `goop` rises as plants are eaten.
 
@@ -528,7 +530,7 @@ Sampled at 50-tick resolution inside the construction window of a successful run
 So the deposit fires correctly but adds no money. That is faithful, not a defect: the deposit's
 `credit(owner, 20)` calls 80780, which `planBotanistEconomy` implements
 (`docs/mechanics/BOTANIST.md:65`) and which writes the player's botanist economy counters
-(`raw+13`, clamped `raw+17`) — while funds live at `raw 0x4a3` (`world.ts:1517`) and only change
+(`raw+13`, clamped `raw+17`) â€” while funds live at `raw 0x4a3` (`world.ts:1517`) and only change
 through construction debit, demolition refund and ethereal events. `BUILDING_STARTUP.md:52`
 likewise says a deposit requires 80780. Do not "fix" this by redirecting the credit into funds.
 
@@ -536,7 +538,7 @@ likewise says a deposit requires 80780. Do not "fix" this by redirecting the cre
 
 Funds start at 800 and recycling does not replace them, so build order matters:
 
-- distributor 338 + recycler 238 = 576, leaving 224 — that is the run above.
+- distributor 338 + recycler 238 = 576, leaving 224 â€” that is the run above.
 - capacity is 400 per grade-0 recycler, 600 per extractor, 500 per grade-0 store (selector 13).
 - reaching capacity 1,400 from the carried 400 needs ~two stores (300 each) rather than two more
   recyclers that cannot be afforded.
@@ -555,7 +557,7 @@ up.
 
 That makes a recycler a **single-use** machine as the port stands: one plant in, ~14 goop out. With
 1,400 GOOP required and capacity at 400 per recycler (extractors 600, and stores are not in the
-build menu at all — `NAMES` in `campaign.ts:41` lists only 0-6 and 11), the objective is not
+build menu at all â€” `NAMES` in `campaign.ts:41` lists only 0-6 and 11), the objective is not
 reachable this way.
 
 The unresolved question is therefore the one the handoff flagged: **how material legally reaches a
@@ -576,7 +578,7 @@ from overlapping.
 
 Direct test against a working recycler at (75,88), whose processing cell is (74,88):
 
-- the terrain occupancy bit at (74,88) reads **1** — the cell is building ground
+- the terrain occupancy bit at (74,88) reads **1** â€” the cell is building ground
 - the Botanist was walked to (73,89) and even onto (74,88); six "Plant selected type nearby"
   orders all succeeded and none placed a plant on the processing cell (`onFront` false every round)
 - `goop` stayed at **14** through all six rounds while `energy` climbed 156 -> 186
@@ -584,7 +586,7 @@ Direct test against a working recycler at (75,88), whose processing cell is (74,
 This matches the evidence rather than contradicting it: `OWNED_PLANT_REPRODUCTION.md` says
 reproduction retains the original "target-cell checks", and `reproduce` refuses a cell whose
 occupancy bit is set. So no vegetation can be re-established where a recycler can reach, and a
-recycler converts exactly the plant it was built over — one deposit each.
+recycler converts exactly the plant it was built over â€” one deposit each.
 
 **Consequence for Madami.** Recycling is a one-shot bonus, not an income stream, so the 1,400 GOOP
 objective cannot be met by stacking recyclers. The replenishable source is the **Extractor**
@@ -605,9 +607,9 @@ Starting from the saved segment `.private/browser-campaign/madami-recycler.json`
 funds 224, capacity 800, two powered recyclers at (67,106) energy 177 and (76,92) energy 173,
 three distributors, one Genepod, 32 plants, no owned Mule):
 
-1. "Produce Mule · 75 total" queued (`Mule production order queued`), funds 224 -> **149**, an owned
+1. "Produce Mule Â· 75 total" queued (`Mule production order queued`), funds 224 -> **149**, an owned
    Mule appears within ~900 ticks.
-2. Clicking the Mule row (`Mule 1 · health 67/67`) then "Collect material" queued
+2. Clicking the Mule row (`Mule 1 Â· health 67/67`) then "Collect material" queued
    `Mule collection order queued`.
 3. Over the next ~500 ticks the Mule's carried byte went null -> 192 -> 108 -> 92 and **goop rose
    0 -> 26** at frame 8356, with funds unchanged at 149 and recycler energy climbing 171 -> 195.
@@ -705,8 +707,8 @@ recycler at (67,106) at energy 196, 46 plants):
 - the Botanist walked to (62,105) as ordered and four plant rounds left plants including (64,105)
   and (66,104)
 - the best candidate was a plant at (64,105) with a free east cell (65,105), **4.1 cells** from the
-  distributor — comfortably inside the ~5-cell power radius
-- tapping (65,105) with "Recycling Plant · 238" armed reported "Construction order queued", then
+  distributor â€” comfortably inside the ~5-cell power radius
+- tapping (65,105) with "Recycling Plant Â· 238" armed reported "Construction order queued", then
   **funds stayed 800** and no building appeared, twice
 
 So the site is rejected on terrain/occupancy, not on power. Every buildable site found so far is
@@ -714,7 +716,7 @@ far from existing distributors ((70,104), (75,88), (76,92)), and every site near
 That is why a new distributor (338) keeps being needed, and why the 714-funds-for-three-recyclers
 plan does not work as written.
 
-Also fixed a probe bug worth remembering: **plants expose `position`, not `native[7]/[9]`** — reading
+Also fixed a probe bug worth remembering: **plants expose `position`, not `native[7]/[9]`** â€” reading
 native coordinates gave cells like (1,0) and produced a false NO_CANDIDATE. Mules do use
 `native[7]/[9]`.
 
@@ -822,7 +824,7 @@ Two decisive results from `madami-goop3.json` (goop 326, funds 11, capacity 1600
 ### Goop pays for construction (`engineer-construction.ts:899-924`)
 
 `pay()` is a **two-pool debit**: it spends funds first, then drains goop for the remainder. That is
-live in the player UI, not just the AI path - ordering "Produce Mule · 75" spent exactly 11 funds +
+live in the player UI, not just the AI path - ordering "Produce Mule Â· 75" spent exactly 11 funds +
 64 goop (326 -> 262) and produced a Mule. A second Mule cost 75 more goop (funds already 0).
 
 So goop is a currency and the mission is not funds-starved: 326 goop buys four Mules. Consequence
@@ -1015,7 +1017,7 @@ Confirmed in the UI from `mission4-start.json`:
 - **"Deploy specialists"** moves `phase: "briefing"` -> `"active"` and the frame starts advancing.
 - **"Show zone 2"** is a real control and returns a button label, so the camera affordance exists.
 
-What failed: ordering the Botanist into the zone. Selection worked (`Matt · Botanist · skill 28`),
+What failed: ordering the Botanist into the zone. Selection worked (`Matt Â· Botanist Â· skill 28`),
 but three taps on the projected zone centre produced **no notice at all**, and after 4,700 ticks the
 specialists had not moved (0 stayed near (42,70), 1 at (42,71)) while stored score stayed **0**.
 
@@ -1095,7 +1097,7 @@ pod completed at (34,63). That is the reliable recipe - choose by projection, ne
 
 Then:
 
-- "Produce Mule · 75" worked once (1062 -> 987) and put a Mule at (34,65). A second order did not
+- "Produce Mule Â· 75" worked once (1062 -> 987) and put a Mule at (34,65). A second order did not
   dispatch in the same window.
 - **Zone 2 keeps scoring by itself**: 343 -> 361 across the run with no new planting, so the plants
   already inside keep depleting that quota. No further planting is needed until it plateaus.
@@ -1103,7 +1105,7 @@ Then:
 
 Two UI obstacles found, both procedural:
 
-1. `Mule N · health` rows do not exist unless the **Units** tab is open - the row lookup returned
+1. `Mule N Â· health` rows do not exist unless the **Units** tab is open - the row lookup returned
    null, so no herding order was ever issued.
 2. **"Show zone 1" did not recentre the camera onto a tappable cell**: after clicking it,
    `project(59,64)` returned y = **713**, far below the 61..378 canvas band. So the zone buttons are
