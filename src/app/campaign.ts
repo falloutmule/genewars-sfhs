@@ -101,7 +101,7 @@ export async function openCampaign(
   const renderErrors: string[] = [];
   const buildMeta = JSON.parse(
     document.querySelector("#gw-build-meta")?.textContent ?? "null",
-  ) as { commit: string | null; dirty: boolean } | null;
+  ) as { commit: string | null; dirty: boolean; acceptedMissions?: number } | null;
   const node = (id: string) => app.querySelector<HTMLElement>("#" + id)!;
   const say = (message: string) => {
     const p = app.querySelector("#campaign-notice");
