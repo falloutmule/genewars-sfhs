@@ -1,3 +1,5 @@
+import {speciesFixture} from "./fixtures/creature-species";
+import {creatureCombatTraits,creatureColdResponse} from "../src/sim/mechanics/creature-species";
 import { describe, expect, it } from "vitest";
 import {
   stepNeutralMule,
@@ -370,4 +372,11 @@ describe("source-backed neutral Mule lifecycle", () => {
     expect(f.rng.draws).toBe(16855);
     expect(bindings).toBeGreaterThan(2);
   });
+});
+
+describe("neutral Crab callback family",()=>{
+  function crab(){const f=fixture(),species=speciesFixture();f.context.rules.speciesTraits=species.rules.speciesTraits;f.context.rules.attackChannels=species.rules.attackChannels;f.context.speciesComponents=species.components;f.context.combat=creatureCombatTraits(f.context.rules,species.components,1);f.context.coldResponse=creatureColdResponse(species.components,1);f.state.mules[0].native[122]=1;return f;}
+  it("runs both callback phases with actual Crab coefficients and opaque pointers",()=>{const f=crab();for(let frame=0;frame<30;frame++){f.context.frame=frame;const r=stepNeutralMule(f.state,0,f.rng,f.context);expect(r.reason,`frame${frame}`).toBeNull();}expect(f.state.mules[0].native.slice(31,39)).toEqual(Array(8).fill(null));expect(f.state.mules[0].native[122]).toBe(1);});
+  it("rolls back state, terrain and RNG if non-Mule component evidence is absent",()=>{const f=crab();delete f.context.speciesComponents;const before=structuredClone({state:f.state,rng:f.rng,terrain:f.context.terrain});const r=stepNeutralMule(f.state,0,f.rng,f.context);expect(r.committed).toBe(false);expect(r.reason).toMatch(/component/);expect({state:f.state,rng:f.rng,terrain:f.context.terrain}).toEqual(before);});
+  it("keeps distinct unsupported species abilities fail closed",()=>{const f=crab();f.state.mules[0].native[122]=3;const before=structuredClone({state:f.state,rng:f.rng});expect(stepNeutralMule(f.state,0,f.rng,f.context).committed).toBe(false);expect({state:f.state,rng:f.rng}).toEqual(before);});
 });

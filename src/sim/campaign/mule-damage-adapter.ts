@@ -1,3 +1,4 @@
+import {creatureAsset,creatureCombatTraits,creatureColdResponse} from "../mechanics/creature-species";
 import type { Pack } from "../../content/types";
 import type { CampaignWorld } from "./world";
 import {
@@ -125,9 +126,12 @@ export function campaignAirborneBuilding(
 export function campaignMuleDamageContext(
   w: CampaignWorld,
   pack: Pack,
+  index?: number,
 ): MuleContext {
   if (!pack.rules || !pack.ecologyRules)
     throw new Error("Original Mule damage rules missing");
+  const species=index===undefined?4:w.creatureNative[index][122]!,
+    art=species===4?"MULE":creatureAsset(pack.zoneRules?.speciesComponents,species,pack.assets);
   return {
     terrain: w.terrain,
     tables: pack.rules.tables,
@@ -137,8 +141,9 @@ export function campaignMuleDamageContext(
     water: w.source.source.terrain.loadedPhysicalWaterHeight,
     climate: w.source.source.terrain.climate,
     bounce: pack.rules.tables.bounce,
-    combat: pack.ecologyRules.muleCombat,
-    coldResponse: pack.ecologyRules.muleCold,
+    combat: species===4?pack.ecologyRules.muleCombat:creatureCombatTraits(pack.ecologyRules,pack.zoneRules?.speciesComponents,species),
+    speciesComponents: pack.zoneRules?.speciesComponents,
+    coldResponse: species===4?pack.ecologyRules.muleCold:creatureColdResponse(pack.zoneRules?.speciesComponents,species),
     material: makeCampaignMuleMaterialServices(pack,(state,terrain,rng)=>{
       if (state !== w.ecology || terrain !== w.terrain || rng !== w.rng)
         throw Error("Mule damage material release must use the isolated current host");
@@ -153,7 +158,7 @@ export function campaignMuleDamageContext(
       },
       cleanupReferences:cleanupCampaignReferences,
     }),
-    profile: (action) => animationProfile(pack.assets.MULE, action),
+    profile: (action) => animationProfile(pack.assets[art], action),
     bonesProfile: (action) => animationProfile(pack.assets.BONES, action),
     obstacleAt: (p) => campaignAirborneBuilding(w, pack, p, -1) !== null,
     airborneObstacle: (p, height) =>
@@ -289,7 +294,7 @@ export function damageCampaignMule(
     amount,
     source,
     w.rng,
-    campaignMuleDamageContext(w, pack),
+    campaignMuleDamageContext(w, pack,index),
   );
   consumeCampaignMuleDamageEvents(w, events);
   return events;
@@ -306,7 +311,7 @@ export function captureCampaignMule(
     index,
     effect,
     w.rng,
-    campaignMuleDamageContext(w, pack),
+    campaignMuleDamageContext(w, pack,index),
     request,
   );
   consumeCampaignMuleDamageEvents(w, events);

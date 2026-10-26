@@ -1,3 +1,4 @@
+import {creatureAsset} from "../sim/mechanics/creature-species";
 import type { Pack, Mission } from "../content/types";
 import { Stage, type SceneEntity } from "../render/stage";
 import { campaignBuildingAsset } from "../sim/campaign/building-startup-adapter";
@@ -1014,7 +1015,7 @@ export async function openCampaign(
       const n = mule.native;
       if (n[6] === 0 || !pack.assets.MULE) continue;
       const state = n[0x5e] ?? 0,
-        art = state >= 26 ? "BONES" : "MULE",
+        art = state >= 26 ? "BONES" : n[122]===4?"MULE":creatureAsset(pack.zoneRules?.speciesComponents,n[122],pack.assets),
         action = n[25] ?? 0,
         profile = animationProfile(pack.assets[art], action);
       const packedContext = {
@@ -1028,8 +1029,12 @@ export async function openCampaign(
         globalShadowMode: 0,
         clipFlagBit0: false,
       };
-      entities.push({
-        id: mule.id,
+      const frame=profile.first + Math.min(n[27] ?? 0, profile.holds.length - 1),
+        parts=pack.assets[art].frames?.[frame]?.components.length ?? 0;
+      if (!parts) throw Error("Actual creature frame components required");
+      for(let component=0;component<parts;component++) entities.push({
+        id: component===0?mule.id:`${mule.id}:component:${component}`,
+        component,
         x: ((n[7] ?? 0) | ((n[8] ?? 0) << 8)) / 256,
         y: ((n[9] ?? 0) | ((n[10] ?? 0) << 8)) / 256,
         art,
@@ -1046,8 +1051,8 @@ export async function openCampaign(
                 renderCounter7B: n[0x7b]!,
               },
             }),
-        selected: selected.has(2000 + mule.index),
-        frame: profile.first + Math.min(n[27] ?? 0, profile.holds.length - 1),
+        selected: component===0 && selected.has(2000 + mule.index),
+        frame,
       });
     }
     for (const l of w.landings) {

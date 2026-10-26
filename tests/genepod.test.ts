@@ -1,6 +1,8 @@
+import {speciesFixture} from "./fixtures/creature-species";
 import { describe, expect, it } from "vitest";
 import {
   captureGenepodInput,
+  initializeMuleNative,
   createGenepodMule,
   initializeCompletedGenepod,
   readyGenepodPanel,
@@ -538,5 +540,16 @@ describe("Genepod work and complete terminal continuation", () => {
         mismatch,
       ),
     ).toEqual({ ok: false, reason: "genepod-pool-count-mismatch" });
+  });
+});
+
+describe("shared natural creature factory",()=>{
+  it("creates the selected hybrid while preserving its unlike parent and inactive prior",()=>{
+    const prior=native(124,85),parent=native(124),{rules,components}=speciesFixture(),rng={seed:5428,draws:0,ring:0};parent[6]=1;parent[122]=4;parent[120]=7;const before=structuredClone({prior,parent,rng});
+    const result=value(initializeMuleNative(prior,rng,{slot:3,owner:4,position:[8192,8192],quality:127,parent,species:11},{...context(),rules,speciesComponents:components}));
+    expect(result.native[83]).toBe(0);expect(result.native[122]).toBe(11);expect(result.native[118]).toBe(127);expect(result.native[120]).toBe(7);expect(word(result.native,43)).toBe(41);expect(result.native.slice(31,39)).toEqual(Array(8).fill(null));expect({prior,parent,rng}).toEqual(before);expect(result.rng.draws).toBe(3);
+  });
+  it("refuses a non-Mule factory without its source trait row",()=>{
+    const result=initializeMuleNative(native(124),{seed:5428,draws:0,ring:0},{slot:0,owner:4,position:[8192,8192],quality:50,species:1},context());expect(result).toEqual({ok:false,reason:"actual-species-factory-rules-required"});
   });
 });

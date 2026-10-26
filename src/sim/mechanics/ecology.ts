@@ -3,6 +3,7 @@ import type {
   SourceEntityId,
 } from "../campaign/source-pools";
 import { nextRandom, type GeneRng } from "./random";
+import { creatureParameters } from "./creature-species";
 import {
   cellIndex,
   groundHeight,
@@ -754,7 +755,7 @@ export function muleRequestedSpeed(
 ): number {
   const n = mule.native;
   return (
-    (Math.trunc((rules.mule.baseSpeed * muleSkillPercent(n[0x76]!, 75)) / 100) *
+    (Math.trunc((creatureParameters(rules, n[0x7a]).baseSpeed * muleSkillPercent(n[0x76]!, 75)) / 100) *
       (n[0x7b]! + 1)) >>
     8
   );
@@ -766,16 +767,17 @@ export function muleLifecycleTail(
   rules: EcologyRules,
 ): void {
   const n = mule.native,
+    parameters = creatureParameters(rules, n[0x7a]),
     energy = i16(word(n, 0x66) - 1),
     percent = muleSkillPercent(n[0x76]!, 30),
-    life = Math.trunc((rules.mule.lifetimeScale * percent) / 100),
+    life = Math.trunc((parameters.lifetimeScale * percent) / 100),
     reserve = life >> 3,
     threshold = life - reserve;
   put(n, 0x66, energy);
   if (energy <= threshold) {
     n[0x77] = 255;
     const stage =
-      Math.trunc((energy - reserve) / Math.trunc(threshold / 3)) + 1;
+      Math.trunc((energy - reserve) / Math.trunc(threshold / parameters.stages)) + 1;
     if (stage !== Math.abs((n[0x79]! << 24) >> 24)) n[0x79] = stage & 255;
   } else {
     const hunger =
@@ -785,7 +787,7 @@ export function muleLifecycleTail(
       n,
       0x62,
       ((Math.trunc(
-        (rules.mule.reserveScale * muleSkillPercent(n[0x76]!, 40)) / 100,
+        (parameters.reserveScale * muleSkillPercent(n[0x76]!, 40)) / 100,
       ) *
         (hunger + 1)) >>
         8) +
@@ -794,7 +796,7 @@ export function muleLifecycleTail(
     put(
       n,
       0x64,
-      ((Math.trunc((rules.mule.healthScale * percent) / 100) * (hunger + 1)) >>
+      ((Math.trunc((parameters.healthScale * percent) / 100) * (hunger + 1)) >>
         8) +
         16,
     );

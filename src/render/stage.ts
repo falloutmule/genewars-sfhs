@@ -44,6 +44,8 @@ export interface SceneEntity {
   height?: number;
   art: string;
   frame: number;
+  /** Single original ANB component for independently phased packed4 draws. */
+  component?: number;
   selected?: boolean;
   opacity?: number;
   neutralPacked4?: Readonly<SceneNeutralPacked4Context>;
@@ -331,6 +333,7 @@ export class Stage {
     asset: Asset,
     index: number,
     image: HTMLImageElement,
+    component?: number,
   ): HTMLCanvasElement {
     const frame = asset.frames?.[index];
     const canvas = document.createElement("canvas");
@@ -339,7 +342,7 @@ export class Stage {
     const ctx = canvas.getContext("2d")!;
     ctx.imageSmoothingEnabled = false;
     if (frame && asset.sprites) {
-      for (const [ref, x, y, flags] of frame.components) {
+      for (const [ref, x, y, flags] of (component===undefined?frame.components:frame.components.slice(component,component+1))) {
         const r = asset.sprites[ref];
         if (!r) continue;
         ctx.save();
@@ -366,15 +369,17 @@ export class Stage {
     art: string,
     asset: Asset,
     index: number,
+    component?: number,
   ): { indices: Uint8Array; componentLeft: number } {
-    const frame = asset.frames?.[index];
-    // One parity origin per component is required. MULE/BONES each have one
-    // component in every admitted frame; other wrappers need their own binding.
+    const frame = asset.frames?.[index], part=component??0;
+    // Each original component is composed separately so its checkerboard
+    // origin survives clipping, flips and overlap with other components.
     if (
       !asset.packed4 ||
       !asset.sprites ||
       !frame ||
-      frame.components.length !== 1
+      (component===undefined && frame.components.length!==1) ||
+      !Number.isInteger(part) || part < 0 || !frame.components[part]
     )
       throw new Error("Unsupported packed4 component layout for " + art);
     let streams = this.packed4Streams.get(art);
@@ -405,7 +410,7 @@ export class Stage {
       streams = { indices, opacity, offsets };
       this.packed4Streams.set(art, streams);
     }
-    const [ref, x, y, flags] = frame.components[0],
+    const [ref, x, y, flags] = frame.components[part],
       sprite = asset.sprites[ref];
     if (
       !sprite ||
@@ -441,20 +446,19 @@ export class Stage {
     art: string,
     asset: Asset,
     index: number,
+    component?: number,
   ): Promise<Packed4FrameTextures> {
-    const key = art + ":" + index,
+    const key = art + ":" + index + ":" + component,
       cached = this.packed4Frames.get(key);
     if (cached) return cached;
     const pending = this.pendingPacked4Frames.get(key);
     if (pending) return pending;
     const promise = (async () => {
-      if (art !== "MULE" && art !== "BONES")
-        throw new Error("Unsupported packed4 owner wrapper for " + art);
       const first = asset.paletteAtlases?.["192"],
         second = asset.paletteAtlases?.["208"];
       if (!first || !second)
         throw new Error("Paired packed4 palette atlases required for " + art);
-      const raw = this.rawPacked4Frame(art, asset, index);
+      const raw = this.rawPacked4Frame(art, asset, index,component);
       const images = await Promise.all([
         this.loadImage("packed4:192:" + art, first),
         this.loadImage("packed4:208:" + art, second),
@@ -463,7 +467,7 @@ export class Stage {
         throw new Error("Stage disposed during packed4 frame load");
       const make = (image: HTMLImageElement) => {
         const texture = new THREE.CanvasTexture(
-          this.composeFrame(asset, index, image),
+          this.composeFrame(asset, index, image,component),
         );
         texture.colorSpace = THREE.SRGBColorSpace;
         texture.magFilter = texture.minFilter = THREE.NearestFilter;
@@ -670,7 +674,7 @@ export class Stage {
                   source.globalShadowMode,
                 ),
             paletteLookup = this.packed4Lookup(shade),
-            frame = await this.packed4Frame(e.art, asset, e.frame);
+            frame = await this.packed4Frame(e.art, asset, e.frame,e.component);
           return {
             e,
             key: "packed4:" + key,

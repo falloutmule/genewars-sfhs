@@ -1,3 +1,4 @@
+import { creatureParameters, creatureComponents, creatureSelector, chooseCreatureOffspring } from "./creature-species";
 import { nextRandom, type GeneRng } from "./random";
 import {
   originalAngle,
@@ -79,6 +80,8 @@ const put32 = (n: Native, p: number, v: number) => {
 };
 const point = (n: Native): [number, number] => [w(n, 7), w(n, 9)];
 export interface MuleContext {
+  /** Actual104A64 component rows; required for admitted non-Mule species. */
+  speciesComponents?: readonly (readonly number[])[];
   /**Already isolated full-host material services, required lazily on entry. */
   material?(
     state: EcologyState,
@@ -392,7 +395,9 @@ function accepted(
     return admitted;
   }
   if (c.obstacleAt(at, mule)) return false;
-  if (ecologyTerrainClass(c.terrain, at) === 0) return false;
+  const mask=mule.native[83];
+  if (!Number.isInteger(mask) || mask!<0 || mask!>255) throw Error("Actual creature terrain-avoidance mask required");
+  if (mask! & (1<<ecologyTerrainClass(c.terrain, at))) return false;
   const n = mule.native,
     cell = worldCell(...at);
   if ((n[0x5f] === 1 || n[0x5e] === 1 || n[0x5e] === 7) && n[0x57] === 2) {
@@ -988,8 +993,8 @@ function sourceCellEntry(
     //5B260 has no creature-state test. Its waypoint path also runs while
     //an attack/hit animation coasts across a cell; only virtual10 and8C
     //gate it.74D90 permits its nominated building using the actual host
-    //predicate; the ordinary non-building branch currently admits mask1.
-    if ((n[0x4f] !== 0 && n[0x4f] !== 4) || (n[0x53] !== 1 && n[0x4f] !== 4))
+    //predicate; ordinary movement uses the actual native terrain mask.
+    if (n[0x4f] !== 0 && n[0x4f] !== 4)
       throw new Error(
         "Mule cell-entry action requires its associated entity callback",
       );
@@ -1215,7 +1220,7 @@ function physics(
         id: mule.id,
         damage:
           n[24] === 4
-            ? applyNeutralMuleSelfWaterDamage(mule)
+            ? applyNeutralMuleSelfWaterDamage(mule,c)
             : applyOwnedMuleSelfWaterDamage(state, mule, c),
       });
   }
@@ -1238,7 +1243,7 @@ export function applyOwnedMuleSelfWaterDamage(
   if (
     n[6] !== 1 ||
     n[24]! >= 4 ||
-    n[0x7a] !== 4 ||
+    ![1,4,11,22].includes(n[0x7a]!) ||
     w(n, 15) < 0 ||
     w(n, 15) >= 300
   )
@@ -1249,7 +1254,8 @@ export function applyOwnedMuleSelfWaterDamage(
   const health = w(n, 0x6a),
     skill = Math.min(n[0x76]!, 100),
     percent = 50 + Math.trunc((50 * skill) / 100),
-    damage = Math.max(1, 5 - Math.trunc((6 * percent) / 100));
+    damage = Math.max(1, 5 - Math.trunc(((c?.combat?.defense ?? (n[122]===4?6:NaN)) * percent) / 100));
+  if (!Number.isFinite(damage)) throw Error("Actual species defense required for water damage");
   if (health - damage <= 0)
     throw new Error(
       "Owned self-water damage requires the unported lethal continuation",
@@ -1260,12 +1266,12 @@ export function applyOwnedMuleSelfWaterDamage(
 }
 /** 5B9F0 attacker==self, neutral state8/null-reference, nonlethal domain.
  * Literal 184-instruction neutral case agrees; no RNG/audio/retaliation. */
-export function applyNeutralMuleSelfWaterDamage(mule: EcologyMule): number {
+export function applyNeutralMuleSelfWaterDamage(mule: EcologyMule, c?: MuleContext): number {
   const n = mule.native;
   if (
     n[6] !== 1 ||
     n[24] !== 4 ||
-    n[0x7a] !== 4 ||
+    ![1,4,11,22].includes(n[0x7a]!) ||
     ![0, 8].includes(n[0x5e]!) ||
     ![8, 0x88].includes(n[0x60]!) ||
     n[0x61] !== 0 ||
@@ -1277,8 +1283,9 @@ export function applyNeutralMuleSelfWaterDamage(mule: EcologyMule): number {
     throw new Error(
       "Neutral self-water damage requires the unported lethal/action/reference branch",
     );
-  const percent = 50 + Math.trunc((50 * n[0x76]!) / 100),
-    damage = Math.max(1, 5 - Math.trunc((6 * percent) / 100));
+  const percent = 50 + Math.trunc((50 * Math.min(n[0x76]!,100)) / 100),
+    damage = Math.max(1, 5 - Math.trunc(((c?.combat?.defense ?? (n[122]===4?6:NaN)) * percent) / 100));
+  if (!Number.isFinite(damage)) throw Error("Actual species defense required for water damage");
   resetAction(n);
   put(n, 0x6c, 0);
   put(n, 0x6a, w(n, 0x6a) - damage);
@@ -1766,13 +1773,14 @@ function verifyNeighborhood(
   mule: EcologyMule,
   c: MuleContext,
 ) {
+  const radius=(c.combat?.queryRadius ?? 512)+512, extent=Math.trunc(radius/256);
   const at = point(mule.native),
     near = (to: [number, number]) => {
       const delta = (axis: number) =>
         (((to[axis] >> 8) - (at[axis] >> 8) + 64) & 127) - 64;
       const dx = delta(0),
         dy = delta(1);
-      return dx * dx + dy * dy <= 16;
+      return dx * dx + dy * dy <= (radius/256)**2;
     };
   const owner = mule.native[24]!;
   const friendly = (other: number) =>
@@ -1787,7 +1795,7 @@ function verifyNeighborhood(
       !near(point(other.native))
     )
       continue;
-    if (other.native[0x7a] !== 4)
+    if (![1,4,11,22].includes(other.native[0x7a]!))
       throw new Error(
         "Mule query needs the other creature's actual species scorer",
       );
@@ -1802,9 +1810,9 @@ function verifyNeighborhood(
     )
       throw new Error("Mule query selected a hostile actor or building");
   }
-  for (let x = -4; x <= 4; x++)
-    for (let y = -4; y <= 4; y++) {
-      if (x * x + y * y > 16) continue;
+  for (let x = -extent; x <= extent; x++)
+    for (let y = -extent; y <= extent; y++) {
+      if (x * x + y * y > (radius/256)**2) continue;
       if (
         cellHasEffect11(
           state,
@@ -1824,7 +1832,7 @@ function foodTarget(
   random: GeneRng,
   c: MuleContext,
 ): MuleFoodTarget | null {
-  const n = mule.native;
+  const n = mule.native, radius = (c.combat?.queryRadius ?? 512)+512, extent = Math.trunc(radius/256);
   if (
     w(n, 0x68) > w(n, 0x62) >> (operator(mule, 0, c) ? 1 : 2) &&
     !(n[0x61]! & 0x40)
@@ -1837,12 +1845,12 @@ function foodTarget(
     score = -0x7fffffff,
     corpseWinner = false;
   const at = point(n);
-  for (let x = -4; x <= 4; x++)
-    for (let y = -4; y <= 4; y++) {
+  for (let x = -extent; x <= extent; x++)
+    for (let y = -extent; y <= extent; y++) {
       const squared = Math.imul(x * sx, x * sx) + Math.imul(y * sy, y * sy);
-      if (squared > 1024 * 1024) continue;
+      if (squared > radius * radius) continue;
       const cell = worldCell(signed(at[0] + x * sx), signed(at[1] + y * sy)),
-        value = 1024 - integerSqrt(squared);
+        value = radius - integerSqrt(squared);
       const candidates =
         state.plantOrder?.[String(cell)] ??
         state.plants
@@ -1855,7 +1863,7 @@ function foodTarget(
       const corpses = state.mules.filter(
         (m) =>
           m.native[6] === 1 &&
-          m.native[0x7a] === 4 &&
+          [1,4,11,22].includes(m.native[0x7a]!) &&
           [24, 25].includes(m.native[0x5e]!) &&
           worldCell(...point(m.native)) === cell,
       );
@@ -1959,7 +1967,7 @@ export function requestStagedOwnedMuleMove(
     if (
       !mule ||
       mule.native[6] !== 1 ||
-      mule.native[0x7a] !== 4 ||
+      ![1,4,11,22].includes(mule.native[0x7a]!) ||
       mule.native[24]! >= 4 ||
       w(mule.native, 15) !== index
     )
@@ -2171,7 +2179,7 @@ function mateTarget(
   rng: GeneRng,
   c: MuleContext,
 ): EcologyMule | null {
-  const n = mule.native;
+  const n = mule.native, radius=(c.combat?.queryRadius ?? 512)+512, extent=Math.trunc(radius/256);
   if (
     n[0x77] !== 255 ||
     (n[0x79]! << 24) >> 24 <= 0 ||
@@ -2185,10 +2193,10 @@ function mateTarget(
     at = point(n);
   let best: EcologyMule | null = null,
     bestScore = -0xfffffff;
-  for (let x = -4; x <= 4; x++)
-    for (let y = -4; y <= 4; y++) {
+  for (let x = -extent; x <= extent; x++)
+    for (let y = -extent; y <= extent; y++) {
       const squared = (x * x + y * y) * 65536;
-      if (squared > 1048576) continue;
+      if (squared > radius*radius) continue;
       const cell = worldCell(signed(at[0] + x * sx), signed(at[1] + y * sy));
       let candidates = state.mules.filter(
         (m) =>
@@ -2210,14 +2218,14 @@ function mateTarget(
         const p = peer.native;
         if (
           p[24] !== n[24] ||
-          p[0x7a] !== 4 ||
+          ![1,4,11,22].includes(p[0x7a]!) ||
           p[0x5e]! >= 24 ||
           [3, 10, 15].includes(p[0x5e]!) ||
           p[0x77] !== 255 ||
           w(p, 0x49) & 0x400
         )
           continue;
-        const score = w(p, 0x68) + 1024 - integerSqrt(squared);
+        const score = w(p, 0x68) + radius - integerSqrt(squared);
         if (score > bestScore) {
           bestScore = score;
           best = peer;
@@ -2260,7 +2268,7 @@ function physicalDistance(a: Native, b: Native): number {
     dz = ((d(a, 0x27) - d(b, 0x27)) | 0) >> 3;
   return (Math.imul(dx, dx) + Math.imul(dy, dy) + Math.imul(dz, dz)) | 0;
 }
-/** Complete same-species rendezvous/center/countdown/birth continuation. */
+/** Admitted ground-family rendezvous/center/countdown/crossbreeding. */
 function pairAction(
   state: EcologyState,
   mule: EcologyMule,
@@ -2366,23 +2374,13 @@ function pairAction(
       throw new Error(
         "Owned Mule trait inheritance requires the actual player research flags",
       );
-    return player[0x6cb] !== 0;
+    return player[0x6c7 + creatureSelector(r[122])] !== 0;
   };
-  let inherit: boolean;
-  if (nextRandom(rng) % 100 < 50)
-    inherit =
-      nextRandom(rng) % 100 < 50 * (Number(eligible(n)) + Number(eligible(p)));
-  else {
-    const first = nextRandom(rng) % 6,
-      forbidden = first < 2 ? 3 : first === 2 ? 4 : first < 5 ? 24 : 32;
-    let guard = 0;
-    while (forbidden & (1 << nextRandom(rng) % 6))
-      if (++guard > 65536) throw new Error("Mule gene selection RNG cycle");
-    inherit = eligible(first >= 3 ? p : n);
-  }
-  const quality =
-    Math.min(n[0x76]!, p[0x76]!) +
-    (nextRandom(rng) % (Math.abs(n[0x76]! - p[0x76]!) + 1));
+  const componentRows = c.speciesComponents ?? Array.from({length:25},(_,i)=>i===4?[4,4]:[-1,-1]);
+  const offspring = chooseCreatureOffspring(componentRows,
+    {species:creatureSelector(n[122]),quality:n[118]!,eligible:eligible(n)},
+    {species:creatureSelector(p[122]),quality:p[118]!,eligible:eligible(p)},rng);
+  const {quality,inherit}=offspring;
   if (!c.creaturePriors || c.creaturePriors.length !== 300)
     throw new Error(
       "Natural Mule birth requires all300 actual retained native priors",
@@ -2396,7 +2394,7 @@ function pairAction(
     const made = initializeMuleNative(
       priors[slot],
       rng,
-      { slot, owner: n[24]!, position: point(n), quality, parent: n },
+      { slot, owner: n[24]!, position: point(n), quality, parent: n, species: offspring.species },
       c,
     );
     if (!made.ok) throw new Error(made.reason);
@@ -2452,6 +2450,7 @@ function combatServices(
       tables: c.tables,
       frame: c.frame,
       traits: c.combat,
+      speciesComponents: c.speciesComponents,
       allianceMasks: c.owned?.allianceMasks,
       players: c.owned?.players,
       cellOrder: c.cellOrder,
@@ -3092,7 +3091,7 @@ function carriedAnimation(n: Native, c: MuleContext) {
   n[30] = a.counter & 255;
 }
 
-/** Whole bounded neutral owner4 selector4 wander/plant-feeding callback.
+/** Shared admitted ground Mule/Crab wander/plant-feeding callback.
  * Spatial relinking is reported; unsupported branches roll back data and RNG. */
 function stepMule(
   state: EcologyState,
@@ -3121,7 +3120,7 @@ function stepMule(
     if (
       n[6] !== 1 ||
       (owned ? n[24]! >= 4 : n[24] !== 4) ||
-      n[0x7a] !== 4 ||
+      ![1,4,11,22].includes(n[0x7a]!) ||
       n[0x76] === null ||
       ![
         0, 1, 3, 4, 5, 6, 7, 8, 10, 11, 15, 16, 18, 20, 21, 24, 25, 26, 27,
@@ -3133,6 +3132,10 @@ function stepMule(
       throw new Error(
         "Owned Mule callback requires actual selected-player, alliance, building and operator context",
       );
+    if (n[122]!==4) {
+      creatureComponents(c.speciesComponents,n[122]);
+      if (!c.combat) throw Error("Actual non-Mule combat traits required");
+    }
     const phase = (c.frame + w(n, 15)) >>> 0;
     if (n[97]! & 1) {
       materialPrefix(mule, c);
@@ -3236,7 +3239,7 @@ function stepMule(
         if (
           reserve > 0 &&
           health < maximum &&
-          phase % c.rules.mule.healthRecoveryPeriod <= 1
+          phase % creatureParameters(c.rules,n[122]).healthRecoveryPeriod <= 1
         ) {
           put(n, 0x6a, health + Math.min(maximum - health, 2));
           put(n, 0x68, reserve < 3 ? 0 : reserve - 3);
@@ -3253,7 +3256,8 @@ function stepMule(
           put(n, 0x6a, health - 1);
         }
         if (n[0x60]! & 0x80) {
-          const mask = [2, 5].includes(ecologyTerrainClass(terrain, point(n)))
+          const components = n[122]===4 && !c.speciesComponents ? [4,4] : creatureComponents(c.speciesComponents,n[122]);
+          const mask = !components.includes(1) && [2, 5].includes(ecologyTerrainClass(terrain, point(n)))
             ? 63
             : 127;
           if ((w(n, 0x6c) & mask) === 0)

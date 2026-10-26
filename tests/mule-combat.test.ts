@@ -1,3 +1,4 @@
+import {speciesFixture} from "./fixtures/creature-species";
 import { describe, expect, it } from "vitest";
 import {
   acquireMuleHostile,
@@ -1391,4 +1392,8 @@ describe("source Mule damage and complete animation", () => {
     expect(JSON.stringify([f.state, f.rng, f.terrain])).toBe(before);
     expect(JSON.parse(JSON.stringify(f.state))).toEqual(f.state);
   });
+});
+
+describe("species-dependent defensive ability",()=>{
+  it("does not give a high-quality Crab the primary-Mule recoil ability",()=>{const f=fixture();f.c.speciesComponents=speciesFixture().components;f.target.native[122]=1;f.target.native[118]=100;const reserve=word(f.target.native,104);damageMule(f.state,f.target,f.self,10,f.rng,f.c,f.ports,f.events);expect(f.target.native[94]).toBe(20);expect(f.target.native[25]).not.toBe(23);expect(word(f.target.native,104)).toBe(reserve);});
 });

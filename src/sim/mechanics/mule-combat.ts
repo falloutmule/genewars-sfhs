@@ -1,3 +1,4 @@
+import {creatureComponents} from "./creature-species";
 /** Selector4 creature combat. Numeric ports of6B700/5B580/6EDA0/5C840,
  * completed-animation60332 and5B9F0; no executable or process pointers. */
 import { nextRandom, type GeneRng } from "./random";
@@ -47,6 +48,7 @@ export interface MuleCombatTarget {
   buildingHalfWidth?: number;
 }
 export interface MuleCombatContext {
+  speciesComponents?: readonly (readonly number[])[];
   terrain: TerrainState;
   tables: MotionTables;
   frame: number;
@@ -118,11 +120,11 @@ function assertMule(m: EcologyMule) {
     m.index < 0 ||
     m.index >= 300 ||
     byte(n, 6) !== 1 ||
-    byte(n, 122) !== 4 ||
+    ![1,4,11,22].includes(byte(n,122)) ||
     word(n, 15) !== m.index ||
     byte(n, 24) > 4
   )
-    throw new Error("Combat requires an actual selector4 creature identity");
+    throw new Error("Combat requires an admitted ground creature identity");
 }
 function traits(c: MuleCombatContext) {
   const t = c.traits;
@@ -807,8 +809,8 @@ export function damageMule(
       kind: 1,
       owner: byte(attacker.native, 24),
       native: attacker.native,
-      primaryClass: 4,
-      secondaryClass: 4,
+      primaryClass: c.speciesComponents ? creatureComponents(c.speciesComponents,attacker.native[122])[0] : 4,
+      secondaryClass: c.speciesComponents ? creatureComponents(c.speciesComponents,attacker.native[122])[1] : 4,
     },
     incoming,
     rng,
@@ -900,7 +902,7 @@ export function damageMuleFromSource(
   const lethal = word(n, 106) < 1;
   if (byte(n, 94) !== 18 && !self) {
     let reflect = false;
-    if (!lethal && attacker?.kind === 1) {
+    if (!lethal && attacker?.kind === 1 && (c.speciesComponents ? creatureComponents(c.speciesComponents,n[122])[0]===4 : n[122]===4)) {
       if (byte(n, 24) === 4) reflect = byte(n, 118) > 90;
       else {
         const owner = byte(n, 24),
@@ -909,7 +911,7 @@ export function damageMuleFromSource(
           throw new Error(
             "Mule reaction requires the actual owner's research record",
           );
-        reflect = !!(byte(n, 97) & 4) || player![0x6c7 + 4] !== 0;
+        reflect = !!(byte(n, 97) & 4) || player![0x6c7 + byte(n,122)] !== 0;
       }
       reflect = reflect && word(n, 104) >= 7;
     }

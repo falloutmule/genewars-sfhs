@@ -1,3 +1,4 @@
+import {creatureAsset,creatureCombatTraits,creatureColdResponse} from "../mechanics/creature-species";
 import { z } from "zod";
 import type { Pack } from "../../content/types";
 import { campaignEntity } from "./entity-view";
@@ -2270,6 +2271,8 @@ export function stepCampaign(w: CampaignWorld, pack: Pack): void {
         if (result.outcome === "installed") queued.shift();
         mule = w.ecology.mules.find((m) => m.index === muleIndex)!;
       }
+      const species=mule.native[122]!,
+        art=species===4?"MULE":creatureAsset(pack.zoneRules?.speciesComponents,species,pack.assets);
       const callback = mule.native[24] === 4 ? stepNeutralMule : stepOwnedMule;
       const combatTransaction = createMuleCombatTransaction(
         w,
@@ -2286,11 +2289,12 @@ export function stepCampaign(w: CampaignWorld, pack: Pack): void {
         water: w.source.source.terrain.loadedPhysicalWaterHeight,
         climate: w.source.source.terrain.climate,
         bounce: pack.rules!.tables.bounce,
-        profile: (action) => animationProfile(pack.assets.MULE, action),
+        profile: (action) => animationProfile(pack.assets[art], action),
+        speciesComponents: pack.zoneRules?.speciesComponents,
         bonesProfile: (action) => animationProfile(pack.assets.BONES, action),
         obstacleAt: (p) => buildingObstacle(combatTransaction.current(), p),
         creaturePriors: w.creatureNative,
-        combat: pack.ecologyRules!.muleCombat,
+        combat: species===4?pack.ecologyRules!.muleCombat:creatureCombatTraits(pack.ecologyRules!,pack.zoneRules?.speciesComponents,species),
         combatEntity: (state, terrain, rng, id) =>
           campaignMuleCombatEntity(
             combatTransaction.host(state, terrain, rng),
@@ -2365,7 +2369,7 @@ export function stepCampaign(w: CampaignWorld, pack: Pack): void {
             amount,
           ),
         relocate: combatTransaction.relocate,
-        coldResponse: pack.ecologyRules!.muleCold,
+        coldResponse: species===4?pack.ecologyRules!.muleCold:creatureColdResponse(pack.zoneRules?.speciesComponents,species),
         effectCode: (id) => {
           const slot = Number(id.split(":")[2]);
           const code =

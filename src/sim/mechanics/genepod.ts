@@ -3,6 +3,8 @@
  * obligation; source bytes and unresolved pointer slots remain serializable. */
 import { advanceAnimation, type AnimationProfile } from "./animation";
 import { nextRandom, type GeneRng } from "./random";
+import type { EcologyRules } from "./ecology";
+import { creatureParameters, creatureSelector, creatureComponents } from "./creature-species";
 import { createMotion, velocity, type MotionTables } from "./motion";
 import { groundHeight, worldCell, type TerrainState } from "./terrain";
 import { effectFactoryPrior, effectTerrainShade } from "./power-motion";
@@ -446,23 +448,29 @@ export function initializeMuleNative(
     position: [number, number];
     quality: number;
     parent?: GenepodNative;
+    species?: number;
   },
-  context: Pick<GenepodContext, "terrain" | "tables">,
+  context: Pick<GenepodContext, "terrain" | "tables"> & { rules?: EcologyRules; speciesComponents?: readonly (readonly number[])[] },
 ): GenepodResult<{ native: GenepodNative; rng: GeneRng }> {
   return attempt(() => {
     native(prior, 124);
     require(byte(prior, 6) === 0 &&
       integer(input.slot, 0, 299) &&
       integer(input.owner, 0, 4) &&
-      integer(input.quality, 0, 100) &&
+      integer(input.quality, 0, 255) &&
       input.position.every((v) =>
         integer(v, 0, 32767),
       ), "invalid-mule-native-factory-input");
     if (input.parent) {
       native(input.parent, 124);
       require(byte(input.parent, 6) === 1 &&
-        byte(input.parent, 0x7a) === 4, "invalid-mule-parent");
+        creatureSelector(byte(input.parent, 0x7a)) >= 0, "invalid-mule-parent");
     }
+    const species = creatureSelector(input.species ?? 4),
+      parameters = context.rules ? creatureParameters(context.rules, species) :
+        species === 4 ? {lifetimeScale:19000,reserveScale:160,healthScale:80,turn:80} : null;
+    require(parameters !== null, "actual-species-factory-rules-required");
+    const components=species===4 && !context.speciesComponents ? [4,4] : creatureComponents(context.speciesComponents,species);
     const n = prior.slice(),
       rng = { ...rngBefore },
       slot = input.slot;
@@ -472,7 +480,7 @@ export function initializeMuleNative(
     const ground = groundHeight(context.terrain, ...input.position),
       shade = effectTerrainShade(context.terrain, ...input.position),
       v = launchVector(yaw, pitch, speed, context.tables);
-    n[0x7a] = 4;
+    n[0x7a] = species;
     n[2] = n[5] = 0;
     n[6] = 1;
     put(n, 15, slot);
@@ -496,22 +504,22 @@ export function initializeMuleNative(
     put(n, 21, 0x280);
     put(n, 0x60, 0);
     put(n, 0x4b, yaw);
-    put(n, 0x2b, 80);
-    n[0x53] = 1;
+    put(n, 0x2b, parameters!.turn);
+    n[0x53] = components[0]===1?0:1;
     n[0x54] = 0;
     n[0x4a] = byte(n, 0x4a) & 0x3b;
     n[0x76] = input.quality;
     const skill = (minimum: number) =>
-      minimum + Math.trunc((input.quality * (100 - minimum)) / 100);
-    const life = Math.trunc((19000 * skill(30)) / 100),
+      minimum + Math.trunc((Math.min(input.quality,100) * (100 - minimum)) / 100);
+    const life = Math.trunc((parameters!.lifetimeScale * skill(30)) / 100),
       energy = input.parent ? life : life - (life >> 4),
       reserve = life >> 3;
     put(n, 0x66, energy);
     n[0x79] = 0;
     n[0x77] = Math.max(16, Math.trunc(((life - energy) * 255) / reserve));
     const hunger = byte(n, 0x77) + 1;
-    put(n, 0x62, ((Math.trunc((160 * skill(40)) / 100) * hunger) >> 8) + 32);
-    put(n, 0x64, ((Math.trunc((80 * skill(30)) / 100) * hunger) >> 8) + 16);
+    put(n, 0x62, ((Math.trunc((parameters!.reserveScale * skill(40)) / 100) * hunger) >> 8) + 32);
+    put(n, 0x64, ((Math.trunc((parameters!.healthScale * skill(30)) / 100) * hunger) >> 8) + 16);
     n[0x5e] = 8;
     n[0x5f] = 0;
     put(n, 0x6c, 0);
