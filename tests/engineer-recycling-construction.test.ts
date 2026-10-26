@@ -391,6 +391,74 @@ describe("native Engineer selector4 Recycling Plant construction", () => {
       ),
     ).toBe(checksum(w));
   });
+  it("queues a human Vat through the campaign schema, pays and completes with live-work save/replay", () => {
+    const pack = structuredClone(start.pack);
+    pack.rules!.tables.buildingFootprints[13] = 1;
+    pack.rules!.tables.constructionCosts[13] = 750;
+    pack.buildingRules!.resources.find(r=>r.selector===13)!.assetKey = "RECYCLE_TEST";
+    const w = structuredClone(start.world),
+      replay = recordCampaign(w, null),
+      funds = w.players[0].funds,
+      skill = w.players[0].blueprints[0].skill,
+      command = {
+        type: "construct" as const,
+        actorId: 0,
+        selector: 13 as const,
+        point: [9087, 8319] as [number, number],
+        queued: false,
+      };
+    expect(queueCampaign(w, command).ok).toBe(true);
+    replay.commands.push({ tick: w.tick, type: "command", command });
+    let saved: CampaignWorld | null = null,
+      paid = false;
+    for (let i = 0; i < 800; i++) {
+      step(w, pack);
+      if (saved) step(saved, pack);
+      const n = w.specialists.records[0];
+      if (i16(n as number[], 136) === 4 && n[88]! & 1) {
+        paid = true;
+        expect(w.players[0].funds).toBe(funds - (750 - 2 * skill));
+        if (!saved)
+          saved = loadCampaign(
+            saveCampaign(w, { paused: true, speed: 1, accumulator: 0 }),
+            w.contentHash,
+          ).world;
+      }
+      if (w.buildings[0]?.complete && !(w.specialists.records[0][88]! & 1))
+        break;
+    }
+    expect(paid).toBe(true);
+    expect(saved).not.toBeNull();
+    expect(checksum(saved)).toBe(checksum(w));
+    expect(w.buildings).toHaveLength(1);
+    expect(w.buildings[0]).toMatchObject({
+      selector: 13,
+      x: 9087,
+      y: 8319,
+      complete: true,
+      health: 80,
+    });
+    expect(w.players[0].completed[13]).toBe(1);
+    expect(w.players[0].funds).toBe(funds - (750 - 2 * skill));
+    expect(w.specialists.records[0][88]! & 1).toBe(0);
+    expect(w.spatial.nodes["source:3:0"].cell).toBe(worldCell(9087, 8319));
+    expect(w.economy.buildings[0]).toMatchObject({
+      selector: 13,
+      complete: true,
+    });
+    expect(w.economy.players[0].capacity).toBe(500);
+    expect(u32(w.players[0].raw, 0x5e6)).toBe(500);
+    validateCampaignWorld(w, w.contentHash);
+    expect(
+      checksum(
+        replayCampaign(
+          sealCampaignReplay(replay, w),
+          pack,
+          w.contentHash,
+        ),
+      ),
+    ).toBe(checksum(w));
+  });
   it("admits the constructed selector4 nonlethal damage path without invoking retirement services", () => {
     const w = structuredClone(start.world),
       pack = structuredClone(start.pack);

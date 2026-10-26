@@ -1,3 +1,4 @@
+import { genepodProductionCost } from "../sim/mechanics/genepod";
 import {creatureAsset} from "../sim/mechanics/creature-species";
 import type { Pack, Mission } from "../content/types";
 import { Stage, type SceneEntity } from "../render/stage";
@@ -39,6 +40,7 @@ import { campaignHumanRosterView, campaignHumanRosterAssociatedTarget, campaignH
 import type { HumanRosterCommand } from "../sim/mechanics/human-roster";
 import { classifyCampaignHumanMuleTarget } from "../sim/campaign/human-creature-command-adapter";
 import type { CreatureCommandReference } from "../sim/mechanics/creature-commands";
+const creatureLabel = (species: number) => ["Dinosaur","Crab","Frog","Bird","Mule"][species] ?? `Creature type ${species+1}`;
 const NAMES: Record<number, string> = {
   0: "Genepod",
   1: "Turret",
@@ -91,6 +93,7 @@ export async function openCampaign(
   let recording: CampaignReplay | null = null;
   const selected = new Set<number>(),
     abort = new AbortController();
+  const genepodSpecies = new Map<number,number>();
   const database = new CampaignDatabase();
   const audio = new CampaignAudio(pack);
   let recoverySaving = false;
@@ -279,7 +282,7 @@ export async function openCampaign(
         : {
             type: "construct",
             actorId: a!.id,
-            selector: placing as 0 | 1 | 2 | 3 | 4 | 5 | 6 | 11,
+            selector: placing as 0 | 1 | 2 | 3 | 4 | 5 | 6 | 11 | 13,
             point,
             queued,
           };
@@ -625,7 +628,7 @@ export async function openCampaign(
     )) {
       const b = button(
         specialists,
-        `Mule ${mule.index + 1} · health ${i16(mule.native as number[], 0x6a)}/${i16(mule.native as number[], 0x64)}`,
+        `${creatureLabel(mule.native[122]!)} ${mule.index + 1} · health ${i16(mule.native as number[], 0x6a)}/${i16(mule.native as number[], 0x64)}`,
         () => {
           selected.clear();
           selected.add(2000 + mule.index);
@@ -646,7 +649,7 @@ export async function openCampaign(
     node("campaign-selection").textContent = a
       ? a.reason
       : selectedMule ? "Tap ground to move, or choose visible material to collect."
-      : "Tap a specialist or owned Mule, then a destination. Drag to pan; pinch or scroll to zoom.";
+      : "Tap a specialist or owned creature, then a destination. Drag to pan; pinch or scroll to zoom.";
     const recruitment = node("campaign-recruitment"), recruitmentView = campaignHumanRosterView(w);
     recruitment.replaceChildren();
     if (recruitmentBuilding !== null && !recruitmentView.buildingChoices.some(b => b.slot === recruitmentBuilding)) recruitmentBuilding = null;
@@ -891,6 +894,7 @@ export async function openCampaign(
         : "Pay when the Engineer reaches the prepared site";
     }
     const economy = node("campaign-economy");
+    if (!(document.activeElement instanceof HTMLSelectElement && economy.contains(document.activeElement))) {
     economy.replaceChildren();
     for (const b of w.economy.buildings) {
       const row = document.createElement("p");
@@ -900,19 +904,27 @@ export async function openCampaign(
       if (b.selector === 0 && b.complete && b.owner === w.selectedPlayer) {
         const n = w.buildingNative[b.owner * 64 + b.slot],
           remaining = u32(n as number[], 54) | 0;
+        const known = p.raw.slice(0x6ae,0x6ae+p.raw[0x6e0]).filter(species => species>=0 && species<25 && (b.grade>0 || species<5) && u32(p.raw,0x61a+species*4)!==0);
+        const species = remaining>0 ? n[51]! : known.includes(genepodSpecies.get(b.slot) ?? 4) ? (genepodSpecies.get(b.slot) ?? 4) : known[0] ?? 4;
+        if (remaining<=0 && known.length>1) {
+          const label=document.createElement("label"), choice=document.createElement("select");
+          label.textContent="Creature type "; choice.setAttribute("aria-label",`Genepod ${b.slot+1} creature type`);
+          for (const value of known) {const option=document.createElement("option"); option.value=String(value);option.textContent=creatureLabel(value);choice.append(option);}
+          choice.value=String(species); choice.addEventListener("change",()=>{genepodSpecies.set(b.slot,Number(choice.value));choice.blur();hud();}); label.append(choice); economy.append(label);
+        }
+        const creature=creatureLabel(species),cost=genepodProductionCost(pack.ecologyRules?.speciesTraits,species);
         const status = document.createElement("p");
-        status.textContent =
-          remaining > 0
-            ? `Mule work remaining: ${remaining}/${i16(n as number[], 52)}`
-            : `Mule research quality: ${Math.min(100, u32(p.raw, 0x62a) >>> 11)}%`;
+        const quality=(u32(p.raw,0x61a+species*4)|0)>>11;
+        status.textContent = remaining>0 ? `${creature} work remaining: ${remaining}/${i16(n as number[],52)}` : `${creature} research quality: ${b.grade<2?Math.min(100,quality):quality}%`;
         economy.append(status);
         const produce = button(
           economy,
-          remaining > 0 ? "Cancel Mule production" : "Produce Mule · 75 total",
+          remaining > 0 ? `Cancel ${creature} production` : `Produce ${creature} · ${cost} total`,
           () => {
             const command: CampaignCommand = {
                 type: "produce-mule",
                 buildingId: b.id,
+                ...(species===4 ? {} : {species}),
               },
               result = queueCampaign(w, command);
             if (!result.ok) {
@@ -924,11 +936,12 @@ export async function openCampaign(
               type: "command",
               command,
             });
-            say("Mule production order queued");
+            say(`${creature} production order queued`);
           },
         );
         produce.disabled = w.phase !== "active";
       }
+    }
     }
     const alerts = node("campaign-alerts");
     alerts.replaceChildren();

@@ -316,6 +316,7 @@ export const CampaignCommandSchema = z.discriminatedUnion("type", [
   }),
   z.object({
     type: z.literal("produce-mule"),
+    species: z.number().int().min(0).max(24).optional(),
     buildingId: z.number().int().min(1000).max(1255),
   }),
   z.object({
@@ -336,6 +337,7 @@ export const CampaignCommandSchema = z.discriminatedUnion("type", [
       z.literal(5),
       z.literal(6),
       z.literal(11),
+      z.literal(13),
     ]),
     point,
     queued: z.boolean(),
@@ -1290,22 +1292,23 @@ function issue(w: CampaignWorld, c: CampaignCommand, pack: Pack): void {
       panelState: 3,
       speciesListIndex: w.players[w.selectedPlayer].raw
         .slice(0x6ae, 0x6ae + w.players[w.selectedPlayer].raw[0x6e0])
-        .indexOf(4),
+        .indexOf(c.species ?? 4),
       eventFlags: 8,
       capturedHit: true,
       selectedPanelRefreshEligible: true,
-    });
+    }, {speciesTraits:pack.ecologyRules!.speciesTraits!});
     if (!result.ok) throw new Error(result.reason);
     commitGenepodState(w, b.slot, result.value.state);
     if (result.value.audioCue !== null)
       emitAudio(w, `source:3:${b.slot}`, result.value.audioCue);
+    const creature = result.value.state.building[51]===4 ? "Mule" : result.value.state.building[51]===1 ? "Crab" : "Creature";
     notice(
       w,
       result.value.disposition === "started"
-        ? "Mule production started"
+        ? `${creature} production started`
         : result.value.disposition === "cancelled"
-          ? "Mule production cancelled; paid work refunded"
-          : `Mule production: ${result.value.reason}`,
+          ? `${creature} production cancelled; paid work refunded`
+          : `${creature} production: ${result.value.reason}`,
       result.value.disposition === "denied" ? "warning" : "info",
       b.id,
     );
@@ -1533,7 +1536,8 @@ function stepCampaignGenepod(
   const result = stepGenepod(genepodState(w, slot), {
     evidence: pack.source.executableSha256!,
     frame: w.frame,
-    runningAnimation: animationProfile(pack.assets.BGENE, 1),
+    runningAnimation: animationProfile(pack.assets.BGENE, b.grade + 1),
+    rules:pack.ecologyRules, speciesComponents:pack.zoneRules?.speciesComponents,
     terrain: w.terrain,
     tables: pack.rules!.tables,
     pools: {
@@ -1577,12 +1581,12 @@ function stepCampaignGenepod(
   }
   for (const a of receipt.audio)
     emitAudio(w, `source:3:${slot}`, a.cue, a.mode, a.parameter ?? 0);
-  if (receipt.status === "mule-born")
-    notice(w, "Mule produced", "info", 1000 + slot);
+  if (receipt.status === "mule-born" || receipt.status === "creature-born")
+    notice(w, receipt.state.building[51]===4 ? "Mule produced" : receipt.state.building[51]===1 ? "Crab produced" : "Creature produced", "info", 1000 + slot);
   if (receipt.status === "quality-failed")
     notice(
       w,
-      "Mule production failed its research quality check",
+      receipt.state.building[51]===4 ? "Mule production failed its research quality check" : "Creature production failed its research quality check",
       "warning",
       1000 + slot,
     );

@@ -363,7 +363,7 @@ describe("ordinary human Genepod production commands", () => {
     expect(dword(cancelled.players[0], 0x4a3)).toBe(202);
     expect(stepGenepod(started, context())).toEqual({
       ok: false,
-      reason: "unsupported-genepod-callback-state",
+      reason: "original-bgene-grade-animation-required",
     });
   });
 });
@@ -527,7 +527,7 @@ describe("Genepod work and complete terminal continuation", () => {
     c.runningAnimation.holds = [];
     expect(stepGenepod(s, c)).toEqual({
       ok: false,
-      reason: "original-bgene-grade0-animation-required",
+      reason: "original-bgene-grade-animation-required",
     });
     const mismatch = context();
     mismatch.pools!.creatureCount = 1;
@@ -551,5 +551,45 @@ describe("shared natural creature factory",()=>{
   });
   it("refuses a non-Mule factory without its source trait row",()=>{
     const result=initializeMuleNative(native(124),{seed:5428,draws:0,ring:0},{slot:0,owner:4,position:[8192,8192],quality:50,species:1},context());expect(result).toEqual({ok:false,reason:"actual-species-factory-rules-required"});
+  });
+});
+
+
+describe("actual-species Genepod family",()=>{
+  function profile(grade:number) {return {first:0,last:grade===2?11:3,holds:Array(grade===2?12:4).fill(0),flags:0};}
+  it.each(Array.from({length:25},(_,i)=>i))("binds species%i and independent DNA at all grades",species=>{
+    for(const grade of [0,1,2]) {
+      const s=work(state(),1),c=context(),f=speciesFixture();s.rng={seed:0,draws:0,ring:0};s.building[46]=grade;s.building[51]=species;s.players[0][0x6e1]=2;put32(s.players[0],0x61a+species*4,25<<11);
+      c.runningAnimation=profile(grade);c.rules=f.rules;c.speciesComponents=f.components;
+      const out=value(stepGenepod(s,c)),birth=out.births[0];
+      expect(out.quality).toBe(25);expect(out.paid).toBe(1<<grade);expect(birth.resource).toEqual({kind:"creature",selector:species});
+      expect(birth.native[122]).toBe(species);expect(birth.native[83]).toBe(f.components[species][0]===1?0:1);
+      expect(dword(out.state.players[0],0x61a+species*4)).toBe((25<<11)+(grade+1)*2048+grade*64);
+      if(species!==4)expect(dword(out.state.players[0],0x62a)).toBe(50<<11);
+      expect(dword(out.state.players[0],0x6f9)).toBe(1);expect(out.state.rng.draws).toBe(7);
+    }
+  });
+  it.each([1,2])("retains grade%i research on a coherent full creature pool",grade=>{
+    const s=work(state(),1),c=context();s.rng={seed:0,draws:0,ring:0};s.building[46]=grade;s.building[51]=1;s.players[0][0x6e1]=2;put32(s.players[0],0x61e,25<<11);c.runningAnimation=profile(grade);c.pools!.creatures.forEach(n=>n[6]=1);c.pools!.creatureCount=300;
+    const out=value(stepGenepod(s,c));expect(out.status).toBe("creature-pool-full");expect(out.births).toEqual([]);expect(out.state.rng.draws).toBe(1);expect(dword(out.state.players[0],0x61e)).toBe((25<<11)+grade*64);
+  });
+  it("keeps grade2 quality above100 and uses the source12-frame profile",()=>{
+    const s=work(state(),1),c=context(),f=speciesFixture();s.rng.seed=0;s.building[46]=2;s.building[51]=1;put32(s.players[0],0x61e,130<<11);c.runningAnimation=profile(2);c.rules=f.rules;c.speciesComponents=f.components;
+    const out=value(stepGenepod(s,c));expect(out.quality).toBe(130);expect(out.births[0].native[122]).toBe(1);expect(out.state.building[25]).toBe(3);
+  });
+  it("requires real non-Mule factory traits and rolls back terminal payment/RNG",()=>{
+    const s=work(state(),1),c=context();s.rng.seed=0;s.building[51]=1;put32(s.players[0],0x61e,50<<11);const before=structuredClone(s),pool=structuredClone(c.pools);
+    expect(stepGenepod(s,c)).toEqual({ok:false,reason:"actual-species-factory-rules-required"});expect(s).toEqual(before);expect(c.pools).toEqual(pool);
+  });
+  it("uses actual Crab cost, DNA and graded cancellation remainder",()=>{
+    const s=state(),f=speciesFixture();f.rules.speciesTraits![1][32]=175;s.players[0][0x6ae]=1;put32(s.players[0],0x61e,1);s.building[46]=2;
+    const out=value(requestGenepodMule(s,input(),{speciesTraits:f.rules.speciesTraits!}));expect(out.disposition).toBe("started");expect(out.state.building[51]).toBe(1);expect(dword(out.state.building,54)).toBe(43);expect(dword(out.state.players[0],0x4a3)).toBe(197);
+    put32(out.state.building,54,42);const cancel=value(requestGenepodMule(out.state,input(),{speciesTraits:f.rules.speciesTraits!}));expect(dword(cancel.state.players[0],0x4a7)).toBe(7);expect(dword(cancel.state.building,54)).toBe(0);
+  });
+  it("retains source grade0 hybrid and full-price admission gates",()=>{
+    const s=state(),f=speciesFixture();f.rules.speciesTraits![1][32]=175;s.players[0][0x6ae]=1;put32(s.players[0],0x61e,1);put32(s.players[0],0x4a3,174);
+    expect(value(requestGenepodMule(s,input(),{speciesTraits:f.rules.speciesTraits!})).disposition).toBe("denied");
+    s.players[0][0x6ae]=5;put32(s.players[0],0x62e,1);f.rules.speciesTraits![5][32]=100;
+    expect(value(requestGenepodMule(s,input(),{speciesTraits:f.rules.speciesTraits!})).reason).toBe("genepod-grade-restricts-hybrids");s.building[46]=1;expect(value(requestGenepodMule(s,input(),{speciesTraits:f.rules.speciesTraits!})).disposition).toBe("started");
   });
 });

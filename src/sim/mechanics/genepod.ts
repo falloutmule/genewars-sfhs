@@ -1,4 +1,4 @@
-/** Human Genepod commands, completed grade0 production and real numeric Mule
+/** Human Genepod commands, completed grade0..2 production and actual-species
  * /failed-production factories. Spatial insertion is an explicit transaction
  * obligation; source bytes and unresolved pointer slots remain serializable. */
 import { advanceAnimation, type AnimationProfile } from "./animation";
@@ -33,6 +33,8 @@ export interface GenepodContext {
   evidence: string;
   frame: number;
   runningAnimation: AnimationProfile;
+  rules?: EcologyRules;
+  speciesComponents?: readonly (readonly number[])[];
   terrain: TerrainState;
   tables: MotionTables;
   /** Observed only by a terminal callback. Actual inactive priors are required. */
@@ -44,7 +46,7 @@ export interface GenepodBirth {
   cell: number;
   native: GenepodNative;
   resource:
-    | { kind: "creature"; selector: 4 }
+    | { kind: "creature"; selector: number }
     | { kind: "effect"; selector: 32 };
 }
 export type GenepodStatus =
@@ -53,6 +55,7 @@ export type GenepodStatus =
   | "funds-wait"
   | "working"
   | "mule-born"
+  | "creature-born"
   | "creature-pool-full"
   | "quality-failed";
 export interface GenepodReceipt {
@@ -258,9 +261,22 @@ export function readyGenepodPanel(
 /** Source21E20 human producer followed by actual opcode12/814A0. Ownership,
  * species list, research and sufficient total funds are checked by producer;
  * the handler itself must not add a made-up population-capacity rejection. */
+/** Cost10461C is speciesTraits+32. Only the established selector4 fixture
+ * profile may omit imported traits; other species never receive a default. */
+export function genepodProductionCost(rows: readonly (readonly number[])[] | undefined, species: number): number {
+  creatureSelector(species);
+  if (!rows) {
+    require(species === 4,"unsupported-genepod-species"); return 75;
+  }
+  const row=rows[species];
+  require(rows.length===25 && row?.length===45 && row.every(v=>integer(v,0,255)),"actual-genepod-species-cost-row-required");
+  return dword(row,32);
+}
+const productionCost = genepodProductionCost;
 export function requestGenepodMule(
   before: GenepodState,
   input: GenepodHumanInput,
+  context?: {speciesTraits: readonly (readonly number[])[]},
 ): GenepodResult<GenepodCommandReceipt> {
   return attempt(() => {
     stateValid(before);
@@ -304,20 +320,21 @@ export function requestGenepodMule(
       require(input.speciesListIndex >= 0 &&
         input.speciesListIndex < p[0x6e0] &&
         input.speciesListIndex < 50, "invalid-genepod-species-list-index");
-      require(i8(p[0x6ae + input.speciesListIndex]) ===
-        4, "unsupported-genepod-species");
-      if (
-        ((dword(p, 0x4a3) + dword(p, 0x4a7)) | 0) < 75 ||
-        dword(p, 0x62a) === 0
-      )
-        return receipt("denied", "funds-or-mule-research-required", 0, 0x26);
+      const species = creatureSelector(i8(p[0x6ae + input.speciesListIndex])),
+        cost = productionCost(context?.speciesTraits,species);
+      if (((dword(p,0x4a3)+dword(p,0x4a7))|0)<cost)
+        return receipt("denied","funds-or-species-research-required",0,0x26);
+      if (byte(b,46) === 0 && species >= 5)
+        return receipt("denied","genepod-grade-restricts-hybrids");
+      if (dword(p,0x61a+species*4)===0)
+        return receipt("denied","funds-or-species-research-required",0,0x26);
       const grade = byte(b, 46),
         scale = 1 << grade,
-        work = 75 >> grade;
+        work = cost >> grade;
       put32(b, 54, work);
       put(b, 52, work);
-      b[51] = 4;
-      debit(p, 75 & (scale - 1), state.players[p[0x4a1]][2]);
+      b[51] = species;
+      debit(p, cost & (scale - 1), state.players[p[0x4a1]][2]);
       b[58] = p[1];
       return receipt(
         "started",
@@ -335,11 +352,11 @@ export function requestGenepodMule(
       return receipt("ignored", "no-activation-edge", 1);
     if (input.selectedPlayer !== byte(b, 58))
       return receipt("denied", "recorded-payer-required", 0, 0x26);
-    require(byte(b, 51) === 4, "unsupported-genepod-species");
+    const cost = productionCost(context?.speciesTraits,creatureSelector(byte(b,51)));
     const scale = 1 << byte(b, 46),
       refund =
         (Math.imul((word(b, 52) - dword(b, 54)) | 0, scale) +
-          (75 & (scale - 1))) |
+          (cost & (scale - 1))) |
         0;
     const old = dword(p, 0x4a7),
       sum = (old + refund) | 0,
@@ -375,10 +392,10 @@ function commonTail(
   )
     b[21] = byte(b, 21) | 4;
   if (byte(b, 48) !== 0) b[48] = byte(b, 48) - 1;
-  b[25] = 1;
+  b[25] = byte(b, 46) + 1;
   const a = advanceAnimation(
     {
-      action: 1,
+      action: byte(b, 25),
       frame: byte(b, 27),
       hold: byte(b, 26),
       direction: byte(b, 28),
@@ -393,10 +410,10 @@ function commonTail(
   b[29] = a.delay & 255;
   b[30] = a.counter & 255;
 }
-function research(p: number[], increase: number) {
+function research(p: number[], species: number, increase: number) {
   const cap = (50 + 25 * p[0x6e1]) << 11,
-    old = dword(p, 0x62a);
-  if (old < cap) put32(p, 0x62a, Math.min((old + increase) | 0, cap));
+    at = 0x61a + species * 4, old = dword(p, at);
+  if (old < cap) put32(p, at, Math.min((old + increase) | 0, cap));
 }
 function poolValid(
   records: GenepodNative[],
@@ -539,8 +556,8 @@ export function createGenepodMule(
   before: GenepodPools,
   playersBefore: number[][],
   rngBefore: GeneRng,
-  input: { owner: number; position: [number, number]; quality: number },
-  context: Pick<GenepodContext, "terrain" | "tables">,
+  input: { owner: number; position: [number, number]; quality: number; species?: number },
+  context: Pick<GenepodContext, "terrain" | "tables" | "rules" | "speciesComponents">,
 ): GenepodResult<{
   pools: GenepodPools;
   players: number[][];
@@ -551,10 +568,11 @@ export function createGenepodMule(
     playerRecords(playersBefore);
     poolValid(before.creatures, before.creatureCount, 300, 124);
     require(integer(input.owner, 0, 4) &&
-      integer(input.quality, 0, 100) &&
+      integer(input.quality, 0, 255) &&
       input.position.every((v) =>
         integer(v, 0, 32767),
       ), "invalid-genepod-mule-factory-input");
+    const species = creatureSelector(input.species ?? 4);
     const pools = poolClone(before),
       players = playersBefore.map((p) => p.slice()),
       rng = { ...rngBefore };
@@ -587,13 +605,13 @@ export function createGenepodMule(
         slot,
         cell: worldCell(...input.position),
         native: n,
-        resource: { kind: "creature" as const, selector: 4 as const },
+        resource: { kind: "creature" as const, selector: species },
       },
     };
   });
 }
 
-/** Full admitted completed grade0 source451F0 Genepod callback. Receipts are
+/** Full admitted enabled grade0..2 source451F0 Genepod production callback. Receipts are
  * committed with each birth's real spatial insertion/resource binding. A
  * failure anywhere rolls back payment, RNG, counts, research and all births. */
 export function stepGenepod(
@@ -604,18 +622,17 @@ export function stepGenepod(
     stateValid(before);
     require(!!context.evidence.trim() &&
       integer(context.frame, 0, 0xffffffff), "genepod-source-context-required");
-    const profile = context.runningAnimation;
-    require(profile.holds.length === 4 &&
+    const profile = context.runningAnimation, grade = byte(before.building, 46);
+    require(integer(grade,0,2) && profile.holds.length === [4,4,12][grade] &&
       profile.flags === 0 &&
       profile.holds.every((v) =>
         integer(v, 0, 255),
-      ), "original-bgene-grade0-animation-required");
+      ), "original-bgene-grade-animation-required");
     const state = clone(before),
       b = state.building,
       owner = byte(b, 24),
       p = state.players[owner];
-    require(byte(b, 46) === 0 &&
-      (word(b, 49) & ~4) === 1, "unsupported-genepod-callback-state");
+    require((word(b, 49) & ~4) === 1, "unsupported-genepod-callback-state");
     require(p[1] === owner && p[0x4a1] < 4, "invalid-genepod-owner-player");
     const receipt: GenepodReceipt = {
       state,
@@ -638,25 +655,26 @@ export function stepGenepod(
     put(b, 61, energy);
     const remaining = dword(b, 54);
     if (remaining > 0) {
-      require(byte(b, 51) === 4, "unsupported-genepod-species");
+      const species = creatureSelector(byte(b, 51)), scale = 1 << grade;
       b[63] = 3;
       if (!(word(b, 49) & 4) && context.frame % 6 !== 0)
         receipt.status = "frame-wait";
-      else if (((dword(p, 0x4a3) + dword(p, 0x4a7)) | 0) < 1)
+      else if (((dword(p, 0x4a3) + dword(p, 0x4a7)) | 0) < scale)
         receipt.status = "funds-wait";
       else {
         const payer = p[2] === 0 ? byte(b, 58) : owner;
         require(integer(payer, 0, 3) &&
           state.players[payer][0x4a1] < 4, "invalid-genepod-payer");
         const paying = state.players[payer];
-        debit(paying, 1, state.players[paying[0x4a1]][2]);
+        debit(paying, scale, state.players[paying[0x4a1]][2]);
         put32(b, 54, remaining - 1);
         receipt.paidBy = payer;
-        receipt.paid = 1;
+        receipt.paid = scale;
         receipt.status = "working";
         if (remaining === 1) {
           b[27] = 1;
-          const quality = Math.min(dword(paying, 0x62a) >> 11, 100),
+          const rawQuality = dword(paying, 0x61a + species * 4) >> 11,
+            quality = grade < 2 ? Math.min(rawQuality, 100) : rawQuality,
             roll = nextRandom(state.rng) % 100;
           receipt.quality = quality;
           receipt.roll = roll;
@@ -669,7 +687,7 @@ export function stepGenepod(
               context.pools,
               state.players,
               state.rng,
-              { owner: payer, position, quality: quality & 255 },
+              { owner: payer, position, quality: quality & 255, species },
               context,
             );
             require(result.ok, result.ok ? "" : result.reason);
@@ -691,13 +709,14 @@ export function stepGenepod(
               put(n, 49, v.vz);
               put32(n, 39, (dword(n, 39) + 3840) | 0);
               put(b, 58, made.birth.slot);
-              research(state.players[payer], 2048);
+              research(state.players[payer], species, (grade + 1) * 2048);
               receipt.births.push(made.birth);
-              receipt.status = "mule-born";
+              receipt.status = species === 4 ? "mule-born" : "creature-born";
             } else {
               put(b, 58, 301);
               receipt.status = "creature-pool-full";
             }
+            research(state.players[payer], species, grade * 64);
           } else {
             receipt.status = "quality-failed";
             put(b, 58, 301);
@@ -754,7 +773,7 @@ export function stepGenepod(
                 resource: { kind: "effect", selector: 32 },
               });
             }
-            research(state.players[payer], 2048);
+            research(state.players[payer], species, 2048);
           }
         }
       }
