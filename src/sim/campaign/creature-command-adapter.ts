@@ -22,13 +22,14 @@ import {
   type EffectSchedulerOptions,
 } from "./effect-scheduler";
 import { requestAudio } from "../mechanics/audio";
+import { muleRequestedSpeed } from "../mechanics/ecology";
 
 type Native = (number | null)[];
 type Point = [number, number];
 export type CampaignCreatureCommandWorld = CampaignWorld &
   Pick<CreatureCommandWorld, "creatureCommandScratch">;
 export interface CampaignCreatureCommandServices {
-  /** Actual virtual80 for species beyond the currently admitted Mule4. */
+  /** Optional explicit virtual80 override. The ordinary host binds5A990. */
   requestedSpeed?(world: CampaignCreatureCommandWorld, index: number): number;
   /** Real49D30 cleanup options; required only for a dead carrier's effect36. */
   effectOptions?(
@@ -289,7 +290,14 @@ export function campaignCreatureCommandContext(
     tables: pack.rules.tables,
     speciesComponents: pack.zoneRules.speciesComponents as [number, number][],
     resolve: campaignCreatureCommandReference,
-    requestedSpeed: services.requestedSpeed,
+    requestedSpeed: services.requestedSpeed ?? ((s, index) => {
+      const n = s.creatureNative[index];
+      if (!n || n[6] !== 1 || word(n, 15) !== index)
+        throw Error("Actual creature speed native identity required");
+      // The generic scalar reads these exact bytes; null is never a cold prior.
+      byte(n, 118); byte(n, 123);
+      return muleRequestedSpeed({id:`source:0:${index}`,index,native:n,pending:[]}, pack.ecologyRules!);
+    }),
     occupied: campaignCreatureOccupied,
     footprintBuilding: (s, index) =>
       campaignCreatureFootprintBuilding(

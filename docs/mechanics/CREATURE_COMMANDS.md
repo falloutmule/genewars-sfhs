@@ -72,3 +72,6 @@ that comparison. The original instruction bodies and vtable contracts were
 read from the admitted executable's preserved mapped listings; no original
 program was run, and no proprietary fixtures are committed. Acceptance remains
 0/24.
+
+
+The ordinary campaign adapter now binds the shared source5A990 requested-speed getter for every actual species. It reads the retained creature identity, actual imported species row, skill118 and warmth123 without RNG or mutation. Explicit source service overrides remain supported. Standalone command contexts still require the non-Mule port; missing traits or unknown getter bytes reject inside the complete host transaction. This closes the first AI Crab command refusal in Brown without adding a numeric speed algorithm or broadening unimplemented creature callback families. The private provider comparison reuses300 mapped speed cases across25 species; positive Crab interaction and negative transactional tests cover the host binding.

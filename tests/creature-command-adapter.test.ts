@@ -24,6 +24,7 @@ import { worldCell } from "../src/sim/mechanics/terrain";
 import { queryMuleAirborneBuilding } from "../src/sim/mechanics/mule";
 import type { EffectSchedulerOptions } from "../src/sim/campaign/effect-scheduler";
 import type { CampaignWorld } from "../src/sim/campaign/world";
+import { speciesFixture } from "./fixtures/creature-species";
 
 type Native = (number | null)[];
 const put = (n: Native, p: number, v: number) => put16(n as number[], p, v);
@@ -151,6 +152,33 @@ const options = (w: CampaignWorld): EffectSchedulerOptions<CampaignWorld> => ({
   cleanupReferences: cleanupCampaignReferences,
 });
 describe("campaign creature commands", () => {
+  it("binds a Crab's actual virtual80 through ordinary interaction without RNG or alias replacement", () => {
+    const {w,n,pack,mule}=fixture(), f=speciesFixture();
+    pack.ecologyRules!.speciesTraits=f.rules.speciesTraits;
+    pack.zoneRules!.speciesComponents=f.components;
+    n[122]=1;n[118]=100;n[123]=255;
+    mule(1,[8448,8192]);const rng=structuredClone(w.rng);
+    const out=executeStagedCampaignCreatureCommand(w,0,{type:"interact",target:{kind:1,index:1},force:false},pack);
+    expect(out.accepted).toBe(true);expect(i16(n as number[],63)).toBe(410);
+    expect(w.rng).toEqual(rng);expect(w.creatureNative[0]).toBe(n);expect(w.ecology.mules[0].native).toBe(n);
+  });
+  it("requires actual non-Mule speed priors and traits inside the command transaction", () => {
+    for(const missing of ["traits","skill","warmth"]){
+      const {w,n,pack,mule}=fixture(),f=speciesFixture();
+      pack.ecologyRules!.speciesTraits=f.rules.speciesTraits;pack.zoneRules!.speciesComponents=f.components;
+      n[122]=1;mule(1,[8448,8192]);
+      if(missing==="traits")pack.ecologyRules!.speciesTraits=undefined;
+      else n[missing==="skill"?118:123]=null;
+      const before=JSON.stringify(w);
+      expect(()=>executeCampaignCreatureCommand(w,0,{type:"interact",target:{kind:1,index:1},force:false},pack)).toThrow();
+      expect(JSON.stringify(w)).toBe(before);
+    }
+  });
+  it("retains an explicit source speed service override", () => {
+    const {w,n,pack,mule}=fixture();n[122]=1;mule(1,[8448,8192]);
+    const out=executeStagedCampaignCreatureCommand(w,0,{type:"interact",target:{kind:1,index:1},force:false},pack,{requestedSpeed:()=>777});
+    expect(out.accepted).toBe(true);expect(i16(n as number[],63)).toBe(777);
+  });
   it("executes81C60 against actual retained native/player/RNG and source audio", () => {
     const { w, n, pack } = fixture(),
       players = w.players,
