@@ -1,0 +1,9 @@
+# GOOP Vat lifecycle
+
+Selector13 uses the imported BVAT resource and the ordinary source43E30 kind4 constructor. Its footprint is1;534D0 uses the same reservation, terrain-job, payment, shared44 appearance,441C0 construction, repair and upgrade services as other admitted buildings. Completion has no source77 audio. The human Build control and the strategic AI share this path. Selector9 and the other distinct callback families remain guarded.
+
+Source451F0 performs signed16 upkeep and the ordinary warning/energy/dirty/flash/animation tail. In its complete, enabled selector13 branch, stored native54 leaks one unit every32 frames, phased by the actual native slot, when energy iszero or operation is suppressed. Player GOOP decrements only when signed positive. The fill frame uses unsigned32 multiplication, unsigned division by500 times grade-plus-one, then byte truncation before clamp12. Disabled and incomplete records bypass this storage work. A zero-health incomplete record skips the ANB lookup. Timed demolition uses the separate existing shared callback.
+
+The existing437A0 owner storage allocator and43620 capacity calculation already admit13, including incomplete storage and source prior retention. Source44380 subtracts retained native54 from player GOOP before actual unlink/reference cleanup, without clamping. Both timed demolition and lethal damage now retain this behavior. Partial damage preserves stored quantities; depletion changes capacity.
+
+Private mapped-instruction receipts and the genuine pre-refusal Brown save are under `.private/goop-vat-20261026/`. Synthetic tests cover constructor prior retention and silent completion, power/leak phases, signed GOOP, suppression, disabled/incomplete gates, volume byte wrap, missing priors and transactional rejection, lethal and partial damage. No proprietary assets or captures are tracked.

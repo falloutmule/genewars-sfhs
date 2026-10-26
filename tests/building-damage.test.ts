@@ -12,6 +12,20 @@ function fixture(selector=3,footprint=1){const bytes=Array(229376).fill(0);for(l
   const context:BuildingDamageContext<typeof world>={rules,gameplayRunning:true,selectedBuildingSlot:0,createEffect(w,r){factories.push(r);trace.push(`effect:${r.code}`);if(r.code>=27&&r.code<=31)nextRandom(w.rng);return 0;},createCollapse:(_w,r)=>trace.push(`collapse:${r.completed}`),unlinkBuilding:(w,slot)=>{expect(w.buildingNative[slot][6]).toBe(4);trace.push(`unlink:${slot}`);},createCrater:(w,r)=>{trace.push(`crater:${r.variant}`);for(let i=0;i<(r.variant===0?9:16);i++)nextRandom(w.rng);},onEvent:(_w,e)=>trace.push(e.type)};
   return {world,context,trace,factories};}
 describe("source building damage and destruction",()=>{
+  it("debits a destroyed Vat's retained storage before unlinking without clamping GOOP",()=>{
+    const f=fixture(13);put32(f.world.buildingNative[0],54,250);put32(f.world.players[0].raw,0x4a7,100);
+    const unlink=f.context.unlinkBuilding;
+    f.context.unlinkBuilding=(w,slot)=>{expect(dword(w.players[0].raw,0x4a7)).toBe(-150);unlink!(w,slot);};
+    damageNativeBuilding(f.world,0,900,null,f.context);
+    expect(f.world.buildingNative[0][6]).toBe(0);expect(f.world.players[0].raw[0x60d]).toBe(0);
+    expect(dword(f.world.players[0].raw,0x4a7)).toBe(-150);
+  });
+  it("partial Vat damage retains storage while depletion removes capacity",()=>{
+    const f=fixture(13);put(f.world.buildingNative[0],43,310);put32(f.world.buildingNative[0],54,250);put32(f.world.players[0].raw,0x4a7,400);
+    const out=damageNativeBuilding(f.world,0,20,null,f.context);
+    expect(out.destroyed).toBe(false);expect(out.capacityAfter).toBe(600);
+    expect(dword(f.world.players[0].raw,0x4a7)).toBe(400);expect(dword(f.world.buildingNative[0],54)).toBe(250);
+  });
   it("retains the source dead health afterimage and ordered real effect/retirement calls",()=>{
     const f=fixture(),before=f.world.terrain.bytes.slice(),out=damageNativeBuilding(f.world,0,900,{id:"source:7:0",owner:1},f.context);
     expect(out.destroyed).toBe(true);expect(f.world.buildingNative[0][6]).toBe(0);expect(word(f.world.buildingNative[0],43)).toBe(900);

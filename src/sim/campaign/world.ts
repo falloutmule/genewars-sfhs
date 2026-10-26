@@ -1,3 +1,4 @@
+import { stepStagedCampaignGoopVat } from "./goop-vat-adapter";
 import {creatureAsset,creatureCombatTraits,creatureColdResponse} from "../mechanics/creature-species";
 import { z } from "zod";
 import type { Pack } from "../../content/types";
@@ -2195,6 +2196,10 @@ export function stepCampaign(w: CampaignWorld, pack: Pack): void {
           }
           if (building.selector === 5) {
             stepStagedCampaignRecruitmentCenter(staged, slot, pack, specialistServices(pack));
+            return true;
+          }
+          if (building.selector === 13) {
+            stepStagedCampaignGoopVat(staged, slot, pack);
             return true;
           }
           if (!building.complete) {

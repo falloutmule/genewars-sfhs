@@ -111,6 +111,28 @@ describe("native Engineer selector4 Recycling Plant construction", () => {
   beforeAll(() => {
     start = fixture();
   });
+  it("publishes a newly constructed Vat economy binding before same-turn completion and replays its callback", () => {
+    const pack = structuredClone(start.pack), w = structuredClone(start.world);
+    pack.rules!.tables.buildingFootprints[13] = 1;
+    pack.buildingRules!.resources.find(r => r.selector === 13)!.assetKey = "RECYCLE_TEST";
+    const made = createStagedCampaignEngineerBuilding(w, pack, start.services, {
+      code:44,owner:0,selector:13,point:[8960,8192],height:2048,
+    });
+    expect(made).not.toBeNull();
+    const slot = made!.buildingSlot, n = w.buildingNative[slot];
+    expect(w.economy.buildings.find(b => b.owner*64+b.slot === slot)?.selector).toBe(13);
+    progressCampaignEngineerBuilding(w,pack,slot,90,start.services);
+    expect(w.buildings.find(b=>b.slot===slot)?.complete).toBe(true);
+    expect(w.players[0].completed[13]).toBe(1);
+    expect(u32(w.players[0].raw,0x5e6)).toBe(500);
+    const before=saveCampaign(w,{paused:true,speed:1,accumulator:0}), restored=loadCampaign(before,w.contentHash);
+    expect(saveCampaign(restored.world,restored.session)).toBe(before);
+    expect(w.buildingNative[slot]).toBe(n);
+    const recording=recordCampaign(w,null,true);
+    step(w,pack,20);
+    expect(checksum(replayCampaign(sealCampaignReplay(recording,w),pack,w.contentHash))).toBe(checksum(w));
+    expect(w.economy.buildings.find(b=>b.owner*64+b.slot===slot)?.energy).toBe(i16(w.buildingNative[slot] as number[],61));
+  });
   it("uses shared43E30 priors and441C0/43F60 completion without resetting retained counters", () => {
     const prior = start.world.buildingNative[0].slice();
     prior[30] = 79;

@@ -30,7 +30,7 @@ import {
 } from "./crater";
 
 export type ConstructionPoint = [number, number];
-export type ConstructionSelector = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 11;
+export type ConstructionSelector = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 11 | 13;
 export interface ConstructionRules extends MotionTables {
   evidence: string;
   terrainBorder: readonly number[];
@@ -232,7 +232,7 @@ export interface ConstructionReceipt {
   events: ConstructionEvent[];
 }
 
-const selectors: readonly number[] = [0, 1, 3, 6, 11];
+const selectors: readonly number[] = [0, 1, 3, 6, 11, 13];
 const u8 = (value: number) => value & 255;
 const s8 = (value: number) => (value << 24) >> 24;
 function integer(value: number, min: number, max: number, label: string): void {

@@ -48,6 +48,7 @@ const NAMES: Record<number, string> = {
   5: "Recruitment Center",
   6: "Photon Processor",
   11: "Extractor",
+  13: "GOOP Vat",
 };
 // Presentation policy:60 source callbacks/second at1x. The original wall-clock
 // cadence remains unresolved; simulation/replay never depends on render FPS.
@@ -871,6 +872,8 @@ export async function openCampaign(
       constructionSelectors.push(4);
     if (pack.buildingRules?.resources.some(row => row.selector === 5 && pack.assets[row.assetKey]))
       constructionSelectors.push(5);
+    if (pack.buildingRules?.resources.some(row => row.selector === 13 && pack.assets[row.assetKey]))
+      constructionSelectors.push(13);
     for (const selector of constructionSelectors) {
       const skill = a ? p.blueprints[a.blueprintIndex].skill : 0,
         cost = pack.rules!.tables.constructionCosts[selector] - 2 * skill,
