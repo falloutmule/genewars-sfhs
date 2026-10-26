@@ -178,7 +178,7 @@ export async function openCampaign(
     //1C120 consumes initial input while runflag4 holds ordinary callbacks.
     //This host iteration never advances native frame or simulation RNG.
     if (initialInput && !(w.flags & 4) && !(command.type === "roster-deploy" && command.deployment === 1)) tick();
-    say(session.paused && ((w.flags & 4) || w.initialRecruitmentLaunch) ? "Recruitment order queued Â· resume to process" : "Recruitment order queued");
+    say(session.paused && ((w.flags & 4) || w.initialRecruitmentLaunch) ? "Recruitment order queued · resume to process" : "Recruitment order queued");
     hud();
     return true;
   }
@@ -192,7 +192,7 @@ export async function openCampaign(
       const label = document.createElement("p"); label.textContent = ["Engineer", "Botanist", "Geneticist", "Shepherd"][category]; parent.append(label);
       for (const card of view.cards.filter(c => c.category === category && c.blueprintIndex !== null)) {
         const queued = w.pending.some(p => p.command.type === "roster-select" && p.command.blueprintIndex === card.blueprintIndex),
-          add = button(parent, `${card.name} Â· skill ${card.skill} Â· health ${card.health}${queued ? " Â· queued" : ""}`, () => {rosterOrder({type: "roster-select", blueprintIndex: card.blueprintIndex!});});
+          add = button(parent, `${card.name} · skill ${card.skill} · health ${card.health}${queued ? " · queued" : ""}`, () => {rosterOrder({type: "roster-select", blueprintIndex: card.blueprintIndex!});});
         add.disabled = !card.canSelect || queued || w.phase !== "active";
         if (card.reason) add.title = card.reason;
       }
@@ -200,7 +200,7 @@ export async function openCampaign(
     const pending = document.createElement("p"); pending.textContent = `Roster: ${view.pending.length}/5`; parent.append(pending);
     for (const entry of view.pending) {
       const bp = w.players[w.selectedPlayer].blueprints[entry.blueprintIndex], remove = button(parent,
-        `${bp.name} Â· ${entry.landing ? "landing" : entry.waiting ? "remove from roster" : "deployed"}`,
+        `${bp.name} · ${entry.landing ? "landing" : entry.waiting ? "remove from roster" : "deployed"}`,
         () => {rosterOrder({type: "roster-deselect", blueprintIndex: entry.blueprintIndex});});
       remove.disabled = !entry.canDeselect || w.phase !== "active";
       if (entry.reason) remove.title = entry.reason;
@@ -297,9 +297,9 @@ export async function openCampaign(
     input?.();
     scene?.dispose();
     app.innerHTML =
-      '<div class="game campaign-game"><header class="topbar"><strong id="campaign-title"></strong><button id="campaign-pause">Pause</button><label>Speed <select id="campaign-speed" aria-label="Campaign speed"><option value=".5">Â½Ã—</option><option value="1">1Ã—</option><option value="2">2Ã—</option><option value="4">4Ã—</option></select></label><button id="campaign-saves">Save / load</button><button id="campaign-restart">Restart</button><button id="campaign-menu">Menu</button></header><main class="world" id="campaign-world"><div class="overlay-label" id="campaign-phase"></div></main><aside class="sidebar"><section><h2>Mission</h2><div id="campaign-objectives"></div></section><section><h2>Specialists</h2><div id="campaign-specialists"></div><p id="campaign-selection"></p><button id="campaign-cancel">Stop selected order</button><div id="campaign-role"></div><div id="campaign-recruitment"></div></section><section><h2>Construct</h2><div id="campaign-build"></div></section><section><h2>Power and GOOP</h2><div id="campaign-economy"></div></section><section><h2>Alerts</h2><div id="campaign-alerts"></div></section></aside><footer class="footer"><span id="campaign-resources"></span><span id="campaign-notice" role="status"></span></footer></div>';
+      '<div class="game campaign-game"><header class="topbar"><strong id="campaign-title"></strong><button id="campaign-pause">Pause</button><label>Speed <select id="campaign-speed" aria-label="Campaign speed"><option value=".5">½×</option><option value="1">1×</option><option value="2">2×</option><option value="4">4×</option></select></label><button id="campaign-saves">Save / load</button><button id="campaign-restart">Restart</button><button id="campaign-menu">Menu</button></header><main class="world" id="campaign-world"><div class="overlay-label" id="campaign-phase"></div></main><aside class="sidebar"><section><h2>Mission</h2><div id="campaign-objectives"></div></section><section><h2>Specialists</h2><div id="campaign-specialists"></div><p id="campaign-selection"></p><button id="campaign-cancel">Stop selected order</button><div id="campaign-role"></div><div id="campaign-recruitment"></div></section><section><h2>Construct</h2><div id="campaign-build"></div></section><section><h2>Power and GOOP</h2><div id="campaign-economy"></div></section><section><h2>Alerts</h2><div id="campaign-alerts"></div></section></aside><footer class="footer"><span id="campaign-resources"></span><span id="campaign-notice" role="status"></span></footer></div>';
     node("campaign-title").textContent =
-      `${w.missionId.toString().padStart(2, "0")} Â· ${currentMission().name}`;
+      `${w.missionId.toString().padStart(2, "0")} · ${currentMission().name}`;
     scene = new Stage(node("campaign-world"), pack);
     await scene.setMission(currentMission());
     const sidebar = app.querySelector<HTMLElement>(".sidebar")!,
@@ -396,7 +396,7 @@ export async function openCampaign(
   }
   function briefing() {
     if (w.phase !== "briefing") return;
-    const body = modal(`${currentMission().name} Â· Mission briefing`),
+    const body = modal(`${currentMission().name} · Mission briefing`),
       p = document.createElement("p");
     p.className = "briefing-text";
     p.textContent = currentMission().briefing;
@@ -410,7 +410,7 @@ export async function openCampaign(
     body.append(detail);
     const badge = document.createElement("p");
     badge.className = "badge";
-    badge.textContent = "Campaign development Â· canonical acceptance0/24";
+    badge.textContent = `Campaign development · canonical acceptance ${buildMeta?.acceptedMissions ?? 0}/24`;
     body.append(badge);
     button(body, campaignHumanRosterInitialPanel(w).open ? "Choose specialists" : "Deploy specialists", () => {
       recording?.commands.push({ tick: w.tick, type: "enter" });
@@ -513,7 +513,7 @@ export async function openCampaign(
         result();
       });
     } else if (w.result.phase === "victory-view") {
-      const body = modal(`${currentMission().name} Â· Victory`),
+      const body = modal(`${currentMission().name} · Victory`),
         p = document.createElement("p");
       p.textContent =
         pack.texts[477 + w.players[w.selectedPlayer].progress] ??
@@ -557,21 +557,21 @@ export async function openCampaign(
     if (!alive || !app.querySelector("#campaign-resources")) return;
     const p = w.players[w.selectedPlayer];
     node("campaign-resources").textContent =
-      `Funds ${p.funds} Â· GOOP ${p.goop}/${w.economy.players[p.id].capacity} Â· callback ${w.frame}`;
+      `Funds ${p.funds} · GOOP ${p.goop}/${w.economy.players[p.id].capacity} · callback ${w.frame}`;
     node("campaign-pause").textContent = session.paused ? "Resume" : "Pause";
     node("campaign-pause").setAttribute("aria-pressed", String(session.paused));
     node("campaign-phase").textContent =
       placing !== null
-        ? `Place ${NAMES[placing]} Â· tap terrain${session.paused ? " Â· paused" : ""}`
+        ? `Place ${NAMES[placing]} · tap terrain${session.paused ? " · paused" : ""}`
         : w.phase === "blocked"
           ? "A required runtime callback needs implementation; see alerts"
           : !(w.flags & 4) && w.phase === "active"
-            ? w.initialRecruitmentLaunch ? "Landing request queued Â· resume to process" : w.initialRecruitmentPanel === "open" ? "Choose specialists Â· mission waiting" : "Recruitment closed Â· restart to choose specialists"
+            ? w.initialRecruitmentLaunch ? "Landing request queued · resume to process" : w.initialRecruitmentPanel === "open" ? "Choose specialists · mission waiting" : "Recruitment closed · restart to choose specialists"
           : w.landings.some((l) => l.phase < 1)
-            ? "Landing specialistsâ€¦"
+            ? "Landing specialists…"
             : session.paused
-              ? "Paused Â· orders accepted"
-              : "Campaign development Â·0/24 accepted";
+              ? "Paused · orders accepted"
+              : "Campaign development ·0/24 accepted";
     const ledger = node("campaign-objectives");
     ledger.replaceChildren();
     const objectives = describeMissionObjectives(
@@ -583,12 +583,12 @@ export async function openCampaign(
     for (const goal of objectives.value.goals) {
       const row = document.createElement("p");
       row.className = "objective" + (goal.thresholdReached ? " complete" : "");
-      row.textContent = `${goal.label}: ${goal.current}/${goal.target}${goal.timerRemaining === undefined ? "" : ` Â· timer ${goal.timerRemaining}`}`;
+      row.textContent = `${goal.label}: ${goal.current}/${goal.target}${goal.timerRemaining === undefined ? "" : ` · timer ${goal.timerRemaining}`}`;
       ledger.append(row);
     }
     for (const zone of objectives.value.zones ?? []) {
       const row = document.createElement("p");
-      row.textContent = `Zone ${zone.index + 1}: ${zone.remainingQuota}/${zone.initialQuota} remaining Â· (${(zone.center[0] / 256).toFixed(1)}, ${(zone.center[1] / 256).toFixed(1)})${zone.remainingQuota > 0 ? (zone.activeObservers > 0 ? " Â· Ethereal inspection active" : " Â· Awaiting Ethereal inspection") : ""}`;
+      row.textContent = `Zone ${zone.index + 1}: ${zone.remainingQuota}/${zone.initialQuota} remaining · (${(zone.center[0] / 256).toFixed(1)}, ${(zone.center[1] / 256).toFixed(1)})${zone.remainingQuota > 0 ? (zone.activeObservers > 0 ? " · Ethereal inspection active" : " · Awaiting Ethereal inspection") : ""}`;
       ledger.append(row);
       button(ledger, `Show zone ${zone.index + 1}`, () => {
         scene?.focus(zone.center[0] / 256, zone.center[1] / 256);
@@ -603,7 +603,7 @@ export async function openCampaign(
       const bp = p.blueprints[a.blueprintIndex],
         b = button(
           specialists,
-          `${bp.name} Â· ${["Engineer", "Botanist", "Geneticist", "Shepherd"][bp.category]} Â· skill ${bp.skill}`,
+          `${bp.name} · ${["Engineer", "Botanist", "Geneticist", "Shepherd"][bp.category]} · skill ${bp.skill}`,
           () => {
             selected.clear();
             selected.add(a.id);
@@ -623,7 +623,7 @@ export async function openCampaign(
     )) {
       const b = button(
         specialists,
-        `Mule ${mule.index + 1} Â· health ${i16(mule.native as number[], 0x6a)}/${i16(mule.native as number[], 0x64)}`,
+        `Mule ${mule.index + 1} · health ${i16(mule.native as number[], 0x6a)}/${i16(mule.native as number[], 0x64)}`,
         () => {
           selected.clear();
           selected.add(2000 + mule.index);
@@ -813,7 +813,7 @@ export async function openCampaign(
         for (const m of w.ecology.mules.filter((m) => m.native[6] === 1)) {
           const option = document.createElement("option");
           option.value = String(m.index);
-          option.textContent = `Mule ${m.index + 1} Â· ${m.native[24] === 4 ? "neutral" : "owner " + (m.native[24]! + 1)} Â· health ${i16(m.native as number[], 106)}/${i16(m.native as number[], 100)}${m.native[94]! >= 24 ? " Â· remains" : ""}`;
+          option.textContent = `Mule ${m.index + 1} · ${m.native[24] === 4 ? "neutral" : "owner " + (m.native[24]! + 1)} · health ${i16(m.native as number[], 106)}/${i16(m.native as number[], 100)}${m.native[94]! >= 24 ? " · remains" : ""}`;
           target.append(option);
         }
         if (
@@ -873,7 +873,7 @@ export async function openCampaign(
     for (const selector of constructionSelectors) {
       const skill = a ? p.blueprints[a.blueprintIndex].skill : 0,
         cost = pack.rules!.tables.constructionCosts[selector] - 2 * skill,
-        b = button(build, `${NAMES[selector]} Â· ${cost}`, () => {
+        b = button(build, `${NAMES[selector]} · ${cost}`, () => {
           placing = selector;
           hud();
         });
@@ -891,7 +891,7 @@ export async function openCampaign(
     for (const b of w.economy.buildings) {
       const row = document.createElement("p");
       row.className = "help";
-      row.textContent = `${NAMES[b.selector]} Â· ${!b.complete ? "under construction" : b.disabled ? (b.depleted ? "resource exhausted" : "disabled") : b.powered ? "powered" : "unpowered"} Â· energy ${b.energy}`;
+      row.textContent = `${NAMES[b.selector]} · ${!b.complete ? "under construction" : b.disabled ? (b.depleted ? "resource exhausted" : "disabled") : b.powered ? "powered" : "unpowered"} · energy ${b.energy}`;
       economy.append(row);
       if (b.selector === 0 && b.complete && b.owner === w.selectedPlayer) {
         const n = w.buildingNative[b.owner * 64 + b.slot],
@@ -904,7 +904,7 @@ export async function openCampaign(
         economy.append(status);
         const produce = button(
           economy,
-          remaining > 0 ? "Cancel Mule production" : "Produce Mule Â· 75 total",
+          remaining > 0 ? "Cancel Mule production" : "Produce Mule · 75 total",
           () => {
             const command: CampaignCommand = {
                 type: "produce-mule",
