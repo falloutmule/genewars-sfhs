@@ -889,3 +889,10 @@ describe("source57A10 Geneticist callback envelope", () => {
     ]);
   });
 });
+
+describe("all25 Geneticist target species",()=>{
+  it.each(Array.from({length:25},(_,i)=>i))("researches only actual species %i and discovers it once",species=>{const f=fixture();f.m()[122]=species;f.n()[144]=species;for(let i=0;i<25;i++)put32(f.raw(),0x61a+i*4,1000+i);const first=stepGeneticistRole(f.w,0,f.c);expect(first.events.find(e=>e.type==="research")).toMatchObject({species,before:1000+species,after:1200+species,newSpecies:true});stepGeneticistRole(f.w,0,f.c);for(let i=0;i<25;i++)expect(dword(f.raw(),0x61a+i*4)).toBe(1000+i+(i===species?400:0));expect(f.raw()[0x6ae]).toBe(species);expect(f.raw()[0x6e0]).toBe(1);expect(dword(f.raw(),0x705)).toBe(1);});
+  it("admits a Crab command without granting contact or research",()=>{const f=fixture();f.m()[122]=1;f.m()[94]=8;const pos=f.n().slice(7,11),r=requestGeneticistInteraction(f.w,0,{task:0,target:1,callerOwner:0},f.c);expect(r.status).toBe("active");expect(f.n()[144]).toBe(1);expect(f.n().slice(7,11)).toEqual(pos);expect(dword(f.raw(),0x61e)).toBe(0);expect(f.w.rng.draws).toBe(0);});
+  it("heals a Crab without changing any research entry",()=>{const f=fixture();f.m()[122]=1;f.n()[126]=1;const r=stepGeneticistRole(f.w,0,f.c);expect(r.events.find(e=>e.type==="healing")).toMatchObject({target:1,healthBefore:80,healthAfter:85});expect(f.raw().slice(0x61a,0x67e)).toEqual(Array(100).fill(0));});
+  it("rejects an invalid species atomically",()=>{const f=fixture();f.m()[122]=25;f.n()[144]=25;const before=structuredClone(f.w);expect(()=>stepGeneticistRole(f.w,0,f.c)).toThrow(/species0..24/);expect(f.w).toEqual(before);});
+});

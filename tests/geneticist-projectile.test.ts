@@ -775,3 +775,7 @@ describe("immediate capture20 and concrete Mule reaction", () => {
     expect(r[0].retirement?.countDelta).toBe(-1);
   });
 });
+
+describe("generic kind1 capture impact",()=>{
+  it("dispatches the actual Crab reference and retains physical/identity gates",()=>{const f=setup(20),t=mule(),requests:unknown[]=[];t.native![122]=1;put(f.native,7,t.position[0]);put32(f.native,39,t.physicalHeight);f.native[73]=0;const c={...f.c,nearby:()=>[t],impact:(target:GeneticistEffectEntity,_e:N,_r:GeneRng,request:unknown)=>{requests.push({index:target.index,species:target.native![122],request});}};const r=applyGeneticistCaptureEffect(f.native,f.rng,c);expect(r.targets).toEqual([t.index]);expect(requests).toEqual([{index:t.index,species:1,request:{damage:1,duration:64,capturedByActor:null}}]);t.native![122]=25;expect(()=>applyGeneticistCaptureEffect(f.native,f.rng,c)).toThrow(/species0..24/);expect(requests).toHaveLength(1);});
+});

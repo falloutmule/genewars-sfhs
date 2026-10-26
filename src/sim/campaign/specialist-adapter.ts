@@ -529,24 +529,26 @@ export function consumeCampaignGeneticistReceipt(
   if (w.specialists.records[index][6] === 0) return;
   mirrorCampaignSpecialist(w, index);
   const a = w.actors.find((a) => a.id === index)!,
-    n = w.specialists.records[index];
+    n = w.specialists.records[index],
+    target=w.ecology.mules.find(m=>m.index===((n[127]!|n[128]!<<8)<<16)>>16),
+    label=target?.native[122]===4?"Mule":"creature";
   a.reason =
     n[85] === 4
       ? "Dying"
       : n[85] === 5
         ? "Injured"
         : r.events.some((e) => e.type === "research")
-          ? "Researching Mule DNA"
+          ? `Researching ${label} DNA`
           : r.events.some((e) => e.type === "healing")
-            ? "Healing Mule"
+            ? `Healing ${label}`
             : r.events.some((e) => e.type === "shot" && e.created)
-              ? "Capturing Mule"
+              ? `Capturing ${label}`
               : n[85] === 8
                 ? "Moving"
                 : n[85] === 11
                   ? n[126] === 1
-                    ? "Healing Mule"
-                    : "Capturing and researching Mule"
+                    ? `Healing ${label}`
+                    : `Capturing and researching ${label}`
                   : "Idle";
 }
 export function stepCampaignGeneticist(

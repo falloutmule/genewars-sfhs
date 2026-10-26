@@ -252,7 +252,7 @@ try {
       await page.getByRole("button", { name: "Units", exact: true }).click();
     await page.getByRole("button", { name: /Geneticist · skill/ }).click();
     const target = page.getByRole("combobox", {
-      name: "Mule target",
+      name: "Creature target",
       exact: true,
     });
     assert.equal(await target.locator("option").count(), 4);

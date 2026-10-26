@@ -503,10 +503,10 @@ export function applyGeneticistCaptureEffect(
       !n ||
       n.length !== 124 ||
       byte(n, 6) !== 1 ||
-      byte(n, 122) !== 4 ||
+      byte(n, 122) >= 25 ||
       word(n, 15) !== target.index
     )
-      throw Error("Capture impact requires a concrete admitted Mule binding");
+      throw Error("Capture impact requires a concrete kind1 species0..24 binding");
     if (byte(n, 94) >= 24 || byte(n, 94) === 15) continue;
     let duration = 64,
       capturedByActor: number | null = null;

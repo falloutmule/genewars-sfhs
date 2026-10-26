@@ -1169,13 +1169,13 @@ export function queueCampaign(
       const m = w.ecology.mules.find((m) => m.index === command.muleIndex);
       if (category !== 2)
         return { ok: false, reason: "Select a landed Geneticist" };
-      if (!m || m.native[6] !== 1 || m.native[122] !== 4)
+      if (!m || m.native[6] !== 1 || !Number.isInteger(m.native[122]) || m.native[122]!<0 || m.native[122]!>=25)
         return {
           ok: false,
-          reason: "Select a Mule available for this interaction",
+          reason: "Select a creature available for this interaction",
         };
       if (command.type === "heal-mule" && m.native[94]! >= 24)
-        return { ok: false, reason: "A dead Mule cannot be healed" };
+        return { ok: false, reason: "A dead creature cannot be healed" };
     }
   }
   if (w.phase !== "active")

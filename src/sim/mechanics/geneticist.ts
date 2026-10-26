@@ -136,7 +136,7 @@ export type GeneticistEvent =
   | {
       type: "research";
       actor: number;
-      species: 4;
+      species: number;
       before: number;
       after: number;
       cap: number;
@@ -261,9 +261,9 @@ function mule<W extends GeneticistWorld>(
     m.native.length !== 124 ||
     byte(m.native, 6) !== 1 ||
     word(m.native, 15) !== index ||
-    byte(m.native, 122) !== 4
+    byte(m.native, 122) >= 25
   )
-    throw Error("Geneticist requires the actual selector4 target family");
+    throw Error("Geneticist requires an actual kind1 target with species0..24");
   return m;
 }
 function profile(
@@ -621,7 +621,7 @@ function idleTail<W extends GeneticistWorld>(
     n[112] = nextRandom(w.rng) % 4 < 2 ? byte(n, 112) | 4 : byte(n, 112) & 251;
   }
 }
-/** Complete category2/selector4 control envelope at57A10. Every required service
+/** Complete category2 control envelope at57A10. Every required service
  * runs on an isolated world, so a missing service or invalid actual byte aborts
  * all world/RNG changes. External I/O must consume the returned events after
  * commit. The source common6FB60 service remains an explicit host obligation. */
@@ -1596,8 +1596,9 @@ function runGeneticistRole<W extends GeneticistWorld>(
       const base = a.skill * (c.globalFlags & 32 ? 2 : 4),
         increase = wasDead ? Math.max(1, base >> 1) : base,
         raw = a.blueprint,
-        species = 4,
-        before = dword(raw, 0x62a),
+        species = byte(t,122),
+        researchAt = 0x61a + species*4,
+        before = dword(raw, researchAt),
         cap = (50 + 25 * byte(raw, 0x6e1)) * 2048;
       let newSpecies = false;
       const count = byte(raw, 0x6e0);
@@ -1612,7 +1613,7 @@ function runGeneticistRole<W extends GeneticistWorld>(
       }
       const after =
         before < cap ? Math.min(cap, (before + increase) | 0) : before;
-      put32(raw, 0x62a, after);
+      put32(raw, researchAt, after);
       out.events.push({
         type: "research",
         actor: index,

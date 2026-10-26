@@ -1,7 +1,7 @@
 # Geneticist capture, research and healing
 
 `geneticist.ts` independently expresses the category 2 specialist control family
-against actual selector 4 Mule records. It requires retained 20 × 200 specialist
+against actual kind1 creature records with species selectors0..24. It requires retained 20 × 200 specialist
 records, real blueprint bindings and the four 1805-byte player records. Unknown
 native bytes remain nullable and required numeric reads fail atomically. No
 creature, DNA, research completion or projectile contact is synthesized.
@@ -141,3 +141,12 @@ actual next-callback activation, conditional prior-task release, late rollback
 and normal campaign movement-to-research with full sealed replay. This repairs
 a command-wrapper omission; earlier frozen campaign graphs and their stalled
 travel evidence remain unchanged. It does not establish canonical acceptance.
+
+
+## All-species target binding
+
+Brown's first AI acquisition at frame760 exposed a conversion-only selector4 guard. The source target resolver, queued human command, capture child20 impact and55200 research/healing family now validate the actual kind1 record, stable slot/back-reference and selector0..24. The human target list identifies Crabs and keeps the existing wire-command names for save/replay compatibility. Actual capture/contact, ownership, visibility, range, cooldown, death/cold and capacity predicates remain in force.
+
+Research completion uses `player+61A+target7A*4`, matching the pre-existing indexed cap predicate. Discovery inserts the actual species once at6AE, updates6E0 and counter705, and emits that species in its receipt. It never writes the Mule DNA slot while researching a different species. Damage still dispatches the actual recipient's source species context, including Crab defense; unsupported distinct creature behavior domains remain explicit failures in their owning callbacks.
+
+A new private comparison runs all25 species through the15 frozen caller cases:375 cases,162775 mapped instructions,2818500 compared numeric bytes and exact RNG. Focused regressions cover all25 independent DNA lanes, discovery uniqueness, actual Crab command admission without research synthesis, healing without DNA changes, invalid-species rollback, and generic child20 impact identity. The genuine pre-refusal frame700 save also advances500 ticks with exact save/reload and replay and no source error notices. These are mechanic verification receipts, not mission5 acceptance.

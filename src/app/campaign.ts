@@ -807,14 +807,14 @@ export async function openCampaign(
         quality.textContent = `Mule research quality: ${Math.min(100, u32(p.raw, 0x62a) >>> 11)}%`;
         role.append(quality);
         const label = document.createElement("label");
-        label.textContent = "Mule target ";
+        label.textContent = "Creature target ";
         const target = document.createElement("select");
         target.id = "campaign-mule-target";
-        target.setAttribute("aria-label", "Mule target");
+        target.setAttribute("aria-label", "Creature target");
         for (const m of w.ecology.mules.filter((m) => m.native[6] === 1)) {
           const option = document.createElement("option");
           option.value = String(m.index);
-          option.textContent = `Mule ${m.index + 1} · ${m.native[24] === 4 ? "neutral" : "owner " + (m.native[24]! + 1)} · health ${i16(m.native as number[], 106)}/${i16(m.native as number[], 100)}${m.native[94]! >= 24 ? " · remains" : ""}`;
+          option.textContent = `${m.native[122]===4?"Mule":m.native[122]===1?"Crab":"Creature"} ${m.index + 1} · ${m.native[24] === 4 ? "neutral" : "owner " + (m.native[24]! + 1)} · health ${i16(m.native as number[], 106)}/${i16(m.native as number[], 100)}${m.native[94]! >= 24 ? " · remains" : ""}`;
           target.append(option);
         }
         if (
@@ -835,7 +835,7 @@ export async function openCampaign(
         role.append(label);
         for (const [type, label] of [
           ["research-mule", "Capture / research"],
-          ["heal-mule", "Heal Mule"],
+          ["heal-mule", "Heal creature"],
         ] as const) {
           const control = button(role, label, () => {
             const command: CampaignCommand = {
@@ -852,8 +852,8 @@ export async function openCampaign(
               });
               say(
                 type === "heal-mule"
-                  ? "Mule healing order queued"
-                  : "Mule research order queued",
+                  ? "Creature healing order queued"
+                  : "Creature research order queued",
               );
             } else say(result.reason ?? "Geneticist order rejected");
           });
