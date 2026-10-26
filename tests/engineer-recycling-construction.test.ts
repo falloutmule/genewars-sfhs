@@ -2,6 +2,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { campaignFixture } from "./fixtures/campaign";
 import {
   createCampaign,
+  campaignBuildingAvailable,
   enterCampaign,
   queueCampaign,
   stepCampaign,
@@ -115,12 +116,14 @@ describe("native Engineer selector4 Recycling Plant construction", () => {
     const pack = structuredClone(start.pack), w = structuredClone(start.world);
     pack.rules!.tables.buildingFootprints[13] = 1;
     pack.buildingRules!.resources.find(r => r.selector === 13)!.assetKey = "RECYCLE_TEST";
+    const extractorAvailable = campaignBuildingAvailable(w,pack,11);
     const made = createStagedCampaignEngineerBuilding(w, pack, start.services, {
       code:44,owner:0,selector:13,point:[8960,8192],height:2048,
     });
     expect(made).not.toBeNull();
     const slot = made!.buildingSlot, n = w.buildingNative[slot];
     expect(w.economy.buildings.find(b => b.owner*64+b.slot === slot)?.selector).toBe(13);
+    expect(campaignBuildingAvailable(w,pack,11)).toBe(extractorAvailable);
     progressCampaignEngineerBuilding(w,pack,slot,90,start.services);
     expect(w.buildings.find(b=>b.slot===slot)?.complete).toBe(true);
     expect(w.players[0].completed[13]).toBe(1);

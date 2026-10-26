@@ -1100,11 +1100,13 @@ export function campaignBuildingAvailable(
   pack: Pack,
   selector: number,
 ): boolean {
-  return constructionAvailable(
-    projection(w).players[w.selectedPlayer],
-    selector,
-    tables(pack),
-  );
+  // Availability is a player/rules query; it must not project unrelated
+  // live buildings into the obsolete grade0 construction bridge.
+  const p = w.players[w.selectedPlayer];
+  return constructionAvailable({
+    id:p.id, progress:p.progress, primary:p.funds | 0, secondary:p.goop | 0,
+    completed:p.completed, ownedMask:p.owned,
+  }, selector, tables(pack));
 }
 export function queueCampaign(
   w: CampaignWorld,
