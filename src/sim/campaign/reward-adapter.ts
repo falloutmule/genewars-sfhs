@@ -8,6 +8,11 @@ import { validateSpatial } from "./spatial";
 import { worldCell } from "../mechanics/terrain";
 import { effectPriorByte } from "../mechanics/power-motion";
 import { requestAudio } from "../mechanics/audio";
+import { registerStrategicReward } from "../mechanics/strategic-ai-rewards";
+import {
+  bindCampaignStrategicState,
+  publishCampaignStrategicState,
+} from "./strategic-state";
 import {
   rewardTargetDistance,
   type RewardTarget,
@@ -181,15 +186,33 @@ export function campaignRewardTarget(
   return queryCampaignRewardTarget(w, native, query).target;
 }
 export interface CampaignRewardPorts<W extends CampaignWorld = CampaignWorld> {
-  /** Actual35F90 AI order service, required only for owner!=0. The current
-   * host has no admitted1831BC+owner*6BE AI-prior pool; it is never zero-filled.
-   */
+  /** Actual35F90 service, required only for owner!=0. */
   registerAI?: (staged: W, slot: number) => void;
   /** Ordered presentation services:98210 audio adjustment,76620 cues and
    *981D3/41CE0 research message. Required when one of those events occurs.
    */
   presentation?: (staged: W, slot: number, event: RewardEvent) => void;
   onQuery?: (staged: W, receipt: CampaignRewardTargetReceipt) => void;
+}
+/** Bind35F90 to the saved native AI records and current shared effect slot.
+ * Caller owns the enclosing factory transaction; all writes stay staged. */
+export function registerCampaignRewardAI(
+  w: CampaignWorld,
+  slot: number,
+  pack: Pack,
+): void {
+  const n = w.powerEffects.slots[slot]?.nativePrior;
+  if (!n || byte(n, 6) !== 5 || byte(n, 69) !== 59 || word(n, 15) !== slot)
+    throw Error("Reward registration requires current source factory identity");
+  if (byte(n, 24) === 0) return;
+  const groupLimits = pack.strategicAIRules?.groupLimits;
+  if (!groupLimits || groupLimits.length !== 6)
+    throw Error(
+      "Admitted strategic group profile required for reward registration",
+    );
+  const state = bindCampaignStrategicState(w);
+  registerStrategicReward(state, n, { groupLimits });
+  publishCampaignStrategicState(w, state);
 }
 function syncSpecialist(
   w: CampaignWorld,

@@ -17,6 +17,10 @@ import {
 
 export const AI_GROUP_BASE = 0x387;
 export const AI_GROUP_BYTES = 38;
+/** Admitted variant's byte1079DA, read by3E270 for reward kind6, is0.
+ * The original six-entry ordinary-group profile ends immediately before it.
+ * Keep this explicit source constant separate from that saved pack contract. */
+export const AI_REWARD_GROUP_LIMIT = 0;
 export function strategicGroupOffset(index: number): number {
   if (!aiInteger(index, 0, 15))
     throw Error("Actual strategic group index0..15 required");
@@ -90,13 +94,13 @@ export function createStrategicGroup(
   s: StrategicAIState,
   player: number,
   request: StrategicGroupCreation,
-  c: StrategicAIContext,
+  c: Pick<StrategicAIContext, "groupLimits">,
 ): void {
   const ai = s.records[player],
     at = strategicGroupOffset(request.index),
     r = request;
   if (
-    !aiInteger(r.kind, 0, 5) ||
+    !aiInteger(r.kind, 0, 6) ||
     !aiInteger(r.parameter, 0, 255) ||
     !aiInteger(r.zone, -1, 63) ||
     r.point.length !== 2 ||
@@ -115,7 +119,7 @@ export function createStrategicGroup(
     aiPutWord(ai, at + 14 + i * 4, 65535);
     ai[at + 16 + i * 4] = 0;
   }
-  let limit = c.groupLimits[r.kind];
+  let limit = r.kind === 6 ? AI_REWARD_GROUP_LIMIT : c.groupLimits[r.kind];
   if (r.kind === 5) {
     if (r.zone < 0 || r.zone >= s.missionPrefix[0x34b8])
       throw Error("Actual strategic zone binding required for group5");

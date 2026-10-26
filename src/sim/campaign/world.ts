@@ -119,6 +119,7 @@ import {
 import {
   createCampaignReward,
   createRewardSchedulerOptions,
+  registerCampaignRewardAI,
 } from "./reward-adapter";
 import type { RewardEvent } from "../mechanics/reward-effect";
 import { cleanupCampaignReferences } from "./cleanup";
@@ -1904,6 +1905,7 @@ function rewardFactoryOptions(
 ): EffectSchedulerOptions<CampaignWorld> {
   return {
     cloneHostRoots: cloneCampaignHostRoots,
+    onRewardFactory: (staged, slot) => registerCampaignRewardAI(staged, slot, pack),
     gravity: context(w, pack).gravity,
     obstacleAt: (p) => buildingObstacle(w, p),
     cleanupReferences: (s, id) => cleanupCampaignReferences(s, id),

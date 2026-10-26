@@ -5,6 +5,7 @@ import {
   createCampaignReward,
   createRewardSchedulerOptions,
   queryCampaignRewardTarget,
+  registerCampaignRewardAI,
 } from "../src/sim/campaign/reward-adapter";
 import {
   stepEffectScheduler,
@@ -23,6 +24,12 @@ import {
 import { insertSpatial } from "../src/sim/campaign/spatial";
 import { worldCell } from "../src/sim/mechanics/terrain";
 import type { SourceEntityId } from "../src/sim/campaign/source-pools";
+import { aiGroupFixture } from "./fixtures/strategic-ai";
+import {
+  campaignStrategicAuxiliary,
+  cloneCampaignStrategicStorage,
+} from "../src/sim/campaign/strategic-state";
+import { strategicGroupOffset } from "../src/sim/mechanics/strategic-ai-groups";
 const word = (n: readonly (number | null)[], p: number) =>
   ((n[p]! | (n[p + 1]! << 8)) << 16) >> 16;
 function fixture() {
@@ -302,6 +309,74 @@ describe("source reward59 campaign adapter", () => {
     expect(calls).toEqual([0]);
     expect(word(f.w.powerEffects.slots[0].nativePrior!, 74)).toBe(6);
     expect(f.w.powerEffects.slots[0].nativePrior![76]).toBe(6);
+  });
+  it("commits the real AI registration with the reward factory and rolls both back on late failure", () => {
+    const f = fixture(),
+      { s } = aiGroupFixture();
+    f.pack.strategicAIRules = {
+      schemaVersion: 1,
+      groupLimits: [1, 2, 3, 4, 5, 6],
+      provenance: {
+        executableSha256: "0".repeat(64),
+        originalExecution: false,
+      },
+    };
+    f.w.strategy = {
+      schemaVersion: 1,
+      records: s.records,
+      creatureControl: s.creatureControl.map((n) => n!),
+      controlProvenance: "synthetic reward registration prior",
+    };
+    f.w.auxiliary = campaignStrategicAuxiliary(f.w.strategy);
+    const request = {
+      owner: 1,
+      position: [8192, 8192] as [number, number],
+      height: 1000,
+      angles: [0, 0, 0] as [0, 0, 0],
+    };
+    const base = {
+      ...f.base,
+      stageHost(original: typeof f.w, staged: typeof f.w) {
+        staged.strategy = cloneCampaignStrategicStorage(original.strategy!);
+      },
+      commitHost(original: typeof f.w, staged: typeof f.w) {
+        original.strategy = staged.strategy;
+        original.auxiliary = staged.auxiliary;
+      },
+      onRewardFactory(staged: typeof f.w, slot: number) {
+        registerCampaignRewardAI(staged, slot, f.pack);
+      },
+    };
+    const original = JSON.stringify(f.w);
+    expect(() =>
+      createCampaignReward(f.w, request, f.pack, {
+        ...base,
+        onRewardFactory(staged, slot) {
+          base.onRewardFactory(staged, slot);
+          throw Error("late registration failure");
+        },
+      }),
+    ).toThrow("late registration failure");
+    expect(JSON.stringify(f.w)).toBe(original);
+    const rng = { ...f.w.rng };
+    const slot = createCampaignReward(f.w, request, f.pack, base)!;
+    expect(slot).toBe(0);
+    expect(
+      f.w.strategy!.records[1].slice(
+        strategicGroupOffset(4) + 9,
+        strategicGroupOffset(4) + 14,
+      ),
+    ).toEqual([6, 1, 4, slot, 9]);
+    expect(f.w.rng).toEqual(rng);
+    const restored = JSON.parse(JSON.stringify(f.w));
+    expect(restored.strategy).toEqual(f.w.strategy);
+    expect(restored.powerEffects.slots[slot].nativePrior[69]).toBe(59);
+    // With every eligible AI group busy, effect creation still succeeds.
+    for (let group = 5; group < 16; group++)
+      put(f.w.strategy!.records[1], strategicGroupOffset(group) + 4, 0);
+    const full = structuredClone(f.w.strategy);
+    expect(createCampaignReward(f.w, request, f.pack, base)).toBe(1);
+    expect(f.w.strategy).toEqual(full);
   });
   it("runs real scheduler reward/contact/feedback against live creature and serializes the committed healing", () => {
     const f = fixture(),
