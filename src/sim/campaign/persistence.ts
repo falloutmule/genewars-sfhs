@@ -175,8 +175,11 @@ export function replayCampaign(
         w = continueCampaign(w, pack);
       }
     }
+    // Result actions and mission carry advance the tick themselves. Process
+    // events at that new tick before deciding that the final tick is complete.
+    if (w.tick !== before) continue;
     if (w.tick === r.final.tick) break;
-    if (w.tick === before) stepCampaign(w, pack);
+    stepCampaign(w, pack);
     if (w.tick === before)
       throw new Error(`Replay stopped at ${w.tick}: ${w.phase}`);
     if (checks.has(w.tick) && checks.get(w.tick) !== checksum(w))

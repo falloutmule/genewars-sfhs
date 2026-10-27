@@ -124,4 +124,21 @@ describe("campaign host, separate from the workbench", () => {
       /final mismatch/,
     );
   });
+  it("replays briefing entry at the final tick reached by mission carry", () => {
+    const p = campaignFixture();
+    let w = createCampaign(p, "fixture");
+    // Synthetic result boundary; this does not establish campaign acceptance.
+    w.phase = "result";
+    w.result.phase = "campaign-view-queued";
+    const r = recordCampaign(w, null);
+    r.commands.push({ tick: w.tick, type: "continue" });
+    w = continueCampaign(w, p);
+    const finalTick = w.tick;
+    r.commands.push({ tick: w.tick, type: "enter" });
+    enterCampaign(w, p);
+    expect(w.tick).toBe(finalTick);
+    const replayed = replayCampaign(sealCampaignReplay(r, w), p, "fixture");
+    expect(replayed.phase).toBe("active");
+    expect(checksum(replayed)).toBe(checksum(w));
+  });
 });
