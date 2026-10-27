@@ -36,7 +36,7 @@ import { animationProfile } from "../sim/mechanics/animation";
 import { groundHeight } from "../sim/mechanics/terrain";
 import type { ResultAction } from "../sim/mechanics/outcome";
 import { describeMissionObjectives } from "../sim/mechanics/mission-objectives";
-import { specialistCorpseBinding } from "../sim/mechanics/specialist-corpse";
+import { sharedEffectSpriteBinding } from "../render/shared-effect";
 import { campaignHumanRosterView, campaignHumanRosterAssociatedTarget, campaignHumanRosterInitialPanel } from "../sim/campaign/human-roster-adapter";
 import type { HumanRosterCommand } from "../sim/mechanics/human-roster";
 import { classifyCampaignHumanMuleTarget } from "../sim/campaign/human-creature-command-adapter";
@@ -1155,10 +1155,7 @@ export async function openCampaign(
       const n = e.nativePrior,
         id = `source:4:${slot}`;
       if (!e.occupied || !n || drawn.has(id)) continue;
-      const corpse =
-          n[69] === 69 ? specialistCorpseBinding(n, pack.rules!.tables) : null,
-        art = corpse?.assetKey ?? "EFF",
-        profile = animationProfile(pack.assets[art], corpse ? 9 : n[69]!);
+      const { art, profile } = sharedEffectSpriteBinding(n, pack);
       entities.push({
         id,
         x: i16(n as number[], 7) / 256,

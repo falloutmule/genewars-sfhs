@@ -21,6 +21,7 @@ import {
   putEffectDword as put32,
 } from "../src/sim/mechanics/power-motion";
 import { groundHeight } from "../src/sim/mechanics/terrain";
+import { sharedEffectSpriteBinding } from "../src/render/shared-effect";
 const word = (n: readonly (number | null)[], at: number) =>
   ((n[at]! | (n[at + 1]! << 8)) << 16) >> 16;
 function fixture() {
@@ -126,6 +127,10 @@ describe("source specialist corpse69", () => {
     });
     expect(prior).toEqual(before);
     expect(f.pack.assets.EFF.animations!.length).toBeLessThan(69);
+    expect(sharedEffectSpriteBinding(n, f.pack)).toEqual({
+      art: "SYNTH9",
+      profile: f.profile,
+    });
   });
   it("derives every admitted style/category/sex after JSON persistence without a live actor", () => {
     const f = fixture();

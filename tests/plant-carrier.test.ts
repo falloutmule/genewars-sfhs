@@ -35,6 +35,7 @@ import {
   replayCampaign,
 } from "../src/sim/campaign/persistence";
 import { checksum } from "../src/sim/checksum";
+import { sharedEffectSpriteBinding } from "../src/render/shared-effect";
 
 function fixture() {
   const pack = campaignFixture();
@@ -135,6 +136,20 @@ function fixture() {
   return { pack, w, options, p, q, create, context };
 }
 describe("shared plant carriers67/0x43 and68/0x44", () => {
+  it("renders the retained EFF67 resource through a drop transition without EFF68", () => {
+    const { pack, create } = fixture(), carrier = create().native;
+    expect(pack.assets.EFF.animations![68]).toBeUndefined();
+    const carried = sharedEffectSpriteBinding(carrier, pack);
+    carrier[69] = 68;
+    carrier[70] = 1;
+    const before = [...carrier];
+    expect(sharedEffectSpriteBinding(carrier, pack)).toEqual(carried);
+    expect(carried.art).toBe("EFF");
+    expect(carried.profile).toEqual(animationProfile(pack.assets.EFF, 67));
+    expect(carrier).toEqual(before);
+    pack.assets.EFF.animations!.length = 67;
+    expect(() => sharedEffectSpriteBinding(carrier, pack)).toThrow("Missing original animation 67");
+  });
   it("constructs only67 and retains untouched fields and preallocation prior identity", () => {
     const { w, pack, q, options } = fixture(),
       prior = w.powerEffects.slots[0].nativePrior!;
