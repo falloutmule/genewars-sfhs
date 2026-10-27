@@ -132,7 +132,7 @@ try {
 html = html.replace(
   "</body>",
   () =>
-    `<script type="application/json" id="gw-build-meta">${JSON.stringify({ commit, dirty, engineVersion: "0.2.0-campaign-development", acceptedMissions: 4 })}</script></body>`,
+    `<script type="application/json" id="gw-build-meta">${JSON.stringify({ commit, dirty, engineVersion: "0.2.0-campaign-development", acceptedMissions: 5 })}</script></body>`,
 );
 await writeFile(output, html);
 const receipt = {
@@ -164,7 +164,7 @@ const receipt = {
   // Roach: genuine marked-zone ranking win at frame50433, score2579/2390,
   // phone-landscape touch result/carry into Brown, then portrait save reload.
   // Private acceptance receipt: continuous-20261026/mission4-acceptance.json.
-  acceptedMissionCount: 4,
+  acceptedMissionCount: 5,
   physicalDeviceAcceptance: "not-run",
   upstreamBattleDrones: "39d6f587f98a82f5c0426e8bd476cef49fd19ef0",
   importerVersion: pack?.importerVersion || null,
