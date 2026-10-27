@@ -550,7 +550,7 @@ export async function openCampaign(
       const body = modal("Mission failed"),
         p = document.createElement("p");
       p.textContent =
-        "No surviving construction capability remains. Restart the mission or load a save.";
+        "The mission was not won. Restart the mission or load a save.";
       body.append(p);
       button(body, "Restart mission", () => {
         w = restartCampaign(w, pack);
