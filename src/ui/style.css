@@ -157,6 +157,11 @@ small,
   margin: 3px 0;
   text-align: left;
 }
+.sidebar select {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
 .objective {
   padding: 6px 0;
 }
