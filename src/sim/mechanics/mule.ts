@@ -1917,8 +1917,9 @@ function foodTarget(
       let foods = [
         ...candidates.flatMap((index) => {
           const p = state.plants[index];
+          //6B700's plant scorer checks life and flags1/8 for every owner.
+          //Botanist-grown plants remain ordinary food candidates.
           return p.active &&
-            p.owner === 4 &&
             p.growth > 0 &&
             !(p.plantFlags & 9)
             ? [{ id: p.id as string, index, value, corpse: false }]

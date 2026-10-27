@@ -300,6 +300,27 @@ describe("source-backed neutral Mule lifecycle", () => {
     expect(word(f.state.mules[0].native, 0x6a)).toBe(41);
     expect(f.rng.draws).toBe(16857);
   });
+  it.each([0, 1, 2, 3, 4])("acquires live plant food owned by player %i", (owner) => {
+    const f = fixture(), n = f.state.mules[0].native;
+    f.context.frame = 1;
+    put(n, 0x68, 10);
+    const native = Array(49).fill(0);
+    native[6] = 2; native[24] = owner;
+    put(native, 7, 16384); put(native, 9, 15872); put(native, 44, 7);
+    const plant: EcologyPlant = {
+      id: "source:1:0", index: 0, active: true, owner,
+      position: [16384, 15872], selector: 0, growth: 7, flags: 4,
+      plantFlags: 0, updateCounter: 0, retirement: 0, animation: 0,
+      frame: 0, shade: 0, height: 2048, native,
+    };
+    f.state.plants = [plant]; f.state.plantCount = 1;
+    f.state.plantOrder = { [62 * 128 + 64]: [0] };
+    const result = stepNeutralMule(f.state, 0, f.rng, f.context);
+    expect(result.reason).toBeNull();
+    expect(result.events).toContainEqual(expect.objectContaining({kind: "mule-target", target: 0, targetKind: 2}));
+    expect(f.state.mules[0].native[0x57]).toBe(2);
+    expect(f.rng.draws).toBe(16857);
+  });
   it("enters natural death, completes its source animation and retains a decaying corpse", () => {
     const f = fixture(),
       n = f.state.mules[0].native;
