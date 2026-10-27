@@ -1,4 +1,4 @@
-import {creatureComponents} from "./creature-species";
+import {creatureComponents, creatureBuildingAttackDamage} from "./creature-species";
 /** Selector4 creature combat. Numeric ports of6B700/5B580/6EDA0/5C840,
  * completed-animation60332 and5B9F0; no executable or process pointers. */
 import { nextRandom, type GeneRng } from "./random";
@@ -997,8 +997,11 @@ export function completeMuleAttack(
   damage = Math.trunc((damage * (100 + p.attackBonus(self))) / 100);
   if (target.kind === 3) damage >>= 2;
   else if (target.kind === 4) {
-    //Mule components are4/4: source60553 neither primary nor secondary class1.
-    damage >>= 1;
+    // Legacy synthetic Mule fixtures admit only their known4/4 component pair.
+    const rows = c.speciesComponents ?? (n[122] === 4
+      ? Array.from({length:25}, (_, i) => i === 4 ? [4,4] : [])
+      : undefined);
+    damage = creatureBuildingAttackDamage(rows, n[122], damage);
     events.push({ kind: "mule-audio", id: self.id, channel: 88 });
   }
   let killed: boolean;

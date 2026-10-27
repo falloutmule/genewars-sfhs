@@ -69,6 +69,18 @@ export function creatureComponents(
   return pair as readonly [number, number];
 }
 
+/**60553..60573: ordered Crab components modify building damage in signed32. */
+export function creatureBuildingAttackDamage(
+  rows: readonly (readonly number[])[] | undefined,
+  species: unknown,
+  damage: number,
+): number {
+  if (!Number.isInteger(damage) || damage < -2147483648 || damage > 2147483647)
+    throw Error("Source signed32 building attack damage required");
+  const [primary, secondary] = creatureComponents(rows, species);
+  return primary === 1 ? damage << 1 : secondary === 1 ? damage : damage >> 1;
+}
+
 /**5A1C0 direct resource identity. All25 entries of104494 agree with these
  * component names. A missing hybrid resource must use the primary fallback. */
 export function creatureAsset(

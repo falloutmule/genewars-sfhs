@@ -493,3 +493,41 @@ describe("Mule mortality pool and preservation", () => {
     expect(f.native[0x52]).toBe(0);
   });
 });
+
+
+describe("source deferred health admission", () => {
+  function deferred(frame: number, reserve: number) {
+    const f = fixture();
+    f.context.frame=frame;
+    put(f.native,102,4096);put(f.native,104,reserve);put(f.native,106,-7);
+    put(f.native,63,-1);put(f.native,73,0x220);
+    put(f.native,49,0);put(f.native,108,10);
+    f.native[21]=0x80;f.native[22]=2;f.native[96]=0;f.native[97]=0;
+    f.native[87]=f.native[93]=0;
+    return f;
+  }
+  it("keeps reentrant negative health until its starvation phase", () => {
+    const f=deferred(3,0),r=step(f);
+    expect(r.reason).toBeNull();
+    expect(f.state.mules[0].native[94]).toBe(8);
+    expect(word(f.state.mules[0].native,106)).toBe(-7);
+  });
+  it("uses the actual starvation phase to enter mortality", () => {
+    const f=deferred(33,0),r=step(f);
+    expect(r.reason).toBeNull();
+    expect(f.state.mules[0].native[94]).toBeGreaterThanOrEqual(24);
+    expect(word(f.state.mules[0].native,106)).toBe(-8);
+  });
+  it("permits phase-gated recovery from negative health", () => {
+    const f=deferred(21,3),r=step(f);
+    expect(r.reason).toBeNull();
+    expect(word(f.state.mules[0].native,106)).toBe(-5);
+    expect(word(f.state.mules[0].native,104)).toBe(0);
+  });
+  it("still rejects other negative-speed records atomically", () => {
+    const f=deferred(3,0);put(f.native,63,-2);
+    const before=structuredClone(f.state),rng={...f.rng};
+    expect(step(f).committed).toBe(false);
+    expect(f.state).toEqual(before);expect(f.rng).toEqual(rng);
+  });
+});

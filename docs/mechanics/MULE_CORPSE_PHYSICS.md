@@ -8,11 +8,14 @@ its previous ground17. It is not a request to stop gravity or snap to ground.
 The concrete Madami development boundary was state24 at physical8927 and
 ground8926, with zero velocity/acceleration, word21=0280 and word73=0220.
 The former admission incorrectly required the corpse already to be grounded.
-The new admission requires all of: admitted corpse stage24..27, desired63=-1,
-and byte21 bit80. Existing guards still reject attached/frozen/sliding flags
-outside the admitted ordinary Mule domain, other negative desired speeds,
-living negative-speed records and unknown source branches. No world state,
-physics constant, height tolerance or animation timing was changed.
+The physical admission requires desired63=-1 and byte21 bit80. It does not
+require a mortality stage: recursive building destruction can enter death,
+then5ED20's completed-attack tail writes state8 again (6072F..608B7).
+The original6DF30 friction gate6E10B uses these physical fields independently
+of logical mortality. Attached/frozen/sliding flags, other negative desired
+speeds and unrelated unknown branches remain guarded. Positive-impact and
+water virtual34 dead-target no-ops still require logical state>=24.
+The common airborne speed cap also applies to desired0 (6E534..6E620).
 
 ## Source sequence
 
@@ -70,3 +73,29 @@ current converted runtime advanced to5347 active (`8507b1e5`), and one-frame
 recorded replay plus JSON reload matched. It never loaded, repaired or stepped
 the failed afterimage. This is cross-runtime development regression evidence,
 not a fresh campaign continuation or canonical mission acceptance.
+
+## Reentrant combat extension (26 October)
+
+The genuine Lunacon frame12800 parent first refused at13074 after an AI Crab
+attacked a building. Read-only tracing proved recursive destruction changed
+its health15 to-7, state21 to24 and desired speed0 to-1; the attack tail then
+changed state24 to8 without another RNG draw. Source6071E..608B7 does the same;
+there is no caller survival recheck. The callback must admit nonpositive health
+and let5E0B0 perform phase-gated recovery/starvation.5E1A7 decrements the signed
+health word before testing mortality; it does not clamp negative health to0.
+
+The same family audit recovered60553..60573: building damage is doubled for
+primary component1, unchanged for secondary1, and arithmetic-halved otherwise.
+The modifier uses all25 ordered component pairs; callback admission remains
+1/4/11/22. Specialist quartering and update/RNG order are unchanged.
+
+Private mapped-instruction evidence compares200 modifier cases,4 reentrant
+completion tails,384 health-prefix cases and25 direct physics cases, including
+the exact diagnostic record. All613 cases match their defined source boundaries.
+This is closed mapped-listing execution, not native executable observation;
+occupancy, spatial/effect/obstacle and death entry boundaries are explicit ports.
+The death-port health-prefix comparison proves health/reserve and state entry,
+not full death lifecycle. A separate genuine-parent500tick simulation checks
+save reload and recorded replay. Ordinary UI continuation remains required for
+campaign acceptance. Complete receipts are private in
+`.private/combat-reentrant-20261026/`.

@@ -183,9 +183,17 @@ describe("negative-desired Mule corpse common physics", () => {
     expect(q.events.some((e) => e.kind === "mule-water-damage")).toBe(false);
     expect(i16(water.state.mules[0].native as number[], 106)).toBe(40);
   });
-  it("preserves living negative-speed, attached and free-altitude guards", () => {
+  it("admits source reentrant state8 with passive physical flags", () => {
+    const f = fixture(8);
+    put16(f.n as number[], 106, -7);
+    const r = stepNeutralMule(f.state, 0, f.rng, f.context);
+    expect(r.reason).toBeNull();
+    expect(f.state.mules[0].native[94]).toBe(8);
+    expect(i16(f.state.mules[0].native as number[], 106)).toBe(-7);
+  });
+  it("preserves missing passive-flag, attached and frozen guards", () => {
     for (const [at, value] of [
-      [94, 8],
+      [21, 0],
       [22, 3],
       [21, 0xa0],
     ] as const) {

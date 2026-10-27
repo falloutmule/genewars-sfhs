@@ -1397,3 +1397,30 @@ describe("source Mule damage and complete animation", () => {
 describe("species-dependent defensive ability",()=>{
   it("does not give a high-quality Crab the primary-Mule recoil ability",()=>{const f=fixture();f.c.speciesComponents=speciesFixture().components;f.target.native[122]=1;f.target.native[118]=100;const reserve=word(f.target.native,104);damageMule(f.state,f.target,f.self,10,f.rng,f.c,f.ports,f.events);expect(f.target.native[94]).toBe(20);expect(f.target.native[25]).not.toBe(23);expect(word(f.target.native,104)).toBe(reserve);});
 });
+
+
+describe("reentrant building attack completion", () => {
+  it.each([[1,22], [11,22], [22,11], [4,5]])(
+    "delivers the ordered species%i modifier before recursive destruction", (species, amount) => {
+      const f = fixture(), building = externalTarget(4,0);
+      targets(f,[building]);
+      f.c.speciesComponents = speciesFixture().components;
+      f.self.native[122] = species;
+      f.self.native[94] = 21;
+      put(f.self.native,85,0);f.self.native[87]=4;
+      f.c.damage = (_self,_target,damage) => {
+        expect(damage).toBe(amount);
+        // Synchronous destruction invokes the attacker's damage/death callback.
+        put(f.self.native,106,-7);f.self.native[94]=24;
+        put(f.self.native,63,-1);put(f.self.native,108,32767);
+        building.native[6]=0;
+        return true;
+      };
+      completeMuleAttack(f.state,f.self,f.rng,f.c,f.ports,f.events);
+      expect(f.self.native[94]).toBe(8);
+      expect(word(f.self.native,106)).toBe(-7);
+      expect(word(f.self.native,63)).toBe(-1);
+      expect(word(f.self.native,108)).toBe(0);
+      expect(f.rng.draws).toBe(1);
+    });
+});

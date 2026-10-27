@@ -1039,15 +1039,16 @@ function physics(
     oldCell = worldCell(...point(n)),
     oldGround = d(n, 0x11),
     wasGrounded = d(n, 0x27) <= oldGround;
-  const corpse =
-    [24, 25, 26, 27].includes(n[0x5e]!) &&
+  const logicalDead = n[0x5e]! >= 24;
+  //6E10B gates friction on physical flags, independently of mortality state.
+  const passiveMotion =
     w(n, 0x3f) === -1 &&
     !!(n[0x15]! & 0x80);
   if (
     n[0x16]! & 9 ||
     n[0x15]! & 0x20 ||
     w(n, 0x49) & 0x400 ||
-    (w(n, 0x3f) < 0 && !corpse)
+    (w(n, 0x3f) < 0 && !passiveMotion)
   )
     throw new Error(
       "Mule airborne/dead/attached physics branch is not admitted",
@@ -1073,7 +1074,7 @@ function physics(
   if (candidateHeight <= ground) {
     put32(n, 0x27, ground);
     if (wasGrounded || before[0x15]! & 0x40) {
-      if (corpse) {
+      if (passiveMotion) {
         const speed = integerSqrt(
           [0x2d, 0x2f, 0x31].reduce(
             (sum, at) => (sum + Math.imul(w(n, at), w(n, at))) >>> 0,
@@ -1098,7 +1099,7 @@ function physics(
       const normal = terrainNormal(c.terrain, ...point(before));
       put(n, 0x31, signed(signed(ground) - signed(oldGround)) * 8);
       angles(n, c);
-      if (!corpse) {
+      if (!passiveMotion) {
         const speed = contact(state, n, normal, signed(oldGround), c, random);
         put(n, 0x41, speed);
         put(n, 0x3d, speed);
@@ -1124,7 +1125,7 @@ function physics(
         vz = w(n, 0x31);
       //6E3E1 calls virtual34 only for a positive impact.5B9F0 immediately
       //returns for state>=24: no damage, audio, RNG or lifecycle mutation.
-      if ((!corpse && Math.trunc((vz >> 6) / 16) > 0) || c.bounce.length !== 8)
+      if ((!logicalDead && Math.trunc((vz >> 6) / 16) > 0) || c.bounce.length !== 8)
         throw new Error("Mule contact bounce requires an admitted coefficient");
       const bounced = signed((Math.abs(vz) * c.bounce[cls]) >> 8);
       put(n, 0x31, bounced);
@@ -1145,8 +1146,8 @@ function physics(
     put32(n, 0x27, Math.max(candidateHeight, 0));
     angles(n, c);
     //6E620..6E757 caps free airborne speed after deriving its angles. The
-    //negative desired speed does not freeze a corpse or invoke living contact.
-    if (corpse && w(n, 0x3d) > 19200) {
+    //nonpositive desired speed joins the common free-motion cap.
+    if (w(n, 0x3f) <= 0 && w(n, 0x3d) > 19200) {
       put(n, 0x3d, 12800);
       setVelocity(n, c.tables);
     }
@@ -1213,7 +1214,7 @@ function physics(
       d(n, 0x27) === 0 &&
       ecologyTerrainClass(c.terrain, point(n)) === 0 &&
       n[0x53]! & 1 &&
-      !corpse //The reached self-water virtual34 is the same dead-target no-op.
+      !logicalDead //The reached self-water virtual34 is the same dead-target no-op.
     )
       events.push({
         kind: "mule-water-damage",
@@ -3124,8 +3125,7 @@ function stepMule(
       n[0x76] === null ||
       ![
         0, 1, 3, 4, 5, 6, 7, 8, 10, 11, 15, 16, 18, 20, 21, 24, 25, 26, 27,
-      ].includes(n[0x5e]!) ||
-      (!dead && n[94] !== 18 && w(n, 0x6a) <= 0)
+      ].includes(n[0x5e]!)
     )
       throw new Error("Mule callback owner/species/state is not admitted");
     if (owned && !c.owned)
@@ -3244,8 +3244,10 @@ function stepMule(
           put(n, 0x6a, health + Math.min(maximum - health, 2));
           put(n, 0x68, reserve < 3 ? 0 : reserve - 3);
         } else if (reserve <= 0 && (phase & 31) <= 1) {
-          if (health <= 1) {
-            put(n, 0x6a, 0);
+          //5E1A7 decrements the signed16 health word before testing/death.
+          const nextHealth = signed(health - 1);
+          put(n, 0x6a, nextHealth);
+          if (nextHealth <= 0) {
             enterDeath(staged, mule, c, events);
             mortality(staged, mule, phase, c, events, true);
             Object.assign(state, staged);
@@ -3253,7 +3255,6 @@ function stepMule(
             Object.assign(context.terrain, terrain);
             return { committed: true, reason: null, events };
           }
-          put(n, 0x6a, health - 1);
         }
         if (n[0x60]! & 0x80) {
           const components = n[122]===4 && !c.speciesComponents ? [4,4] : creatureComponents(c.speciesComponents,n[122]);
