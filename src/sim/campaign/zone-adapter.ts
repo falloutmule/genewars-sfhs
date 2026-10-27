@@ -121,6 +121,9 @@ export function stepCampaignZones(
     tables: pack.rules.tables,
     bounce: pack.rules.tables.bounce,
     gravity: options.gravity,
+    //20843..2085D clears the shared112D14 angle vector.796E0/79980
+    //read its zero yaw for plant/building trails; creatures use native57.
+    tailYaw: 0,
     profile: (code) => animationProfile(pack.assets.EFF, code),
     cleanup(z, id) {
       adopt(s, z);
