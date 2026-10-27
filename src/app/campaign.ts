@@ -1,6 +1,7 @@
 import { genepodProductionCost } from "../sim/mechanics/genepod";
 import {creatureAsset} from "../sim/mechanics/creature-species";
 import type { Pack, Mission } from "../content/types";
+import type { RuleExtensionIdentity } from "../content/rule-extension";
 import { Stage, type SceneEntity } from "../render/stage";
 import { campaignBuildingAsset } from "../sim/campaign/building-startup-adapter";
 import { connectInput, type PickWorld } from "../platform/input";
@@ -68,6 +69,7 @@ export async function openCampaign(
   contentHash: string,
   onMenu: () => void,
   restored?: CampaignSave,
+  ruleExtension?: RuleExtensionIdentity,
 ): Promise<CampaignController> {
   let w = restored?.world ?? createCampaign(pack, contentHash),
     initial = structuredClone(w),
@@ -477,7 +479,7 @@ export async function openCampaign(
     });
   }
   async function restore(text: string) {
-    const s = loadCampaign(text, contentHash);
+    const s = loadCampaign(text, contentHash, ruleExtension);
     w = s.world;
     session = s.session;
     session.paused = true;

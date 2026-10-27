@@ -7,6 +7,7 @@
  */
 import "../ui/style.css";
 import { PackSchema, type Pack, type Mission } from "../content/types";
+import { admitPackRuleExtension, type RuleExtensionIdentity } from "../content/rule-extension";
 import { syntheticPack } from "../content/synthetic";
 import { openCampaign, type CampaignController } from "./campaign";
 import {
@@ -49,6 +50,7 @@ let pack: Pack,
   world: World | null = null,
   mission: Mission;
 let campaign: CampaignController | null = null;
+let ruleExtension: RuleExtensionIdentity | undefined;
 let clock = new FixedClock(),
   selection = new Set<number>(),
   placing: Selector | null = null,
@@ -186,10 +188,10 @@ function menu(): void {
         for (const text of await new CampaignDatabase().recovery())
           if (text)
             try {
-              await startCampaign(loadCampaign(text, contentHash));
+              await startCampaign(loadCampaign(text, contentHash, ruleExtension));
               return;
             } catch {}
-        const old = recoverCampaign(localStorage, contentHash);
+        const old = recoverCampaign(localStorage, contentHash, ruleExtension);
         if (old) {
           await startCampaign(old);
           return;
@@ -205,7 +207,7 @@ function menu(): void {
     () =>
       upload((text) => {
         try {
-          void startCampaign(loadCampaign(text, contentHash));
+          void startCampaign(loadCampaign(text, contentHash, ruleExtension));
         } catch (e) {
           showError(e);
         }
@@ -284,7 +286,7 @@ async function startCampaign(restored?: CampaignSave): Promise<void> {
   teardown();
   world = null;
   try {
-    campaign = await openCampaign(app, pack, contentHash, menu, restored);
+    campaign = await openCampaign(app, pack, contentHash, menu, restored, ruleExtension);
   } catch (e) {
     menu();
     showError(e);
@@ -898,6 +900,14 @@ async function boot(): Promise<void> {
       new Blob([bytes]).stream().pipeThrough(new DecompressionStream("gzip")),
     ).json();
     pack = PackSchema.parse(data);
+    const extra = document.querySelector<HTMLScriptElement>("#gw-rule-extension");
+    if (extra) {
+      const raw = Uint8Array.from(atob(extra.textContent?.trim() ?? ""), c=>c.charCodeAt(0));
+      const admitted = await admitPackRuleExtension(pack, contentHash, new TextDecoder("utf-8",{fatal:true}).decode(raw), extra.dataset.sha256 ?? "");
+      pack = admitted.pack;
+      ruleExtension = admitted.identity;
+      contentHash = ruleExtension.contentHash;
+    }
   } else pack = syntheticPack();
   menu();
 }

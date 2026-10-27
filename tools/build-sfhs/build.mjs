@@ -1,4 +1,4 @@
-import { build } from "vite";
+import { build, createServer } from "vite";
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { gunzipSync } from "node:zlib";
@@ -22,6 +22,7 @@ if (!synthetic && !args.includes("--assets"))
 const sha = (b) => createHash("sha256").update(b).digest("hex");
 let packBytes = null,
   pack = null;
+let ruleExtensionBytes = null, ruleExtensionIdentity = null;
 if (!synthetic) {
   const input = resolve(root, get("--assets", ".private/imported"));
   const path = input.endsWith(".gwpack")
@@ -38,6 +39,16 @@ if (!synthetic) {
     pack.missions.length !== 24
   )
     throw new Error("Unsupported or incomplete mission pack");
+}
+if (args.includes("--rule-extension")) {
+  if (!packBytes) throw Error("Rule extensions require an original base pack");
+  ruleExtensionBytes = await readFile(resolve(root, get("--rule-extension")));
+  const server=await createServer({root,configFile:false,server:{middlewareMode:true,hmr:false},appType:"custom",logLevel:"error"});
+  try {
+    const {admitPackRuleExtension}=await server.ssrLoadModule("/src/content/rule-extension.ts");
+    const admitted=await admitPackRuleExtension(pack,sha(packBytes),new TextDecoder("utf-8",{fatal:true}).decode(ruleExtensionBytes),sha(ruleExtensionBytes));
+    ruleExtensionIdentity=admitted.identity;
+  } finally {await server.close();}
 }
 const output = resolve(
   root,
@@ -96,7 +107,7 @@ html = html
   .replace(/<script\b[^>]*src="[^"]+"[^>]*><\/script>/g, "")
   .replace(/<link\b[^>]*href="[^"]+\.css"[^>]*>/g, "");
 const content = packBytes
-  ? `<script id="gw-pack" type="application/octet-stream" data-sha256="${sha(packBytes)}">${packBytes.toString("base64")}</script>`
+  ? `<script id="gw-pack" type="application/octet-stream" data-sha256="${sha(packBytes)}">${packBytes.toString("base64")}</script>${ruleExtensionBytes?`<script id="gw-rule-extension" type="application/octet-stream" data-sha256="${sha(ruleExtensionBytes)}">${ruleExtensionBytes.toString("base64")}</script>`:""}`
   : "";
 // A replacement callback preserves literal $&, $` and $' inside bundled JS.
 html = html
@@ -165,6 +176,7 @@ const receipt = {
   // phone-landscape touch result/carry into Brown, then portrait save reload.
   // Private acceptance receipt: continuous-20261026/mission4-acceptance.json.
   acceptedMissionCount: 5,
+  ruleExtension: ruleExtensionIdentity,
   physicalDeviceAcceptance: "not-run",
   upstreamBattleDrones: "39d6f587f98a82f5c0426e8bd476cef49fd19ef0",
   importerVersion: pack?.importerVersion || null,

@@ -13,6 +13,7 @@ import {
 } from "./world";
 import type { ResultAction } from "../mechanics/outcome";
 import type { Pack } from "../../content/types";
+import type { RuleExtensionIdentity } from "../../content/rule-extension";
 export interface CampaignSession {
   paused: boolean;
   speed: 0.5 | 1 | 2 | 4;
@@ -50,7 +51,7 @@ export function saveCampaign(
     checksum: checksum({ world, session }),
   } satisfies CampaignSave);
 }
-export function loadCampaign(text: string, hash: string): CampaignSave {
+export function loadCampaign(text: string, hash: string, extension?: RuleExtensionIdentity): CampaignSave {
   if (text.length > 16000000) throw new Error("Campaign save exceeds16MB");
   const s = JSON.parse(text) as CampaignSave;
   if (
@@ -64,10 +65,19 @@ export function loadCampaign(text: string, hash: string): CampaignSave {
     );
   if (checksum({ world: s.world, session: s.session }) !== s.checksum)
     throw new Error("Campaign save checksum mismatch");
+  if (extension && extension.contentHash !== hash)
+    throw new Error("Campaign rule-extension identity mismatch");
   const collapseUpgrade = upgradeEmptyCollapsePool(s.world);
   const collectorUpgrade = upgradeEmptyProcessorCollectors(s.world);
   if (collapseUpgrade || collectorUpgrade)
     s.checksum = checksum({ world: s.world, session: s.session });
+  if (extension && s.world.contentHash === extension.basePackSha256) {
+    // Verify the unchanged genuine base save BEFORE migrating its identity.
+    // Rule admission is additive and hash-checked by the content loader.
+    validateCampaignWorld(s.world, extension.basePackSha256);
+    s.world.contentHash = hash;
+    s.checksum = checksum({ world: s.world, session: s.session });
+  }
   validateCampaignWorld(s.world, hash);
   return s;
 }
@@ -217,12 +227,13 @@ export function storeCampaignRecovery(storage: Storage, text: string): void {
 export function recoverCampaign(
   storage: Storage,
   hash: string,
+  extension?: RuleExtensionIdentity,
 ): CampaignSave | null {
   for (let i = 0; i < 4; i++) {
     const s = storage.getItem(recoveryKey + i);
     if (s)
       try {
-        return loadCampaign(s, hash);
+        return loadCampaign(s, hash, extension);
       } catch {}
   }
   return null;
