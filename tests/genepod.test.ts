@@ -593,3 +593,45 @@ describe("actual-species Genepod family",()=>{
     expect(value(requestGenepodMule(s,input(),{speciesTraits:f.rules.speciesTraits!})).reason).toBe("genepod-grade-restricts-hybrids");s.building[46]=1;expect(value(requestGenepodMule(s,input(),{speciesTraits:f.rules.speciesTraits!})).disposition).toBe("started");
   });
 });
+
+
+describe("source inactive Genepod callback family", () => {
+  it.each([0,1,2])("keeps disabled grade%i work/payer and uses actual action4 without enabled upkeep", grade => {
+    const s=state(),c=context(),b=s.building,actions:number[]=[];
+    b[46]=grade;put(b,49,0x141);put(b,61,301);b[63]=3;put32(b,54,175);
+    c.animation=action=>{actions.push(action);return{first:0,last:2,holds:[0,0,0],flags:0}};
+    const before=structuredClone(s),r=value(stepGenepod(s,c));
+    expect(r.status).toBe("inactive");expect(r.queueRequested).toBe(true);
+    expect(dword(r.state.building,54)).toBe(175);expect(word(r.state.building,49)).toBe(0x141);
+    expect(word(r.state.building,61)).toBe(300);expect(r.state.building[63]).toBe(3);
+    expect(r.state.building.slice(25,29)).toEqual([4,0,grade,0]);expect(actions).toEqual([4]);
+    expect(r.state.players).toEqual(before.players);expect(r.state.rng).toEqual(before.rng);
+    expect(r.births).toEqual([]);expect(r.audio).toEqual([]);expect(r.paid).toBe(0);expect(s).toEqual(before);
+  });
+  it("clears remaining work without a refund for100 without40, preserving the source warning exception", () => {
+    const s=state(),c=context(6);put(s.building,49,0x105);put(s.building,61,0);put32(s.building,54,175);
+    const before=structuredClone(s),r=value(stepGenepod(s,c));
+    expect(r.status).toBe("inactive");expect(dword(r.state.building,54)).toBe(0);
+    expect(word(r.state.building,49)).toBe(0x105);expect(word(r.state.players[0],0x5ea)).toBe(0);
+    expect(r.state.players).toEqual(before.players);expect(r.state.rng).toEqual(before.rng);
+  });
+  it("reads no species/work/pool or running-animation metadata on the disabled prefix", () => {
+    const s=state(),c=context();put(s.building,49,0x41);
+    s.building[51]=s.building[54]=null;c.pools=undefined;
+    c.runningAnimation={first:0,last:0,holds:[],flags:255};
+    c.animation=()=>({first:0,last:2,holds:[0,0,0],flags:0});
+    expect(value(stepGenepod(s,c)).state.building[54]).toBeNull();
+  });
+  it("runs dirty/inactive decay but skips queue/animation on an incomplete nonpositive-health record", () => {
+    const s=state(),c=context();put(s.building,49,0);put(s.building,43,0);put(s.building,61,50);
+    s.building[48]=1;s.building[63]=3;c.animation=()=>{throw Error("unreached animation")};
+    const r=value(stepGenepod(s,c));expect(r.queueRequested).toBe(false);
+    expect(word(r.state.building,61)).toBe(49);expect(r.state.building[48]).toBe(0);
+    expect(r.state.building[21]!&4).toBe(4);expect(r.state.building[63]).toBe(3);
+  });
+  it("keeps missing disabled animation and separate demolition failures atomic", () => {
+    const s=state(),c=context();put(s.building,49,0x141);put32(s.building,54,175);
+    const before=structuredClone(s);expect(stepGenepod(s,c)).toEqual({ok:false,reason:"actual-genepod-inactive-animation-required"});expect(s).toEqual(before);
+    put(s.building,49,0x801);expect(stepGenepod(s,c)).toEqual({ok:false,reason:"actual-genepod-demolition-callback-required"});
+  });
+});

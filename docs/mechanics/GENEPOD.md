@@ -29,8 +29,39 @@ Thirteen synthetic tests cover captured starts/cancel/refunds, prerequisites, re
 
 ## Actual-species production extension
 
-The ordinary enabled callback now binds native51 species0..24 throughout quality, born-pool initialization, resource receipts and independent research. It uses the existing imported traits/components and numeric factory; it never converts a non-Mule order to a Mule birth. Enabled grades0/1/2 use actual BGENE profiles1/2/3 (4/4/12 frames) and payments1/2/4. Grades0/1 cap signed quality100; grade2 retains it and passes its low byte to the source factory. Successful births improve that species by `(grade+1)*2048`; the successful-roll branch additionally improves by `grade*64`, even if the creature pool is full. Failed-quality production improves by2048. Existing source research caps and allocation/RNG failures remain transactional. Disabled/depleted and replacement-factory branches that lack an admitted host remain explicit boundaries.
+The ordinary enabled callback now binds native51 species0..24 throughout quality, born-pool initialization, resource receipts and independent research. It uses the existing imported traits/components and numeric factory; it never converts a non-Mule order to a Mule birth. Enabled grades0/1/2 use actual BGENE profiles1/2/3 (4/4/12 frames) and payments1/2/4. Grades0/1 cap signed quality100; grade2 retains it and passes its low byte to the source factory. Successful births improve that species by `(grade+1)*2048`; the successful-roll branch additionally improves by `grade*64`, even if the creature pool is full. Failed-quality production improves by2048. Existing source research caps and allocation/RNG failures remain transactional. The disabled/depleted extension below admits the full ordinary flag family; replacement-factory branches that lack an admitted host remain explicit boundaries.
 
 Human initiation uses the actual species list, trait32 base cost, nonzero corresponding DNA and original grade0 hybrid restriction. Cancellation uses the stored production species and its graded remainder. The legacy `produce-mule` wire spelling and missing-species default4 preserve old replays; an optional species field carries other real requests. The Economy control offers researched, grade-eligible species, with actual costs and quality; the Units list labels the creature's actual species.
 
 Private conformance records under `.private/genepod-species-20261026/` cover450 mapped work/terminal caller cases across25 species and3 grades, with explicit full-creature-pool and failed-particle factory ports. They compare building/player/RNG bytes and requested particle counts; they do not establish successful constructor behavior by themselves. Earlier150 factory numeric cases, positive synthetic birth regressions and genuine Brown continuation cover the separate dependencies. The same investigation found and closes the selector13 human construction schema omission, with ordinary queued construction/payment/appearance/save/replay coverage. Acceptance remains recorded separately in CAMPAIGN_PROGRESS.md.
+
+
+## Disabled and depleted callbacks
+
+A genuine Lunacon pod reached flags0141 after damage at frame17759. The
+former enabled-only admission rejected this ordinary451F0 state. The full
+Genepod family now follows45390..453B6 and47DA4..47F78: absent complete bit1
+or disabled bit40 skips upkeep/production and its enabled cap/drain decrement,
+then runs common inactive positive-energy decay and dirty/timer bookkeeping.
+Disabled pods queue actual BGENE action4 with frame equal to grade and direction0.
+An incomplete nonpositive-health record skips queue/animation; other incomplete
+records use action0 and native47. Complete enabled records use grade+1.
+The selected original animation is requested only when that queue path runs.
+
+Flag100 without40 is a different path: enabled upkeep runs, no-power warning
+and flag4 clearing are suppressed at453F1..45455, then45D84 clears remaining
+work without a refund. With40 present, that body is bypassed and remaining
+work stays unchanged. No flags are cleared to make production resume. Source
+800 demolition remains the separate host callback. Genepod0 has no selector11
+stop47 audio obligation in this tail. Other flag bits are ignored by the
+established gates, preserving their native bytes.
+
+Private source comparison covers1440 full mapped callbacks across grades,
+24 flag shapes (individual bits except separate demolition plus combinations),
+signed energy, drain, health, dirty timers, signed animation counters and actual
+BGENE0..4 holds. All native/player/RNG and queue observations match; the earlier
+450 enabled species/grade caller cases also match (1890 total,13772430 numeric
+bytes). This is closed mapped-listing execution, not native executable play;
+83140 queue publication is an explicit observed port and no new-case terminal
+factory is reached. Existing factory proofs remain separate. Evidence stays in
+`.private/genepod-inactive-20261026/`; campaign acceptance remains in the ledger.

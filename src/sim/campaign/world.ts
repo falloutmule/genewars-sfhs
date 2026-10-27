@@ -1537,6 +1537,7 @@ function stepCampaignGenepod(
     evidence: pack.source.executableSha256!,
     frame: w.frame,
     runningAnimation: animationProfile(pack.assets.BGENE, b.grade + 1),
+    animation: (action) => animationProfile(pack.assets.BGENE,action),
     rules:pack.ecologyRules, speciesComponents:pack.zoneRules?.speciesComponents,
     terrain: w.terrain,
     tables: pack.rules!.tables,

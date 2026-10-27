@@ -33,6 +33,8 @@ export interface GenepodContext {
   evidence: string;
   frame: number;
   runningAnimation: AnimationProfile;
+  /** Actual BGENE0..4, read only if the common tail queues that action. */
+  animation?(action: number): AnimationProfile;
   rules?: EcologyRules;
   speciesComponents?: readonly (readonly number[])[];
   terrain: TerrainState;
@@ -50,6 +52,7 @@ export interface GenepodBirth {
     | { kind: "effect"; selector: 32 };
 }
 export type GenepodStatus =
+  | "inactive"
   | "idle"
   | "frame-wait"
   | "funds-wait"
@@ -69,7 +72,7 @@ export interface GenepodReceipt {
   roll: number | null;
   births: GenepodBirth[];
   audio: { cue: number; mode: number; parameter?: number }[];
-  queueRequested: true;
+  queueRequested: boolean;
 }
 export interface GenepodHumanInput {
   selectedPlayer: number;
@@ -379,11 +382,12 @@ export function requestGenepodMule(
 function commonTail(
   before: GenepodNative,
   b: GenepodNative,
-  profile: AnimationProfile,
-) {
-  b[28] = Number(byte(b, 27) !== 0);
-  put(b, 61, Math.min(word(b, 61), 200));
-  if (byte(b, 63) !== 0) b[63] = byte(b, 63) - 1;
+  context: GenepodContext,
+): boolean {
+  const flags = word(b,49);
+  //47DA4: skipped enabled bodies still run inactive positive-energy decay.
+  if ((flags & 0x140 || !(flags & 1)) && word(b,61)>0)
+    put(b,61,word(b,61)-1);
   if (
     byte(before, 25) !== byte(b, 25) ||
     byte(b, 28) !== 0 ||
@@ -392,7 +396,15 @@ function commonTail(
   )
     b[21] = byte(b, 21) | 4;
   if (byte(b, 48) !== 0) b[48] = byte(b, 48) - 1;
-  b[25] = byte(b, 46) + 1;
+  if (!(flags & 1) && word(b,43)<=0) return false;
+  if (!(flags & 1)) {
+    b[25]=0;b[28]=0;b[27]=byte(b,47);
+  } else if (flags & 0x40) {
+    b[25]=4;b[28]=0;b[27]=byte(b,46);
+  } else b[25]=byte(b,46)+1;
+  const action=byte(b,25), profile=context.animation?.(action) ??
+    (action===byte(b,46)+1 ? context.runningAnimation : null);
+  require(!!profile,"actual-genepod-inactive-animation-required");
   const a = advanceAnimation(
     {
       action: byte(b, 25),
@@ -402,13 +414,14 @@ function commonTail(
       delay: i8(byte(b, 29)),
       counter: i8(byte(b, 30)),
     },
-    profile,
+    profile!,
   );
   b[26] = a.hold;
   b[27] = a.frame;
   b[28] = a.direction & 255;
   b[29] = a.delay & 255;
   b[30] = a.counter & 255;
+  return true;
 }
 function research(p: number[], species: number, increase: number) {
   const cap = (50 + 25 * p[0x6e1]) << 11,
@@ -611,7 +624,7 @@ export function createGenepodMule(
   });
 }
 
-/** Full admitted enabled grade0..2 source451F0 Genepod production callback. Receipts are
+/** Full ordinary grade0..2 source451F0 Genepod callback, including disabled/depleted tails. Receipts are
  * committed with each birth's real spatial insertion/resource binding. A
  * failure anywhere rolls back payment, RNG, counts, research and all births. */
 export function stepGenepod(
@@ -622,17 +635,14 @@ export function stepGenepod(
     stateValid(before);
     require(!!context.evidence.trim() &&
       integer(context.frame, 0, 0xffffffff), "genepod-source-context-required");
-    const profile = context.runningAnimation, grade = byte(before.building, 46);
-    require(integer(grade,0,2) && profile.holds.length === [4,4,12][grade] &&
-      profile.flags === 0 &&
-      profile.holds.every((v) =>
-        integer(v, 0, 255),
-      ), "original-bgene-grade-animation-required");
+    const grade = byte(before.building,46);
+    require(integer(grade,0,2),"original-bgene-grade-animation-required");
     const state = clone(before),
       b = state.building,
       owner = byte(b, 24),
       p = state.players[owner];
-    require((word(b, 49) & ~4) === 1, "unsupported-genepod-callback-state");
+    const flags = word(b,49);
+    require(!(flags & 0x800),"actual-genepod-demolition-callback-required");
     require(p[1] === owner && p[0x4a1] < 4, "invalid-genepod-owner-player");
     const receipt: GenepodReceipt = {
       state,
@@ -644,141 +654,154 @@ export function stepGenepod(
       roll: null,
       births: [],
       audio: [],
-      queueRequested: true,
+      queueRequested: false,
     };
-    let energy = i16(word(b, 61) - byte(b, 63));
-    if (energy <= 0) {
-      energy = 0;
-      b[49] = byte(b, 49) & ~4;
-      if (word(p, 0x5ea) === 0) put(p, 0x5ea, 1000);
-    }
-    put(b, 61, energy);
-    const remaining = dword(b, 54);
-    if (remaining > 0) {
-      const species = creatureSelector(byte(b, 51)), scale = 1 << grade;
-      b[63] = 3;
-      if (!(word(b, 49) & 4) && context.frame % 6 !== 0)
-        receipt.status = "frame-wait";
-      else if (((dword(p, 0x4a3) + dword(p, 0x4a7)) | 0) < scale)
-        receipt.status = "funds-wait";
-      else {
-        const payer = p[2] === 0 ? byte(b, 58) : owner;
-        require(integer(payer, 0, 3) &&
-          state.players[payer][0x4a1] < 4, "invalid-genepod-payer");
-        const paying = state.players[payer];
-        debit(paying, scale, state.players[paying[0x4a1]][2]);
-        put32(b, 54, remaining - 1);
-        receipt.paidBy = payer;
-        receipt.paid = scale;
-        receipt.status = "working";
-        if (remaining === 1) {
-          b[27] = 1;
-          const rawQuality = dword(paying, 0x61a + species * 4) >> 11,
-            quality = grade < 2 ? Math.min(rawQuality, 100) : rawQuality,
-            roll = nextRandom(state.rng) % 100;
-          receipt.quality = quality;
-          receipt.roll = roll;
-          require(context.pools !==
-            undefined, "actual-genepod-factory-pools-required");
-          const position: [number, number] = [word(b, 7), word(b, 9)];
-          if (roll <= ((quality * 2) | 0)) {
-            receipt.audio.push({ cue: 0x1a, mode: 2 });
-            const result = createGenepodMule(
-              context.pools,
-              state.players,
-              state.rng,
-              { owner: payer, position, quality: quality & 255, species },
-              context,
-            );
-            require(result.ok, result.ok ? "" : result.reason);
-            const made = result.value;
-            receipt.pools = made.pools;
-            state.players = made.players;
-            state.rng = made.rng;
-            if (made.birth) {
-              const speed = 3840 + 64 * (nextRandom(state.rng) % 100),
-                pitch = 2 * (nextRandom(state.rng) % 50),
-                yaw = 8 * nextRandom(state.rng),
-                n = made.birth.native;
-              const v = launchVector(yaw, pitch, speed, context.tables);
-              put(n, 57, yaw);
-              put(n, 59, pitch);
-              put(n, 61, speed);
-              put(n, 45, v.vx);
-              put(n, 47, v.vy);
-              put(n, 49, v.vz);
-              put32(n, 39, (dword(n, 39) + 3840) | 0);
-              put(b, 58, made.birth.slot);
-              research(state.players[payer], species, (grade + 1) * 2048);
-              receipt.births.push(made.birth);
-              receipt.status = species === 4 ? "mule-born" : "creature-born";
+    if ((flags & 1) && !(flags & 0x40)) {
+      const profile = context.runningAnimation;
+      require(profile.holds.length === [4,4,12][grade] && profile.flags===0 &&
+        profile.holds.every(v=>integer(v,0,255)),"original-bgene-grade-animation-required");
+      let energy = i16(word(b, 61) - byte(b, 63));
+      if (energy <= 0) {
+        energy = 0;
+        if (!(flags & 0x100)) {
+          b[49] = byte(b,49) & ~4;
+          if (word(p,0x5ea)===0) put(p,0x5ea,1000);
+        }
+      }
+      put(b, 61, energy);
+      const remaining = dword(b, 54);
+      if (flags & 0x100) {
+        //45D84 is reached only when the outer enabled/not40 body ran.
+        put32(b,54,0);receipt.status="inactive";
+      } else if (remaining > 0) {
+        const species = creatureSelector(byte(b, 51)), scale = 1 << grade;
+        b[63] = 3;
+        if (!(word(b, 49) & 4) && context.frame % 6 !== 0)
+          receipt.status = "frame-wait";
+        else if (((dword(p, 0x4a3) + dword(p, 0x4a7)) | 0) < scale)
+          receipt.status = "funds-wait";
+        else {
+          const payer = p[2] === 0 ? byte(b, 58) : owner;
+          require(integer(payer, 0, 3) &&
+            state.players[payer][0x4a1] < 4, "invalid-genepod-payer");
+          const paying = state.players[payer];
+          debit(paying, scale, state.players[paying[0x4a1]][2]);
+          put32(b, 54, remaining - 1);
+          receipt.paidBy = payer;
+          receipt.paid = scale;
+          receipt.status = "working";
+          if (remaining === 1) {
+            b[27] = 1;
+            const rawQuality = dword(paying, 0x61a + species * 4) >> 11,
+              quality = grade < 2 ? Math.min(rawQuality, 100) : rawQuality,
+              roll = nextRandom(state.rng) % 100;
+            receipt.quality = quality;
+            receipt.roll = roll;
+            require(context.pools !==
+              undefined, "actual-genepod-factory-pools-required");
+            const position: [number, number] = [word(b, 7), word(b, 9)];
+            if (roll <= ((quality * 2) | 0)) {
+              receipt.audio.push({ cue: 0x1a, mode: 2 });
+              const result = createGenepodMule(
+                context.pools,
+                state.players,
+                state.rng,
+                { owner: payer, position, quality: quality & 255, species },
+                context,
+              );
+              require(result.ok, result.ok ? "" : result.reason);
+              const made = result.value;
+              receipt.pools = made.pools;
+              state.players = made.players;
+              state.rng = made.rng;
+              if (made.birth) {
+                const speed = 3840 + 64 * (nextRandom(state.rng) % 100),
+                  pitch = 2 * (nextRandom(state.rng) % 50),
+                  yaw = 8 * nextRandom(state.rng),
+                  n = made.birth.native;
+                const v = launchVector(yaw, pitch, speed, context.tables);
+                put(n, 57, yaw);
+                put(n, 59, pitch);
+                put(n, 61, speed);
+                put(n, 45, v.vx);
+                put(n, 47, v.vy);
+                put(n, 49, v.vz);
+                put32(n, 39, (dword(n, 39) + 3840) | 0);
+                put(b, 58, made.birth.slot);
+                research(state.players[payer], species, (grade + 1) * 2048);
+                receipt.births.push(made.birth);
+                receipt.status = species === 4 ? "mule-born" : "creature-born";
+              } else {
+                put(b, 58, 301);
+                receipt.status = "creature-pool-full";
+              }
+              research(state.players[payer], species, grade * 64);
             } else {
+              receipt.status = "quality-failed";
               put(b, 58, 301);
-              receipt.status = "creature-pool-full";
-            }
-            research(state.players[payer], species, grade * 64);
-          } else {
-            receipt.status = "quality-failed";
-            put(b, 58, 301);
-            receipt.audio.push({ cue: 8, mode: 2 });
-            const parameter = 50 + (nextRandom(state.rng) % 100),
-              cue = 28 + (nextRandom(state.rng) % 3),
-              count = 3 + (nextRandom(state.rng) % 6);
-            receipt.audio.push({ cue, mode: 2, parameter });
-            poolValid(
-              context.pools.effects,
-              context.pools.effectCount,
-              200,
-              81,
-            );
-            const pools = poolClone(context.pools);
-            receipt.pools = pools;
-            for (let index = 0; index < count; index++) {
-              const speed = 8192 + 64 * (nextRandom(state.rng) % 128),
-                pitch = 2 * (nextRandom(state.rng) % 150),
-                yaw = 8 * nextRandom(state.rng);
-              require(pools.effectCount <
-                200, "genepod-effect-priority-replacement-required");
-              const slot = pools.effects.findIndex((n) => byte(n, 6) === 0),
-                v = launchVector(yaw, pitch, speed, context.tables);
-              require(slot >= 0, "genepod-pool-count-mismatch");
-              const ground = groundHeight(context.terrain, ...position),
-                n = effectFactoryPrior(pools.effects[slot], {
+              receipt.audio.push({ cue: 8, mode: 2 });
+              const parameter = 50 + (nextRandom(state.rng) % 100),
+                cue = 28 + (nextRandom(state.rng) % 3),
+                count = 3 + (nextRandom(state.rng) % 6);
+              receipt.audio.push({ cue, mode: 2, parameter });
+              poolValid(
+                context.pools.effects,
+                context.pools.effectCount,
+                200,
+                81,
+              );
+              const pools = poolClone(context.pools);
+              receipt.pools = pools;
+              for (let index = 0; index < count; index++) {
+                const speed = 8192 + 64 * (nextRandom(state.rng) % 128),
+                  pitch = 2 * (nextRandom(state.rng) % 150),
+                  yaw = 8 * nextRandom(state.rng);
+                require(pools.effectCount <
+                  200, "genepod-effect-priority-replacement-required");
+                const slot = pools.effects.findIndex((n) => byte(n, 6) === 0),
+                  v = launchVector(yaw, pitch, speed, context.tables);
+                require(slot >= 0, "genepod-pool-count-mismatch");
+                const ground = groundHeight(context.terrain, ...position),
+                  n = effectFactoryPrior(pools.effects[slot], {
+                    slot,
+                    code: 32,
+                    owner: 0,
+                    x: position[0],
+                    y: position[1],
+                    ground,
+                    height: (dword(b, 17) + 3840) | 0,
+                    shade: effectTerrainShade(context.terrain, ...position),
+                    vx: v.vx,
+                    vy: v.vy,
+                    vz: v.vz,
+                    accelerationZ: 0,
+                    yaw,
+                    pitch,
+                    speed,
+                    delay: 0,
+                  });
+                put(n, 21, 0);
+                n[73] = 0;
+                pools.effects[slot] = n;
+                pools.effectCount++;
+                receipt.births.push({
+                  family: 4,
                   slot,
-                  code: 32,
-                  owner: 0,
-                  x: position[0],
-                  y: position[1],
-                  ground,
-                  height: (dword(b, 17) + 3840) | 0,
-                  shade: effectTerrainShade(context.terrain, ...position),
-                  vx: v.vx,
-                  vy: v.vy,
-                  vz: v.vz,
-                  accelerationZ: 0,
-                  yaw,
-                  pitch,
-                  speed,
-                  delay: 0,
+                  cell: worldCell(...position),
+                  native: n,
+                  resource: { kind: "effect", selector: 32 },
                 });
-              put(n, 21, 0);
-              n[73] = 0;
-              pools.effects[slot] = n;
-              pools.effectCount++;
-              receipt.births.push({
-                family: 4,
-                slot,
-                cell: worldCell(...position),
-                native: n,
-                resource: { kind: "effect", selector: 32 },
-              });
+              }
+              research(state.players[payer], species, 2048);
             }
-            research(state.players[payer], species, 2048);
           }
         }
       }
-    }
-    commonTail(before.building, b, profile);
+      b[28]=Number(byte(b,27)!==0);
+      put(b,61,Math.min(word(b,61),200));
+      if (byte(b,63)!==0) b[63]=byte(b,63)-1;
+    } else receipt.status="inactive";
+    receipt.queueRequested=commonTail(before.building,b,context);
     return receipt;
   });
 }
