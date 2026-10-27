@@ -205,3 +205,40 @@ describe("verified base-save identity migration", () => {
     expect(recoverCampaign(storage, identity.contentHash)).toBeNull();
   });
 });
+
+describe("verified predecessor save identities", () => {
+  const session = { paused: true, speed: 1 as const, accumulator: 0 };
+  it("changes only identity for an admitted predecessor and rejects arbitrary old hashes", async () => {
+    const prior = await ruleExtensionIdentity(baseHash, extensionHash),
+      next = await ruleExtensionIdentity(baseHash, "4".repeat(64)),
+      identity = { ...next, compatibleContentHashes: [prior.contentHash] },
+      world = createCampaign(campaignFixture(), prior.contentHash),
+      text = saveCampaign(world, session),
+      expected = structuredClone(world);
+    expected.contentHash = identity.contentHash;
+    expect(loadCampaign(text, identity.contentHash, identity).world).toEqual(
+      expected,
+    );
+    expect(() => loadCampaign(text, identity.contentHash, next)).toThrow();
+    const bad = JSON.parse(text);
+    bad.world.players[0].funds++;
+    expect(() =>
+      loadCampaign(JSON.stringify(bad), identity.contentHash, identity),
+    ).toThrow(/checksum/);
+    const replay = sealCampaignReplay(recordCampaign(world, null), world);
+    expect(() =>
+      replayCampaign(replay, campaignFixture(), identity.contentHash),
+    ).toThrow();
+    expect(JSON.parse(text).world).toEqual(world);
+  });
+  it("rejects empty, unknown and oversized predecessor/profile manifests", async () => {
+    const { base, manifest } = fixture();
+    await expect(admit(base, { ...manifest, profiles: {} })).rejects.toThrow();
+    await expect(
+      admit(base, { ...manifest, profiles: { extractorRules: {} } }),
+    ).rejects.toThrow();
+    await expect(
+      admit(base, { ...manifest, previousExtensions: Array(9).fill("{}") }),
+    ).rejects.toThrow();
+  });
+});

@@ -71,10 +71,10 @@ export function loadCampaign(text: string, hash: string, extension?: RuleExtensi
   const collectorUpgrade = upgradeEmptyProcessorCollectors(s.world);
   if (collapseUpgrade || collectorUpgrade)
     s.checksum = checksum({ world: s.world, session: s.session });
-  if (extension && s.world.contentHash === extension.basePackSha256) {
-    // Verify the unchanged genuine base save BEFORE migrating its identity.
+  if (extension && (s.world.contentHash === extension.basePackSha256 || extension.compatibleContentHashes?.includes(s.world.contentHash))) {
+    // Verify the unchanged genuine base/predecessor save BEFORE migrating its identity.
     // Rule admission is additive and hash-checked by the content loader.
-    validateCampaignWorld(s.world, extension.basePackSha256);
+    validateCampaignWorld(s.world, s.world.contentHash);
     s.world.contentHash = hash;
     s.checksum = checksum({ world: s.world, session: s.session });
   }

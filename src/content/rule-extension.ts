@@ -1,6 +1,8 @@
 import { z } from "zod";
 import type { Pack } from "./types";
 import { SpecialistRecruitmentRulesSchema } from "./specialist-recruitment";
+import { ExtractorRulesSchema } from "./extractor";
+import { animationProfile } from "../sim/mechanics/animation";
 
 /** Separately hashed numeric rules, never a replacement pack or game state. */
 const ExtensionSchema = z
@@ -8,14 +10,26 @@ const ExtensionSchema = z
     schemaVersion: z.literal(1),
     basePackSha256: z.string().regex(/^[a-f0-9]{64}$/),
     profiles: z
-      .object({ specialistRecruitmentRules: SpecialistRecruitmentRulesSchema })
-      .strict(),
+      .object({
+        specialistRecruitmentRules: SpecialistRecruitmentRulesSchema.optional(),
+        extractorRules: ExtractorRulesSchema.optional(),
+      })
+      .strict()
+      .refine(
+        (p) =>
+          p.specialistRecruitmentRules !== undefined ||
+          p.extractorRules !== undefined,
+        "At least one admitted profile required",
+      ),
+    previousExtensions: z.array(z.string().max(65536)).max(8).optional(),
   })
   .strict();
 export interface RuleExtensionIdentity {
   readonly basePackSha256: string;
   readonly extensionSha256: string;
   readonly contentHash: string;
+  /** Derived only from fully verified, unchanged predecessor profiles. */
+  readonly compatibleContentHashes?: readonly string[];
 }
 const SOURCE =
   "4bdf296febc88984aab6939fe3f3ef3196891f0be9bcb84a9283ab3b668a60ba";
@@ -55,15 +69,25 @@ function words(values: readonly number[]): Uint8Array {
   values.forEach((v, i) => view.setUint16(i * 2, v & 65535, true));
   return bytes;
 }
-/** The caller has already SHA-verified the embedded base bytes. Only one
- * absent profile from the same admitted executable can be added. Every
- * decoded numeric span must match its importer pin, not merely its metadata. */
+/** The caller has already SHA-verified the embedded base bytes. Only absent
+ * profiles from the same admitted executable can be added. Numeric spans and
+ * bounded predecessor manifests are verified before admitting save identities. */
 export async function admitPackRuleExtension(
   base: Pack,
   baseHash: string,
   text: string,
   expectedExtensionHash: string,
 ): Promise<{ pack: Pack; identity: RuleExtensionIdentity }> {
+  return admitExtension(base, baseHash, text, expectedExtensionHash, 8);
+}
+async function admitExtension(
+  base: Pack,
+  baseHash: string,
+  text: string,
+  expectedExtensionHash: string,
+  depth: number,
+): Promise<{ pack: Pack; identity: RuleExtensionIdentity }> {
+  if (depth <= 0) throw Error("Rule-extension predecessor depth exceeded");
   if (text.length > 65536) throw Error("Rule extension exceeds64KB");
   const extensionHash = await ruleBytesSha256(new TextEncoder().encode(text));
   if (extensionHash !== expectedExtensionHash)
@@ -76,37 +100,106 @@ export async function admitPackRuleExtension(
     base.source.executableSha256 !== SOURCE
   )
     throw Error("Rule extension requires the admitted source executable");
-  if (base.specialistRecruitmentRules !== undefined)
-    throw Error("Rule extension cannot replace an existing profile");
-  const profile = e.profiles.specialistRecruitmentRules,
-    site = profile.landingSite,
-    provenance = profile.provenance;
-  if (
-    !site ||
-    !provenance.landingSite ||
-    provenance.executableSha256 !== SOURCE
-  )
-    throw Error("Complete source-backed recruitment profile required");
-  const spans = {
-    associatedLandingOffset: words(profile.associatedLandingOffset),
-    directionIndices: Uint8Array.from(site.directionIndices),
-    directions: words(site.directions.flat()),
-    textures: words(site.textures),
-    orientations: Uint8Array.from(site.orientations),
-  };
-  for (const name of Object.keys(spans) as (keyof typeof spans)[]) {
-    const declared =
-      name === "associatedLandingOffset"
-        ? provenance.associatedLandingOffset
-        : provenance.landingSite[name];
+  const pack = { ...base };
+  const recruitment = e.profiles.specialistRecruitmentRules;
+  if (recruitment) {
+    if (base.specialistRecruitmentRules !== undefined)
+      throw Error("Rule extension cannot replace an existing profile");
+    const profile = recruitment,
+      site = profile.landingSite,
+      provenance = profile.provenance;
     if (
-      declared.sha256 !== PINS[name] ||
-      (await ruleBytesSha256(spans[name])) !== PINS[name]
+      !site ||
+      !provenance.landingSite ||
+      provenance.executableSha256 !== SOURCE
     )
-      throw Error(`Recruitment numeric span hash mismatch: ${name}`);
+      throw Error("Complete source-backed recruitment profile required");
+    const spans = {
+      associatedLandingOffset: words(profile.associatedLandingOffset),
+      directionIndices: Uint8Array.from(site.directionIndices),
+      directions: words(site.directions.flat()),
+      textures: words(site.textures),
+      orientations: Uint8Array.from(site.orientations),
+    };
+    for (const name of Object.keys(spans) as (keyof typeof spans)[]) {
+      const declared =
+        name === "associatedLandingOffset"
+          ? provenance.associatedLandingOffset
+          : provenance.landingSite[name];
+      if (
+        declared.sha256 !== PINS[name] ||
+        (await ruleBytesSha256(spans[name])) !== PINS[name]
+      )
+        throw Error(`Recruitment numeric span hash mismatch: ${name}`);
+    }
+    pack.specialistRecruitmentRules = recruitment;
   }
+  const extractor = e.profiles.extractorRules;
+  if (extractor) {
+    if (base.extractorRules !== undefined)
+      throw Error("Rule extension cannot replace an existing profile");
+    const contactPin =
+        "b40711a88c7039756fb8a73827eabe2c0fe5a0346ca7e0a104adc0fc764f528d",
+      holdsPin =
+        "087cd3d775279d19b7c7eceec94bb0b478a427a2a7b19e4c723fb5f6f5c8655b",
+      resourcePin =
+        "218b117a4b0f84c6e5a362e5afdc46d29fb1525930c6131e2ffff3bcfcda2142";
+    if (
+      extractor.provenance.executableSha256 !== SOURCE ||
+      extractor.provenance.contactOffset.sha256 !== contactPin ||
+      (await ruleBytesSha256(words(extractor.contactOffset))) !== contactPin ||
+      (await ruleBytesSha256(Uint8Array.from(extractor.frameHolds.flat()))) !==
+        holdsPin
+    )
+      throw Error("Extractor numeric span hash mismatch");
+    for (let grade = 0; grade < 3; grade++) {
+      const actual = animationProfile(base.assets.BMINE, grade + 1),
+        declared = extractor.provenance.animationProfiles[grade];
+      if (
+        declared.resourceSha256 !== resourcePin ||
+        actual.flags !== declared.flags ||
+        JSON.stringify(actual.holds) !==
+          JSON.stringify(extractor.frameHolds[grade])
+      )
+        throw Error("Extractor animation profile/resource mismatch");
+    }
+    pack.extractorRules = extractor;
+  }
+  const compatible = new Set<string>();
+  for (const previousText of e.previousExtensions ?? []) {
+    const previous = ExtensionSchema.parse(JSON.parse(previousText));
+    for (const name of [
+      "specialistRecruitmentRules",
+      "extractorRules",
+    ] as const) {
+      if (
+        previous.profiles[name] !== undefined &&
+        JSON.stringify(previous.profiles[name]) !==
+          JSON.stringify(e.profiles[name])
+      )
+        throw Error("Predecessor profiles must be an unchanged subset");
+    }
+    const verified = await admitExtension(
+      base,
+      baseHash,
+      previousText,
+      await ruleBytesSha256(new TextEncoder().encode(previousText)),
+      depth - 1,
+    );
+    compatible.add(verified.identity.contentHash);
+    for (const hash of verified.identity.compatibleContentHashes ?? [])
+      compatible.add(hash);
+    if (compatible.size > 32)
+      throw Error("Too many rule-extension predecessor identities");
+  }
+  const identity = await ruleExtensionIdentity(baseHash, extensionHash);
   return {
-    pack: { ...base, specialistRecruitmentRules: profile },
-    identity: await ruleExtensionIdentity(baseHash, extensionHash),
+    pack,
+    identity: compatible.size
+      ? Object.freeze({
+          ...identity,
+          compatibleContentHashes: Object.freeze([...compatible].sort()),
+        })
+      : identity,
   };
 }
