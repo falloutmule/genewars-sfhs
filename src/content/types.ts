@@ -217,6 +217,8 @@ export const PackSchema = z
           .string()
           .refine((v) => v.length === 21848, "Expected64x256 fade bytes"),
         fadeSha256: z.string().length(64),
+        /** Separately admitted original ICE.DAT palette remaps. */
+        iceBase64: z.string().length(8192).optional(),
       })
       .optional(),
     unknown: z.array(

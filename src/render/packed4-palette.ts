@@ -103,6 +103,9 @@ export interface OwnedPacked4Profile {
   paletteBase: number;
   /** null is the source NULL fade pointer: identity, including threshold ink. */
   fadeRow: number | null;
+  /** Source 116DA8 row for the active 7B remap, when present. */
+  iceRow?: number | null;
+  thresholdBase?: number;
 }
 /**59470 selects one owner bank, not the neutral alternating pair. Ordinary
  * flags15&2 or shade>=30 pass NULL fade; state18 has its own31..62 fade tail.
@@ -110,6 +113,7 @@ export interface OwnedPacked4Profile {
  */
 export function ownedPacked4Profile(
   c: OwnedPacked4SourceContext,
+  hasIce = false,
 ): OwnedPacked4Profile {
   integer(c.owner, 0, 3, "owned player");
   integer(c.rawShade, 0, 255, "raw shade");
@@ -138,10 +142,22 @@ export function ownedPacked4Profile(
     shade = c.timer6C < 30 ? c.timer6C + 31 : 62;
     if (shade < 0) throw new Error("Packed4 negative state18 fade row");
   }
-  if (c.renderCounter7B > 0 && c.renderCounter7B < 192)
-    throw new Error(
-      "Packed4 owner7B remap requires original116DA8 runtime palette profile",
-    );
+  if (c.renderCounter7B > 0 && c.renderCounter7B < 192) {
+    const iceRow = c.owner * 6 + (c.renderCounter7B >> 6) * 2;
+    if (!(c.flags15 & 2) && !hasIce)
+      throw new Error(
+        "Packed4 owner7B remap requires original116DA8 runtime palette profile",
+      );
+    const base = ((shade >= 32 ? shade - 32 : shade) >> 2) << 5;
+    return {
+      depth,
+      shade,
+      paletteBase: base,
+      thresholdBase: base + 19,
+      fadeRow: null,
+      iceRow: c.flags15 & 2 ? null : iceRow,
+    };
+  }
   return {
     depth,
     shade,
@@ -151,14 +167,23 @@ export function ownedPacked4Profile(
 }
 export function ownedPacked4PaletteIndex(
   nibble: number,
-  context: { owner: 0 | 1 | 2 | 3; depth: number },
+  context: {
+    owner: 0 | 1 | 2 | 3;
+    depth: number;
+    paletteBase?: number;
+    thresholdBase?: number;
+  },
 ): number {
   integer(nibble, 0, 15, "raw nibble");
   integer(context.owner, 0, 3, "owned player");
   integer(context.depth, 0, 255, "depth");
+  const base = context.paletteBase ?? 192 + context.owner * 16,
+    threshold = context.thresholdBase ?? 135;
+  integer(base, 0, 255, "palette base");
+  integer(threshold, 0, 255, "threshold base");
   return nibble < context.depth
-    ? (135 - (nibble >> 2)) & 255
-    : 192 + context.owner * 16 + nibble;
+    ? (threshold - (nibble >> 2)) & 255
+    : (base + nibble) & 255;
 }
 /** The health threshold branch precedes fade and overrides either color bank. */
 export function neutralPacked4PaletteIndex(
@@ -217,7 +242,11 @@ export function composeNeutralPacked4Frame(
 }
 export function composeOwnedPacked4Frame(
   frame: NeutralPacked4Frame,
-  context: NeutralPacked4FrameContext & { owner: 0 | 1 | 2 | 3 },
+  context: NeutralPacked4FrameContext & {
+    owner: 0 | 1 | 2 | 3;
+    paletteBase?: number;
+    thresholdBase?: number;
+  },
 ): { rgba: Uint8ClampedArray; written: number; clipped: number } {
   return composePacked4Frame(frame, context, (n) =>
     ownedPacked4PaletteIndex(n, context),
@@ -371,6 +400,7 @@ uniform sampler2D paletteLookup;
 uniform float componentOriginX;
 uniform float clipFlagBit0;
 uniform float healthDepth;
+uniform float thresholdBase;
 uniform float neutralOpacity;
 uniform float paletteBase;
 uniform float bankStride;
@@ -389,7 +419,7 @@ void main() {
   float parity = mod(mod(screenY, 2.0) * mod(sourcePitch, 2.0) + mod(fromBottom.x, 2.0) + mod(componentOriginX, 2.0), 2.0);
   float alternate = mod(clipFlagBit0 + parity, 2.0);
   float nibble = floor(texture2D(rawIndices, frameUv).r * 255.0 + 0.5);
-  float index = nibble < healthDepth ? mod(135.0 - floor(nibble / 4.0) + 256.0, 256.0) : paletteBase + bankStride * alternate + nibble;
+  float index = nibble < healthDepth ? mod(thresholdBase - floor(nibble / 4.0) + 256.0, 256.0) : paletteBase + bankStride * alternate + nibble;
   gl_FragColor = vec4(texture2D(paletteLookup, vec2((index + 0.5) / 256.0, 0.5)).rgb, alpha * neutralOpacity);
   #include <colorspace_fragment>
 }`;
@@ -432,6 +462,7 @@ export function createNeutralPacked4Material(
       componentOriginX: { value: context.componentOriginX },
       clipFlagBit0: { value: Number(context.clipFlagBit0) },
       healthDepth: { value: context.depth },
+      thresholdBase: { value: 135 },
       neutralOpacity: { value: 1 },
       paletteBase: { value: 192 },
       bankStride: { value: 16 },
@@ -456,6 +487,7 @@ export function updateNeutralPacked4Material(
 ): void {
   validateScreen(context);
   material.uniforms.paletteBase.value = 192;
+  material.uniforms.thresholdBase.value = 135;
   material.uniforms.bankStride.value = 16;
   material.uniforms.componentOriginX.value = context.componentOriginX;
   material.uniforms.clipFlagBit0.value = Number(context.clipFlagBit0);
@@ -471,6 +503,8 @@ export function updateNeutralPacked4Material(
 }
 export interface OwnedPacked4ScreenContext extends NeutralPacked4ScreenContext {
   owner: 0 | 1 | 2 | 3;
+  paletteBase?: number;
+  thresholdBase?: number;
 }
 /** Shares the exact raw/opacity samplers, with a constant owner palette bank. */
 export function createOwnedPacked4Material(
@@ -488,6 +522,11 @@ export function updateOwnedPacked4Material(
 ): void {
   integer(context.owner, 0, 3, "owned player");
   updateNeutralPacked4Material(material, context);
-  material.uniforms.paletteBase.value = 192 + context.owner * 16;
+  const base = context.paletteBase ?? 192 + context.owner * 16,
+    threshold = context.thresholdBase ?? 135;
+  integer(base, 0, 255, "palette base");
+  integer(threshold, 0, 255, "threshold base");
+  material.uniforms.paletteBase.value = base;
+  material.uniforms.thresholdBase.value = threshold;
   material.uniforms.bankStride.value = 0;
 }

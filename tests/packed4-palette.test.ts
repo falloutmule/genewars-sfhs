@@ -390,6 +390,48 @@ describe("kind1 owned packed4 runtime palette", () => {
       ).fadeRow,
     ).toBe(16);
   });
+  it("selects the source ICE row, bank and health ink across 7B and shade boundaries", () => {
+    for (const owner of [0, 1, 2, 3] as const)
+      for (const counter of [1, 63, 64, 127, 128, 191])
+        for (const shade of [0, 4, 28, 31, 32, 60, 62]) {
+          const source =
+            shade < 32
+              ? owned({ owner, renderCounter7B: counter, rawShade: shade })
+              : owned({
+                  owner,
+                  renderCounter7B: counter,
+                  rawShade: 1,
+                  state: 18,
+                  timer6C: shade === 62 ? 30 : shade - 31,
+                });
+          const profile = ownedPacked4Profile(source, true);
+          const base = Math.floor((shade >= 32 ? shade - 32 : shade) / 4) * 32;
+          expect(profile).toMatchObject({
+            shade,
+            paletteBase: base,
+            thresholdBase: base + 19,
+            iceRow: owner * 6 + Math.floor(counter / 64) * 2,
+            fadeRow: null,
+          });
+          for (let nibble = 0; nibble < 16; nibble++)
+            for (const depth of [0, 3, 8, 16])
+              expect(
+                ownedPacked4PaletteIndex(nibble, {
+                  owner,
+                  depth,
+                  paletteBase: profile.paletteBase,
+                  thresholdBase: profile.thresholdBase,
+                }),
+              ).toBe(
+                nibble < depth
+                  ? base + 19 - Math.floor(nibble / 4)
+                  : base + nibble,
+              );
+        }
+    expect(
+      ownedPacked4Profile(owned({ renderCounter7B: 1, flags15: 2 })),
+    ).toMatchObject({ iceRow: null, paletteBase: 0, thresholdBase: 19 });
+  });
   it("composes raw nibbles with the selected source lookup and ignores destination parity for owners", () => {
     const f = frame(4, 1, [0, 1, 4, 15]),
       fade = identity();
@@ -445,7 +487,16 @@ describe("kind1 owned packed4 runtime palette", () => {
     updateOwnedPacked4Material(material, { ...screen({ depth: 4 }), owner: 1 });
     expect(material.uniforms.paletteBase.value).toBe(208);
     expect(material.uniforms.healthDepth.value).toBe(4);
+    updateOwnedPacked4Material(material, {
+      ...screen(),
+      owner: 2,
+      paletteBase: 64,
+      thresholdBase: 83,
+    });
+    expect(material.uniforms.paletteBase.value).toBe(64);
+    expect(material.uniforms.thresholdBase.value).toBe(83);
     updateNeutralPacked4Material(material, screen());
+    expect(material.uniforms.thresholdBase.value).toBe(135);
     expect(material.uniforms.paletteBase.value).toBe(192);
     expect(material.uniforms.bankStride.value).toBe(16);
     for (const name of [

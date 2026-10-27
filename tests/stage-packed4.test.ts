@@ -14,6 +14,7 @@ type RawStage = {
     frame: number,
   ): { indices: Uint8Array; componentLeft: number };
   packed4Lookup(shade: number | null): import("three").DataTexture;
+  packed4IceLookup(row: number): import("three").DataTexture;
   syncScene: Stage["syncScene"];
 };
 function asset(flags = 0): Asset {
@@ -42,6 +43,8 @@ function bareStage(pack: Partial<Pack> = {}): RawStage {
     pack,
     packed4Streams: new Map(),
     packed4Lookups: new Map(),
+    iceLookups: new Map(),
+    iceBytes: null,
     fadeBytes: null,
     sceneRequest: 0,
     disposed: false,
@@ -142,6 +145,30 @@ describe("Stage neutral packed4 binding", () => {
     texture.dispose();
   });
 
+  it("uses the requested ICE row independently from cached FADE rows", () => {
+    const ice = Uint8Array.from(
+      { length: 6144 },
+      (_, i) => (i + Math.floor(i / 256) * 7) & 255,
+    );
+    const stage = bareStage({
+      palettes: {
+        mainRgb8: Array.from(
+          { length: 256 },
+          (_, i) => [i, i, i] as [number, number, number],
+        ),
+        fadeBase64: btoa(String.fromCharCode(...new Uint8Array(16384))),
+        fadeSha256: "synthetic",
+        iceBase64: btoa(String.fromCharCode(...ice)),
+      },
+    });
+    const texture = stage.packed4IceLookup(8);
+    expect(stage.packed4IceLookup(8)).toBe(texture);
+    expect(
+      Array.from((texture.image.data as Uint8Array).slice(20, 24)),
+    ).toEqual([61, 61, 61, 255]);
+    expect(() => stage.packed4IceLookup(24)).toThrow("ICE");
+    texture.dispose();
+  });
   it("rejects missing owner context before touching existing scene objects or input", async () => {
     const source = asset(),
       stage = bareStage({ assets: { MULE: source } });
@@ -250,6 +277,39 @@ describe("Stage owned packed4 binding", () => {
       63, 63, 63, 255,
     ]);
     expect(JSON.stringify(entity)).toBe(saved);
+  });
+  it("binds an active ICE remap then restores ordinary owner uniforms", async () => {
+    const { stage, sprites } = preparedStage();
+    const ice = Uint8Array.from(
+      { length: 6144 },
+      (_, i) => (i + Math.floor(i / 256) * 7) & 255,
+    );
+    (stage as unknown as { pack: Pack }).pack.palettes!.iceBase64 = btoa(
+      String.fromCharCode(...ice),
+    );
+    const e: SceneEntity = {
+      id: "mule",
+      art: "MULE",
+      frame: 0,
+      x: 1,
+      y: 2,
+      ownedPacked4: ownedContext({
+        owner: 2,
+        renderCounter7B: 64,
+        rawShade: 9,
+      }),
+    };
+    await stage.syncScene([e]);
+    const shader = sprites.get("mule").mesh.material as THREE.ShaderMaterial;
+    expect(shader.uniforms.paletteBase.value).toBe(64);
+    expect(shader.uniforms.thresholdBase.value).toBe(83);
+    const data = shader.uniforms.paletteLookup.value.image.data as Uint8Array;
+    expect(Array.from(data.slice(64 * 4, 64 * 4 + 4))).toEqual([
+      162, 162, 162, 255,
+    ]);
+    await stage.syncScene([{ ...e, ownedPacked4: ownedContext({ owner: 2 }) }]);
+    expect(shader.uniforms.paletteBase.value).toBe(224);
+    expect(shader.uniforms.thresholdBase.value).toBe(135);
   });
   it("binds actual NULL-fade identity and changes owner/neutral wrappers without a replacement preview", async () => {
     const { stage, sprites } = preparedStage(),

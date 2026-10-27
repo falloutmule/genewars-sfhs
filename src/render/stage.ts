@@ -67,6 +67,8 @@ interface SceneSprite {
     depth: number;
     clipFlagBit0: boolean;
     owner?: 0 | 1 | 2 | 3;
+    paletteBase?: number;
+    thresholdBase?: number;
   };
 }
 export class Stage {
@@ -96,6 +98,8 @@ export class Stage {
   >();
   private packed4Lookups = new Map<number, THREE.DataTexture>();
   private fadeBytes: Uint8Array | null = null;
+  private iceBytes: Uint8Array | null = null;
+  private iceLookups = new Map<number, THREE.DataTexture>();
   private sceneRequest = 0;
   private disposed = false;
   readonly raycaster = new THREE.Raycaster();
@@ -517,6 +521,27 @@ export class Stage {
     this.packed4Lookups.set(key, texture);
     return texture;
   }
+  private packed4IceLookup(row: number): THREE.DataTexture {
+    const old = this.iceLookups.get(row);
+    if (old) return old;
+    const palettes = this.pack.palettes;
+    if (!palettes?.iceBase64 || !Number.isInteger(row) || row < 0 || row >= 24)
+      throw new Error("Original ICE palette remap required");
+    if (!this.iceBytes) {
+      this.iceBytes = Uint8Array.from(atob(palettes.iceBase64), (c) =>
+        c.charCodeAt(0),
+      );
+      if (this.iceBytes.length !== 6144) throw new Error("Invalid ICE extent");
+    }
+    const texture = packed4LookupTexture(
+      packed4PaletteLookup(
+        palettes.mainRgb8.flat(),
+        this.iceBytes.subarray(row * 256, (row + 1) * 256),
+      ),
+    );
+    this.iceLookups.set(row, texture);
+    return texture;
+  }
   private packed4Screen(item: SceneSprite): NeutralPacked4ScreenContext {
     if (!item.neutral) throw new Error("Packed4 scene context required");
     const ratio = this.renderer.getPixelRatio(),
@@ -660,7 +685,10 @@ export class Stage {
           if (typeof source.clipFlagBit0 !== "boolean")
             throw new Error("Packed4 clip flag context required for " + e.art);
           const owned = e.ownedPacked4
-            ? ownedPacked4Profile(e.ownedPacked4)
+            ? ownedPacked4Profile(
+                e.ownedPacked4,
+                !!this.pack.palettes?.iceBase64,
+              )
             : null;
           const depth =
               owned?.depth ??
@@ -673,7 +701,10 @@ export class Stage {
                   source.flags15,
                   source.globalShadowMode,
                 ),
-            paletteLookup = this.packed4Lookup(shade),
+            paletteLookup =
+              owned?.iceRow != null
+                ? this.packed4IceLookup(owned.iceRow)
+                : this.packed4Lookup(shade),
             frame = await this.packed4Frame(e.art, asset, e.frame,e.component);
           return {
             e,
@@ -681,6 +712,8 @@ export class Stage {
             frame,
             depth,
             owner: e.ownedPacked4?.owner,
+            paletteBase: owned?.paletteBase,
+            thresholdBase: owned?.thresholdBase,
             clipFlagBit0: source.clipFlagBit0,
             paletteLookup,
             texture: null,
@@ -707,6 +740,8 @@ export class Stage {
           frame: null,
           depth: 0,
           owner: undefined,
+          paletteBase: undefined,
+          thresholdBase: undefined,
           clipFlagBit0: false,
           paletteLookup: null,
         };
@@ -736,6 +771,8 @@ export class Stage {
         paletteLookup,
         texture,
         owner,
+        paletteBase,
+        thresholdBase,
         clipFlagBit0,
       } = view;
       const makePacked4Material = () => {
@@ -755,7 +792,7 @@ export class Stage {
             )
           : createOwnedPacked4Material(
               { ...frame!, paletteLookup: paletteLookup! },
-              { ...context, owner },
+              { ...context, owner, paletteBase, thresholdBase },
             );
       };
       let item = this.sceneSprites.get(e.id);
@@ -788,13 +825,16 @@ export class Stage {
         shader.uniforms.paletteLookup.value = paletteLookup;
         shader.uniforms.neutralOpacity.value = e.opacity ?? 1;
         shader.uniforms.paletteBase.value =
-          owner === undefined ? 192 : 192 + owner * 16;
+          owner === undefined ? 192 : (paletteBase ?? 192 + owner * 16);
+        shader.uniforms.thresholdBase.value = thresholdBase ?? 135;
         shader.uniforms.bankStride.value = owner === undefined ? 16 : 0;
         item.neutral = {
           componentLeft: frame.componentLeft,
           depth,
           clipFlagBit0,
           owner,
+          paletteBase,
+          thresholdBase,
         };
       } else {
         let material = item.mesh.material;
@@ -909,6 +949,8 @@ export class Stage {
           updateOwnedPacked4Material(material, {
             ...context,
             owner: item.neutral.owner,
+            paletteBase: item.neutral.paletteBase,
+            thresholdBase: item.neutral.thresholdBase,
           });
       }
     }
@@ -932,6 +974,9 @@ export class Stage {
     this.packed4Frames.clear();
     for (const texture of this.packed4Lookups.values()) texture.dispose();
     this.packed4Lookups.clear();
+    for (const texture of this.iceLookups.values()) texture.dispose();
+    this.iceLookups.clear();
+    this.iceBytes = null;
     this.packed4Streams.clear();
     this.fadeBytes = null;
     this.images.clear();

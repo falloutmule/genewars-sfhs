@@ -72,6 +72,29 @@ async function admit(
   return admitPackRuleExtension(base, hash, text, digest);
 }
 describe("separately hashed additive numeric rules", () => {
+  it("rejects an unverified ICE profile and a missing palette", async () => {
+    const { base } = fixture();
+    const manifest = {
+      schemaVersion: 1,
+      basePackSha256: baseHash,
+      profiles: {
+        packed4Ice: {
+          dataBase64: btoa(String.fromCharCode(...new Uint8Array(6144))),
+          decodedSha256: "0".repeat(64),
+          mainRgbSha256: "0".repeat(64),
+        },
+      },
+    };
+    await expect(admit(base, manifest)).rejects.toThrow(
+      "requires existing palette",
+    );
+    base.palettes = {
+      mainRgb8: Array.from({ length: 256 }, () => [0, 0, 0]),
+      fadeBase64: "A".repeat(21848),
+      fadeSha256: "0".repeat(64),
+    };
+    await expect(admit(base, manifest)).rejects.toThrow("hash mismatch");
+  });
   it("binds both exact hashes under a separate deterministic content identity", async () => {
     const a = await ruleExtensionIdentity(baseHash, extensionHash);
     expect(a).toEqual(await ruleExtensionIdentity(baseHash, extensionHash));

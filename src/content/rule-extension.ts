@@ -13,12 +13,21 @@ const ExtensionSchema = z
       .object({
         specialistRecruitmentRules: SpecialistRecruitmentRulesSchema.optional(),
         extractorRules: ExtractorRulesSchema.optional(),
+        packed4Ice: z
+          .object({
+            dataBase64: z.string().length(8192),
+            decodedSha256: z.string().regex(/^[a-f0-9]{64}$/),
+            mainRgbSha256: z.string().regex(/^[a-f0-9]{64}$/),
+          })
+          .strict()
+          .optional(),
       })
       .strict()
       .refine(
         (p) =>
           p.specialistRecruitmentRules !== undefined ||
-          p.extractorRules !== undefined,
+          p.extractorRules !== undefined ||
+          p.packed4Ice !== undefined,
         "At least one admitted profile required",
       ),
     previousExtensions: z.array(z.string().max(65536)).max(8).optional(),
@@ -165,12 +174,41 @@ async function admitExtension(
     }
     pack.extractorRules = extractor;
   }
+  const ice = e.profiles.packed4Ice;
+  if (ice) {
+    if (!base.palettes || base.palettes.iceBase64 !== undefined)
+      throw Error(
+        "ICE profile requires existing palette and cannot replace one",
+      );
+    const icePin =
+        "c1a0294fca6947b0690e2aec400cdad587f1962721244f6783a95314f8349085",
+      mainPin =
+        "3f6b3a8b714efdf7889edac168a3b3109538a31d0a82e426471c133b7a3260ba";
+    let decoded: Uint8Array;
+    try {
+      decoded = Uint8Array.from(atob(ice.dataBase64), (c) => c.charCodeAt(0));
+    } catch {
+      throw Error("Invalid ICE profile encoding");
+    }
+    if (
+      decoded.length !== 6144 ||
+      ice.decodedSha256 !== icePin ||
+      ice.mainRgbSha256 !== mainPin ||
+      (await ruleBytesSha256(decoded)) !== icePin ||
+      (await ruleBytesSha256(
+        Uint8Array.from(base.palettes.mainRgb8.flat()),
+      )) !== mainPin
+    )
+      throw Error("ICE profile or palette hash mismatch");
+    pack.palettes = { ...base.palettes, iceBase64: ice.dataBase64 };
+  }
   const compatible = new Set<string>();
   for (const previousText of e.previousExtensions ?? []) {
     const previous = ExtensionSchema.parse(JSON.parse(previousText));
     for (const name of [
       "specialistRecruitmentRules",
       "extractorRules",
+      "packed4Ice",
     ] as const) {
       if (
         previous.profiles[name] !== undefined &&
