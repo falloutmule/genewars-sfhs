@@ -288,6 +288,33 @@ describe("human6A760 target classifier", () => {
   });
 });
 describe("source human target/stop packets", () => {
+  it.each([1, 11, 22])("stops species %i through common82230/5CC60 cleanup", (species) => {
+    for (const state of [3, 7, 8, 18]) {
+      const f = fixture();
+      f.n[122] = species;
+      f.n[94] = state;
+      f.n[120] = 7;
+      f.n[96] = 16;
+      put(f.n, 108, 32767);
+      if (state === 3) {
+        f.n[87] = 1;
+        put(f.n, 85, 1);
+        f.peer[87] = 1;
+      } else if (state === 7) {
+        f.n[87] = 2;
+        put(f.n, 85, 1);
+      }
+      const out = stopStagedHumanCreature(f.w, 0,
+        {argument: 0, selectedPlayer: 0, selectedPanelRefresh: true}, f.command);
+      expect(out.disposition).toBe("stopped");
+      expect(f.n[120]).toBe(0);
+      expect(f.n[96]! & 16).toBe(0);
+      expect(f.n[94]).toBe(state);
+      expect(word(f.n, 108)).toBe(state === 18 ? 32767 : 0);
+      if (state === 3) expect(f.peer[87]).toBe(0);
+      if (state === 7) expect(f.plant[46]! & 1).toBe(0);
+    }
+  });
   it.each([15, 18, 24])(
     "leaves blocked state%s unchanged without resolving resources",
     (state) => {

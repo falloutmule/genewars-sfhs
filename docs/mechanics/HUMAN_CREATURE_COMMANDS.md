@@ -47,6 +47,11 @@ expressed.
 82230 acts only for argument0 and a nonzero task120. It calls5CC60, then clears
 task120/flag96 bit4 even when stunned cleanup returned false. It does not move
 the creature to its current position, change command anchors or emit feedback.
+This common Stop path has no species check. Its retained-reference cleanup also
+applies to Crabs and hybrids; the Mule4 admission gate belongs to target action
+execution above. Any required carrier services still remain explicit. Regression
+coverage includes Crab1, CrabMule11 and MuleCrab22 mating, feeding, idle and stun
+afterimages, including peer/plant reservation release and the preserved stun timer.
 The optional selected-panel dirty receipt is presentation only. Pending95 can
 precede the later work state, so stopping before states1/7/11 does not invent a
 plant-reservation release that5CC60 did not perform.

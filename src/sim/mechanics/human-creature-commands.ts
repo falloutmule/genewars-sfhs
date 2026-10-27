@@ -340,7 +340,8 @@ export function issueStagedHumanCreatureTarget<W extends CreatureCommandWorld>(
 }
 
 /**82230's argument word is zero in the human stop producer. A stunned
- *5CC60 false result still clears wrapper task120/flag96bit4. */
+ *5CC60 false result still clears wrapper task120/flag96bit4. Unlike target
+ *execution, this common release has no species gate or concrete action body. */
 export function stopStagedHumanCreature<W extends CreatureCommandWorld>(
   w: W,
   index: number,
@@ -366,7 +367,6 @@ export function stopStagedHumanCreature<W extends CreatureCommandWorld>(
     };
   if (input.argument !== 0 || byte(n, 120) === 0) return out;
   return stable(w, index, null, null, c, () => {
-    mule(n);
     releaseStagedCreatureAction(w, index, c.commands(w));
     n[96] = byte(n, 96) & 239;
     n[120] = 0;
