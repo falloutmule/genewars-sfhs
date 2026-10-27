@@ -160,6 +160,7 @@ import {
 import { consumeMuleEffects } from "./mule-effects";
 import { stepCampaignCraters } from "./crater-adapter";
 import { createMuleCombatTransaction } from "./mule-combat-adapter";
+import { createStagedColdShatterBurst } from "./cold-shatter-adapter";
 import {
   makeCollapsePool,
   stepCollapsePool,
@@ -2374,6 +2375,11 @@ export function stepCampaign(w: CampaignWorld, pack: Pack): void {
             index,
           ),
         combatEffect: combatTransaction.effect,
+        coldBurst: (state, terrain, rng, mule, request) => {
+          const staged = combatTransaction.host(state, terrain, rng);
+          createStagedColdShatterBurst(staged, mule, request, pack,
+            rewardFactoryOptions(staged, pack));
+        },
         material: makeCampaignMuleMaterialServices(pack, combatTransaction.host,
           staged => rewardFactoryOptions(staged, pack)),
         plantDamage: (state, terrain, rng, index, amount) =>
@@ -2470,7 +2476,7 @@ export function stepCampaign(w: CampaignWorld, pack: Pack): void {
         // arrival snap in source order. A buffered physics receipt may describe
         // an earlier cell; replaying it here would undo the final relocation.
         if (event.kind === "mule-retired") {
-          delete w.muleQueues[muleIndex];
+          delete w.muleQueues[Number(event.id.split(":")[2])];
           if (w.spatial.nodes[event.id])
             unlinkSpatial(
               w.spatial,

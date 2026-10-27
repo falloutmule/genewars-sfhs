@@ -23,6 +23,7 @@ import type { SourceEntityId } from "./source-pools";
 import { readShepherdOperators } from "../mechanics/shepherd";
 import { campaignBuildingAsset } from "./building-startup-adapter";
 import { makeCampaignMuleMaterialServices } from "./mule-adapter";
+import { createStagedColdShatterBurst } from "./cold-shatter-adapter";
 
 /** Current virtual0/68 and combat-only building reach. These are distinct
  * from74270 collision extents and from the construction footprint in cells. */
@@ -144,6 +145,15 @@ export function campaignMuleDamageContext(
     combat: species===4?pack.ecologyRules.muleCombat:creatureCombatTraits(pack.ecologyRules,pack.zoneRules?.speciesComponents,species),
     speciesComponents: pack.zoneRules?.speciesComponents,
     coldResponse: species===4?pack.ecologyRules.muleCold:creatureColdResponse(pack.zoneRules?.speciesComponents,species),
+    coldBurst(state, terrain, rng, mule, request) {
+      if (state !== w.ecology || terrain !== w.terrain || rng !== w.rng)
+        throw Error("Cold damage burst must use the isolated current host");
+      createStagedColdShatterBurst(w, mule, request, pack, {
+        gravity: i16(w.missionPrefix, 0x1c5d),
+        obstacleAt: p => campaignAirborneBuilding(w, pack, p, -1) !== null,
+        cleanupReferences: cleanupCampaignReferences,
+      });
+    },
     material: makeCampaignMuleMaterialServices(pack,(state,terrain,rng)=>{
       if (state !== w.ecology || terrain !== w.terrain || rng !== w.rng)
         throw Error("Mule damage material release must use the isolated current host");

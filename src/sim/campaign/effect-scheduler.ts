@@ -1076,7 +1076,7 @@ export function stepEffectScheduler<W extends EffectSchedulerWorld>(
       created = result.newborns;
       if (result.retirementRequired)
         retireStagedSharedEffect(s, slot, options, out);
-    } else if ([0, 1, 2, 3, 5, 27, 28, 29, 30, 31, 46].includes(code)) {
+    } else if ([0, 1, 2, 3, 5, 14, 27, 28, 29, 30, 31, 46].includes(code)) {
       if (!pack.ecologyRules)
         throw Error("Original destruction ecology motion tables are required");
       const result = stepDestructionEffect(n, s.rng, {

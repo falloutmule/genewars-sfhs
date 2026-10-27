@@ -26,7 +26,7 @@ import {
   type EffectNativePrior,
 } from "./power-motion";
 import type { SourceEntityId } from "../campaign/source-pools";
-export type DestructionCode = 0 | 1 | 2 | 3 | 5 | 27 | 28 | 29 | 30 | 31 | 46;
+export type DestructionCode = 0 | 1 | 2 | 3 | 5 | 14 | 27 | 28 | 29 | 30 | 31 | 46;
 export interface DestructionRequest {
   code: DestructionCode;
   owner: number;
@@ -66,6 +66,7 @@ const counts: Record<DestructionCode, number> = {
   2: 10,
   3: 9,
   5: 14,
+  14: 5,
   27: 8,
   28: 7,
   29: 7,
@@ -152,6 +153,7 @@ export function makeDestructionEffect(
       delay: input.delay,
     });
   put(n, 74, input.parameter || -1);
+  if (input.code === 14) put(n, 21, 0);
   const events: DestructionAudio[] = [];
   if (input.code >= 27 && input.code <= 31) {
     put(n, 21, 0x180);
@@ -160,7 +162,7 @@ export function makeDestructionEffect(
     put(n, 21, 0x820);
     n[29] = 2;
     n[76] = 0;
-  } else {
+  } else if (input.code !== 14) {
     events.push({
       type: "audio",
       channel: input.code === 5 ? 0x2e : 6,
@@ -661,15 +663,15 @@ export function stepDestructionEffect(
     flags = word(before, 21) & ~1;
   if (
     before[6] !== 5 ||
-    ![0, 1, 2, 3, 5, 27, 28, 29, 30, 31, 46].includes(code) ||
-    flags !== (debris ? 0x180 : code === 46 ? 0x820 : 0x20) ||
+    ![0, 1, 2, 3, 5, 14, 27, 28, 29, 30, 31, 46].includes(code) ||
+    flags !== (debris ? 0x180 : code === 46 ? 0x820 : code === 14 ? 0 : 0x20) ||
     word(before, 63) !== -1 ||
     [51, 53, 55].some((at) => word(before, at) !== 0)
   )
     throw Error("Unsupported original destruction physics state");
   const out = stepSharedFreeEffectMotion(before, rng, c, {
-      movable: debris || code === 46,
-      waterResponse: debris,
+      movable: debris || code === 46 || code === 14,
+      waterResponse: debris || code === 14,
     }),
     n = out.native;
   const spawn = (r: DestructionChildRequest) => {
@@ -693,6 +695,11 @@ export function stepDestructionEffect(
   n[28] = a.direction & 255;
   n[29] = a.delay & 255;
   n[30] = a.counter & 255;
+  if (code === 14) {
+    //4B630 descriptor mode1: animation does not retire an airborne shard.
+    out.retirementRequired = dword(n, 17) === dword(n, 39) || byte(n, 76) !== 0;
+    return out;
+  }
   if (debris || code === 46) {
     if (word(n, 74) < 0) {
       out.retirementRequired = true;

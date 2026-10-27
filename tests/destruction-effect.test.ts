@@ -21,6 +21,7 @@ const counts: Record<DestructionCode, number> = {
     2: 10,
     3: 9,
     5: 14,
+    14: 5,
     27: 8,
     28: 7,
     29: 7,
@@ -78,6 +79,29 @@ function fixture(code: DestructionCode = 5) {
   );
   return { terrain, rng, prior, n: result.native, result };
 }
+it("keeps airborne cold shards after animation completion and retires on source mode1 contact", () => {
+  const f = fixture(14);
+  expect(f.result.events).toEqual([]);
+  expect(f.rng.draws).toBe(0);
+  expect(f.n[76]).toBe(f.prior[76]);
+  expect(word(f.n, 21)).toBe(0);
+  f.n[76] = f.n[67] = f.n[68] = f.n[30] = 0;
+  put32(f.n, 39, 5000);
+  let n = f.n;
+  const context = {frame: 0, gravity: 0, water: 0, terrain: f.terrain, tables,
+    bounce: Array(8).fill(64), friction: Array(8).fill(128), profile,
+    obstacle: () => null, particle: () => { throw Error("Unexpected shard child"); }};
+  for (let frame = 0; frame < 8; frame++) {
+    const step = stepDestructionEffect(n, f.rng, {...context, frame});
+    expect(step.retirementRequired).toBe(false);
+    n = step.native;
+  }
+  n[76] = 1;
+  expect(stepDestructionEffect(n, f.rng, context).retirementRequired).toBe(true);
+  n[76] = 0;
+  put32(n, 39, 2000);
+  expect(stepDestructionEffect(n, f.rng, context).retirementRequired).toBe(true);
+});
 function target(
   kind: number,
   index = 0,

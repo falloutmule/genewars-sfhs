@@ -190,7 +190,7 @@ export interface MuleContext {
       count: number;
       parameter1: 80;
       parameter2: 70;
-      height: -1;
+      owner: -1;
     },
   ): void;
   /** Signed original component temperature-loss bytes, admitted by importer. */
@@ -2573,7 +2573,7 @@ function combatServices(
           count,
           parameter1: 80,
           parameter2: 70,
-          height: -1,
+          owner: -1,
         });
         for (const other of state.mules) {
           const r = other.native;
