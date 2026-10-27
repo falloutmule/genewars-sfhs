@@ -1,6 +1,10 @@
 # Software campaign progress
 
-Current as of 26 October 2026: **5/24 accepted**. Exceland, Krell, Madami, Roach and Brown are accepted. Lunacon (mission 6) is active. Its exact current phase, frame and genuine continuation save are recorded in `.private/continuous-20261026/current.json`.
+Current as of 27 October 2026: **6/24 accepted**. Exceland, Krell, Madami, Roach, Brown and Lunacon are accepted. Oid (mission 7) is active. Its exact current phase, frame and genuine continuation save are recorded in `.private/continuous-20261026/current.json`.
+
+Lunacon completed through the portrait phone touch UI at frame 18,817, with both marked-zone quotas exhausted and score 2,583 against 568. The normal victory view advanced progress to 6 and continued into Oid. The carried save reloaded in landscape at frame 0 with progress 6, without browser or render errors. Two specialist losses carried naturally. Physical S21 Ultra testing remains separate.
+
+Lunacon's accepted artifact SHA-256 is `5d2bf0c12d1acc165981c71af4eacd406aba8e2db6051ef4b0355c1c42c90afc`, from clean commit `807153306b9b6a124049681397bec2f29b474354`. Private evidence is indexed in `.private/continuous-20261026/mission6-acceptance.json`, including the exact pack/extension identity, 68 verified save/replay links, genuine result/carry controls, landscape reload and full carry replay checksum `9954f803`. The replay boundary fix retains briefing-entry events at the final tick reached by mission carry; 39 focused tests, strict typecheck and leak guard passed. Original-derived saves, artifacts and captures remain private.
 
 Brown completed through the phone landscape touch UI at frame 20,785, with both zone quotas exhausted and score 3,010 against 1,114. The actual victory view advanced progress to 5, continued into Lunacon, and exported the genuine carried roster. Portrait reload verified mission 6 at frame 0, progress 5 and 2,000 funds, without browser or render errors. One specialist loss carried naturally.
 
