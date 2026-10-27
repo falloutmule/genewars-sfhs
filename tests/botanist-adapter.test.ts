@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { campaignFixture } from "./fixtures/campaign";
+import { installEconomyEffect61 } from "./fixtures/economy-effect-profile";
 import {
   createCampaign,
   queueCampaign,
@@ -49,6 +50,7 @@ function fixture() {
       rawTrailingWord: code === 8 ? 13 : code === 61 ? 9 : 6,
     })),
   };
+  installEconomyEffect61(pack.assets.EFF);
   pack.effectRules = {
     schemaVersion: 1,
     descriptors: Array.from({ length: 71 }, (_, code) => ({
@@ -240,7 +242,7 @@ describe("campaign Botanist adapter", () => {
     ]).toEqual([193, 71]);
     expect(u16(w.missionPrefix, 0x3554)).toBe(3);
     const callbacks = new Set<number>();
-    for (let i = 0; i < 40 && occupied(w).length; i++) {
+    for (let i = 0; i < 160 && occupied(w).length; i++) {
       w.frame++;
       const r = stepEffectScheduler(w, pack, f.options(w));
       r.callbacks.forEach((call) => callbacks.add(call.slot));
@@ -250,6 +252,41 @@ describe("campaign Botanist adapter", () => {
     expect(u16(w.missionPrefix, 0x3554)).toBe(0);
     expect(w.rng.draws - draws).toBe(2);
     validateCampaignWorld(w, w.contentHash);
+  });
+  it("preserves the EFF61 held-frame lifecycle across save and reload", () => {
+    const f = fixture(),
+      { w, pack, services } = f;
+    createStagedBotanistEconomyEffect(
+      w,
+      {
+        code: 61,
+        owner: 0,
+        position: [8192, 8192],
+        height: 2048,
+        angles: [512, 0, 800],
+        parameter: 0,
+        delay: 0,
+        newborn: false,
+      },
+      pack,
+      services,
+    );
+    const loaded = loadCampaign(
+      saveCampaign(w, { paused: false, speed: 1, accumulator: 0 }),
+      w.contentHash,
+    ).world;
+    let observedHold = false;
+    for (let i = 0; i < 160 && occupied(w).length; i++) {
+      w.frame++;
+      loaded.frame++;
+      stepEffectScheduler(w, pack, f.options(w));
+      stepEffectScheduler(loaded, pack, f.options(loaded));
+      expect(checksum(loaded)).toBe(checksum(w));
+      observedHold ||= occupied(w).some(({ n }) => n[69] === 61 && n[26]! > 0);
+    }
+    expect(observedHold).toBe(true);
+    expect(occupied(w)).toEqual([]);
+    expect(occupied(loaded)).toEqual([]);
   });
   it("keeps the held plant/player/specialist identities across real damage and ignition", () => {
     const f = fixture(),

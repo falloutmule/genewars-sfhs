@@ -304,7 +304,8 @@ describe("original category1 Botanist", () => {
       prior[73] = 3;
       const count = code === 60 ? 6 : 9,
         profile = {
-          holds: Array(count).fill(0),
+          holds:
+            code === 60 ? Array(count).fill(0) : [9, 9, 0, 0, 0, 0, 0, 0, 0],
           flags: 0,
           first: 0,
           last: count - 1,
@@ -348,6 +349,43 @@ describe("original category1 Botanist", () => {
       );
       expect(r.queries.every((q) => q.type !== "obstacle")).toBe(true);
       expect(f.w.rng.draws).toBe(1);
+      if (code === 61) {
+        const held = n.slice();
+        held[26] = 9;
+        held[27] = 1;
+        held[29] = 1;
+        held[30] = 0;
+        const next = stepBotanistEconomyEffectRecord(
+          held,
+          f.w.terrain,
+          {
+            frame: 2,
+            gravity: 1024,
+            water: 1000,
+            tables: f.c.tables,
+            bounce: Array(8).fill(128),
+            profile,
+          },
+          code,
+        );
+        expect([next.native[26], next.native[27]]).toEqual([8, 1]);
+        const wrong = { ...profile, holds: Array(9).fill(0) };
+        expect(() =>
+          stepBotanistEconomyEffectRecord(
+            held,
+            f.w.terrain,
+            {
+              frame: 2,
+              gravity: 1024,
+              water: 1000,
+              tables: f.c.tables,
+              bounce: Array(8).fill(128),
+              profile: wrong,
+            },
+            code,
+          ),
+        ).toThrow(/EFF60\/61/);
+      }
     },
   );
   it("projects actual row1E rather than inventing a seed cost from nutrition/retirement", () => {

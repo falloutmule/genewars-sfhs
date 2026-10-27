@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { campaignFixture } from "./fixtures/campaign";
+import { installEconomyEffect61 } from "./fixtures/economy-effect-profile";
 import {
   createCampaign,
   queueCampaign,
@@ -59,6 +60,7 @@ function fixture() {
       rawTrailingWord: count,
     };
   }
+  installEconomyEffect61(pack.assets.EFF);
   pack.effectRules = {
     schemaVersion: 1,
     descriptors: Array.from({ length: 71 }, (_, code) => ({

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { campaignFixture } from "./fixtures/campaign";
+import { installEconomyEffect61 } from "./fixtures/economy-effect-profile";
 import { createCampaign, type CampaignWorld } from "../src/sim/campaign/world";
 import { stepCampaignEconomyBuildings } from "../src/sim/campaign/economy-adapter";
 import { stepStagedCampaignBuildingDemolition } from "../src/sim/campaign/building-demolition-adapter";
@@ -50,6 +51,7 @@ function fixture(frame = 1) {
     last: code === 33 ? 3 : code === 61 ? 8 : 5,
     rawTrailingWord: code === 33 ? 4 : code === 61 ? 9 : 6,
   }));
+  installEconomyEffect61(pack.assets.EFF);
   pack.effectRules = {
     schemaVersion: 1,
     descriptors: Array.from({ length: 71 }, (_, code) => ({

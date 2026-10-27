@@ -115,14 +115,20 @@ export function stepEffect7Record(
 ): ProductionEffectUpdate {
   return stepCommonEffectRecord(before, terrain, c, 7);
 }
-/** Source60/61 share49129 factory and no-gravity common callbacks with26;
- * their actual six/nine zero-hold ANB profiles remain distinct. */
+/** Source60/61 share49129 factory and no-gravity common callbacks with26. */
+export function validateEconomyEffectProfile(p: AnimationProfile, code: 60 | 61): void {
+  const holds = code === 60 ? [0, 0, 0, 0, 0, 0] : [9, 9, 0, 0, 0, 0, 0, 0, 0];
+  if (p.flags !== 0 || p.last - p.first !== holds.length - 1 ||
+      p.holds.length !== holds.length || p.holds.some((h, i) => h !== holds[i]))
+    throw new Error("Original EFF60/61 animation profile required");
+}
 export function stepEconomyEffectRecord(
   before: readonly (number | null)[],
   terrain: TerrainState,
   c: ProductionEffectContext,
   code: 60 | 61,
 ): ProductionEffectUpdate {
+  validateEconomyEffectProfile(c.profile, code);
   return stepCommonEffectRecord(before, terrain, c, code);
 }
 /** Selector64/0x40 uses the same flags0 numeric motion as32, with the
@@ -183,7 +189,7 @@ function stepCommonEffectRecord(
   if (
     p.flags !== 0 ||
     p.holds.length !== frames ||
-    p.holds.some((h) => h !== (code === 26 || code === 64 ? 1 : 0)) ||
+    (code !== 60 && code !== 61 && p.holds.some((h) => h !== (code === 26 || code === 64 ? 1 : 0))) ||
     p.last - p.first !== frames - 1
   )
     throw new Error(

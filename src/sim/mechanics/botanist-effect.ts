@@ -13,6 +13,7 @@ import {
 import {
   stepEffect7Record,
   stepEconomyEffectRecord,
+  validateEconomyEffectProfile,
   type ProductionEffectContext,
   type ProductionEffectUpdate,
 } from "./production-effect";
@@ -82,16 +83,6 @@ export function stepBotanistWorkEffectRecord(
   profile(c.profile);
   return stepEffect7Record(before, terrain, c);
 }
-function economyProfile(p: AnimationProfile, code: 60 | 61) {
-  const frames = code === 60 ? 6 : 9;
-  if (
-    p.flags !== 0 ||
-    p.holds.length !== frames ||
-    p.last - p.first !== frames - 1 ||
-    p.holds.some((h) => h !== 0)
-  )
-    throw Error("Original EFF60/61 zero-hold profile required");
-}
 /** Source49129 for both60 and61. Called only after real shared allocation;
  * its one delay draw follows common numeric construction/spatial insertion. */
 export function makeBotanistEconomyEffect(
@@ -103,7 +94,7 @@ export function makeBotanistEconomyEffect(
   tables: MotionTables,
   p: AnimationProfile,
 ): EffectNativePrior {
-  economyProfile(p, q.code);
+  validateEconomyEffectProfile(p, q.code);
   if (
     prior[6] !== 0 ||
     !Number.isInteger(q.slot) ||
@@ -159,6 +150,5 @@ export function stepBotanistEconomyEffectRecord(
   c: ProductionEffectContext,
   code: 60 | 61,
 ): ProductionEffectUpdate {
-  economyProfile(c.profile, code);
   return stepEconomyEffectRecord(before, terrain, c, code);
 }

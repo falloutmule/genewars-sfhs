@@ -71,7 +71,9 @@ failure consumes no factory delay draw; successful49129 factories consume one.
 `botanist-effect.ts` supplies actual code7 factory/common callback and code60/61
 factory/common callbacks. The shared scheduler owns allocation, replacement,
 cleanup, insertion, count and final retirement. Actual imported EFF profiles
-are required: code7/60 six zero-hold frames and61 nine zero-hold frames. Code7
+are required: code7/60 six zero-hold frames and61 nine frames with holds
+`[9,9,0,0,0,0,0,0,0]`. The preserved EFF61 asset provides those holds;
+the shared animation callback consumes them rather than treating them as zero. Code7
 does not consume factory RNG. Codes60/61 retain their49129 acceleration/delay.
 
 ## Evidence and limits
