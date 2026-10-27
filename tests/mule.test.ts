@@ -378,5 +378,32 @@ describe("neutral Crab callback family",()=>{
   function crab(){const f=fixture(),species=speciesFixture();f.context.rules.speciesTraits=species.rules.speciesTraits;f.context.rules.attackChannels=species.rules.attackChannels;f.context.speciesComponents=species.components;f.context.combat=creatureCombatTraits(f.context.rules,species.components,1);f.context.coldResponse=creatureColdResponse(species.components,1);f.state.mules[0].native[122]=1;return f;}
   it("runs both callback phases with actual Crab coefficients and opaque pointers",()=>{const f=crab();for(let frame=0;frame<30;frame++){f.context.frame=frame;const r=stepNeutralMule(f.state,0,f.rng,f.context);expect(r.reason,`frame${frame}`).toBeNull();}expect(f.state.mules[0].native.slice(31,39)).toEqual(Array(8).fill(null));expect(f.state.mules[0].native[122]).toBe(1);});
   it("rolls back state, terrain and RNG if non-Mule component evidence is absent",()=>{const f=crab();delete f.context.speciesComponents;const before=structuredClone({state:f.state,rng:f.rng,terrain:f.context.terrain});const r=stepNeutralMule(f.state,0,f.rng,f.context);expect(r.committed).toBe(false);expect(r.reason).toMatch(/component/);expect({state:f.state,rng:f.rng,terrain:f.context.terrain}).toEqual(before);});
-  it("keeps distinct unsupported species abilities fail closed",()=>{const f=crab();f.state.mules[0].native[122]=3;const before=structuredClone({state:f.state,rng:f.rng});expect(stepNeutralMule(f.state,0,f.rng,f.context).committed).toBe(false);expect({state:f.state,rng:f.rng}).toEqual(before);});
+  it("keeps distinct unsupported species abilities fail closed",()=>{const f=crab();f.state.mules[0].native[122]=2;const before=structuredClone({state:f.state,rng:f.rng});expect(stepNeutralMule(f.state,0,f.rng,f.context).committed).toBe(false);expect({state:f.state,rng:f.rng}).toEqual(before);});
+  it.each([[1,800],[11,800],[4,750],[22,750]])("uses primary-component terrain contact for species%i", (species, speed) => {
+    const f=crab(),n=f.state.mules[0].native;
+    n[122]=species;
+    f.context.combat=creatureCombatTraits(f.context.rules,f.context.speciesComponents,species);
+    put(n,63,400);put(n,65,800);put(n,73,0x1000);put(n,108,1000);
+    expect(stepNeutralMule(f.state,0,f.rng,f.context).reason).toBeNull();
+    expect(word(f.state.mules[0].native,65)).toBe(speed);
+  });
+  it.each([3, 14, 19])("takes off and runs both Bird callback phases for species%i", species => {
+    const f = crab(), n = f.state.mules[0].native;
+    n[122] = species;
+    f.context.combat = creatureCombatTraits(f.context.rules, f.context.speciesComponents, species);
+    f.context.coldResponse = creatureColdResponse(f.context.speciesComponents, species);
+    f.context.profile = () => ({ holds: Array(18).fill(0), flags: 0, first: 0, last: 17 });
+    let flying = false, airborne = false;
+    for (let frame = 0; frame < 100; frame++) {
+      f.context.frame = frame;
+      const r = stepNeutralMule(f.state, 0, f.rng, f.context);
+      expect(r.reason, `species${species} frame${frame}`).toBeNull();
+      const current = f.state.mules[0].native;
+      flying ||= !!(word(current, 73) & 0x400);
+      airborne ||= word(current, 39) > word(current, 17);
+    }
+    expect(flying).toBe(true);
+    expect(airborne).toBe(true);
+    expect(f.state.mules[0].native.slice(31, 39)).toEqual(Array(8).fill(null));
+  });
 });

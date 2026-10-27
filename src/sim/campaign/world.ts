@@ -1,5 +1,6 @@
 import { stepStagedCampaignGoopVat } from "./goop-vat-adapter";
 import {creatureAsset,creatureCombatTraits,creatureColdResponse} from "../mechanics/creature-species";
+import { resetCreaturePopulation, countCreatureBeforeCallback } from "../mechanics/creature-population";
 import { z } from "zod";
 import type { Pack } from "../../content/types";
 import { campaignEntity } from "./entity-view";
@@ -2274,6 +2275,7 @@ export function stepCampaign(w: CampaignWorld, pack: Pack): void {
         position: [b.x, b.y] as [number, number],
       })),
     ];
+    resetCreaturePopulation(w.players.map(p => p.raw), w.source.source.context.activePlayerCount);
     for (let muleIndex = 0; muleIndex < 300; muleIndex++) {
       let mule = w.ecology.mules.find((m) => m.index === muleIndex);
       if (!mule || mule.native[6] === 0) continue;
@@ -2285,6 +2287,7 @@ export function stepCampaign(w: CampaignWorld, pack: Pack): void {
       }
       const species=mule.native[122]!,
         art=species===4?"MULE":creatureAsset(pack.zoneRules?.speciesComponents,species,pack.assets);
+      countCreatureBeforeCallback(w.players.map(p => p.raw), mule.native);
       const callback = mule.native[24] === 4 ? stepNeutralMule : stepOwnedMule;
       const combatTransaction = createMuleCombatTransaction(
         w,

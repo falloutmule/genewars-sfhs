@@ -4,6 +4,12 @@ import type { EcologyRules } from "./ecology";
 import type { MuleCombatTraits } from "./mule-combat";
 import { nextRandom, type GeneRng } from "./random";
 
+/** Closed component family: Crab, Bird, Mule and their ordered hybrids.
+ * Dinosaur and Frog ability callbacks remain separate entered boundaries. */
+export function sharedCreatureCallbackSpecies(selector: number): boolean {
+  return [1, 3, 4, 10, 11, 14, 19, 22, 24].includes(selector);
+}
+
 export function creatureSelector(value: unknown): number {
   if (
     !Number.isInteger(value) ||

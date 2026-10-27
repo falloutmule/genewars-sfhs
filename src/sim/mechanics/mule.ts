@@ -1,4 +1,5 @@
-import { creatureParameters, creatureComponents, creatureSelector, chooseCreatureOffspring } from "./creature-species";
+import { creatureParameters, creatureComponents, creatureSelector, chooseCreatureOffspring, sharedCreatureCallbackSpecies } from "./creature-species";
+import { creatureIsFlying, beginCreatureFlight, advanceCreatureFlightGoal, turnCreatureFlightAngles, creatureFlightTargetGeometry, selectCreatureFlightAnimation } from "./creature-flight";
 import { nextRandom, type GeneRng } from "./random";
 import {
   originalAngle,
@@ -79,6 +80,10 @@ const put32 = (n: Native, p: number, v: number) => {
   put(n, p + 2, v >> 16);
 };
 const point = (n: Native): [number, number] => [w(n, 7), w(n, 9)];
+function primaryBirdFlight(n: Native, c: MuleContext) {
+  if (n[122] !== 4 && creatureComponents(c.speciesComponents, n[122])[0] === 3)
+    beginCreatureFlight(n);
+}
 export interface MuleContext {
   /** Actual104A64 component rows; required for admitted non-Mule species. */
   speciesComponents?: readonly (readonly number[])[];
@@ -575,8 +580,10 @@ function cellEntryPredicate(
   c?: MuleContext,
   entering = false,
 ): boolean {
-  const n = mule.native,
-    occupants = state.mules.filter(
+  const n = mule.native;
+  //5B100 returns before examining terrain or shared occupants in flight.
+  if (creatureIsFlying(n)) return false;
+  const occupants = state.mules.filter(
       (other) =>
         other.native[6] === 1 &&
         other.native[0x5e]! < 24 &&
@@ -598,8 +605,6 @@ function cellEntryPredicate(
     )
       throw new Error("Mule cell-entry list does not match living occupants");
   }
-  if (w(n, 0x49) & 0x400)
-    throw new Error("Mule attached cell-entry predicate is required");
   const last = ordered.at(-1);
   if (n[0x5e] === 10 && worldCell(w(n, 11), w(n, 13)) === cell)
     return cellHasEffect11(state, cell, c);
@@ -643,6 +648,7 @@ function routePrefix(
   random: GeneRng,
   c: MuleContext,
   phase: number,
+  events: MuleEvent[],
 ): { working: [number, number]; savedSpeed: number | null } {
   const n = mule.native,
     current = point(n),
@@ -664,8 +670,7 @@ function routePrefix(
         : undefined;
   if (
     (n[0x4f] !== 0 && n[0x4f] !== 4) ||
-    (n[0x52] !== 0 && !associated) ||
-    n[0x4a]! & 4
+    (n[0x52] !== 0 && !associated)
   )
     throw new Error("Mule association movement prefix is required");
   if (
@@ -736,7 +741,7 @@ function routePrefix(
       if (!(n[0x49]! & 3)) working = target;
     }
     const from = n[0x49]! & 3 ? working : current,
-      ray = straightRay(from, target, c.tables, accept);
+      ray = creatureIsFlying(n) ? { clear: true, failure: null } : straightRay(from, target, c.tables, accept);
     if (ray.clear) {
       if (n[0x49]! & 3) {
         put(n, 0x49, w(n, 0x49) & 0xeffc);
@@ -852,6 +857,33 @@ function routePrefix(
         c.tables.atan,
       ),
     );
+  if (creatureIsFlying(n)) {
+    const at = associated ? point(associated.native) : target;
+    let height = associated ? d(associated.native, 39) : groundHeight(c.terrain, ...at);
+    const targetFlying = !!associated && creatureIsFlying(associated.native);
+    if (associated && n[94] === 1 && !targetFlying && w(n, 104) >= 4 &&
+        creatureComponents(c.speciesComponents, n[122])[0] === 3) {
+      const eligible = n[24] === 4 ? n[118]! > 90 :
+        !!(n[97]! & 4) || (c.owned?.players?.[n[24]!]?.[0x6c7 + n[122]!] ?? 0) >= 1;
+      if (eligible) height = (d(associated.native, 17) + 3840) | 0;
+    }
+    const aimHeight = !associated && n[83]! & (1 << ecologyTerrainClass(c.terrain, at))
+      ? (height + 2880) | 0 : height;
+    if (advanceCreatureFlightGoal(n, {
+      position: at, height, aimHeight, associated: !!associated, flying: targetFlying,
+    }, phase, c.tables)) {
+      const oldCell = worldCell(...point(n)), newCell = worldCell(...working);
+      if (oldCell !== newCell) sourceCellEntry(state, mule, oldCell, newCell, random, c);
+      put(n, 7, working[0] & 32767); put(n, 9, working[1] & 32767);
+      //704A6 passes BL=1 to6E9E0: snap XY/ground but retain flight height.
+      put32(n, 17, groundHeight(c.terrain, ...point(n)));
+      n[23] = renderShade(c.terrain, point(n));
+      n[67] = n[68] = 0; put(n, 65, 0);
+      n[22] = n[22]! & 0x3f; n[84] = 0; n[73] = n[73]! & 0xef;
+      n.fill(0, 45, 51); put(n, 61, 0); put(n, 63, 0);
+      if (oldCell !== newCell) events.push({ kind: "mule-moved", id: mule.id, position: point(n) });
+    }
+  }
   return { working, savedSpeed: null };
 }
 function setVelocity(n: Native, tables: MotionTables) {
@@ -899,8 +931,10 @@ function commonContactSpeed(
     const quotient = Math.trunc((speed * speed) / (width << 7));
     if (squaredDistance <= Math.imul(quotient, quotient)) return brake();
   }
-  const surface = normal[2] + (previous < d(n, 0x11) ? 0 : 128) - 128;
-  desired = Math.imul(surface, desired) >> 7;
+  if (!creatureIsFlying(n)) {
+    const surface = normal[2] + (previous < d(n, 0x11) ? 0 : 128) - 128;
+    desired = Math.imul(surface, desired) >> 7;
+  }
   return Math.abs(speed - desired) <= width
     ? signed(desired)
     : desired < speed
@@ -919,8 +953,11 @@ function contact(
     cell = worldCell(...at),
     terrainClass = ecologyTerrainClass(c.terrain, at);
   let desired = w(n, 0x3f);
-  if (terrainClass === 2) desired = signed(Math.trunc((desired * 4) / 5));
-  if (terrainClass === 5) desired = signed(Math.trunc((desired * 5) / 6));
+  const primaryCrab = n[122] !== 4 && creatureComponents(c.speciesComponents, n[122])[0] === 1;
+  if (!creatureIsFlying(n) && !primaryCrab) {
+    if (terrainClass === 2) desired = signed(Math.trunc((desired * 4) / 5));
+    if (terrainClass === 5) desired = signed(Math.trunc((desired * 5) / 6));
+  }
   const candidates = state.plants.filter(
     (plant) => plant.active && worldCell(...plant.position) === cell,
   );
@@ -970,7 +1007,11 @@ function contact(
               (Math.imul(dx, dx) + Math.imul(dy, dy) + Math.imul(z, z)) | 0
             );
           })()
-        : distance(
+        : creatureIsFlying(n) ? creatureFlightTargetGeometry(n, {
+            position: [w(n, 11), w(n, 13)],
+            height: groundHeight(c.terrain, w(n, 11), w(n, 13)),
+            associated: false, flying: false,
+          }, c.tables).squared : distance(
             c.terrain,
             at,
             n[0x49]! & 3 ? [w(n, 0x45), w(n, 0x47)] : [w(n, 11), w(n, 13)],
@@ -1046,8 +1087,6 @@ function physics(
     !!(n[0x15]! & 0x80);
   if (
     n[0x16]! & 9 ||
-    n[0x15]! & 0x20 ||
-    w(n, 0x49) & 0x400 ||
     (w(n, 0x3f) < 0 && !passiveMotion)
   )
     throw new Error(
@@ -1059,7 +1098,7 @@ function physics(
       0x2d + 2 * axis,
       w(before, 0x2d + 2 * axis) +
         w(before, 0x33 + 2 * axis) -
-        (axis === 2 ? c.gravity : 0),
+        (axis === 2 && !(before[21]! & 0x20) ? c.gravity : 0),
     );
   const candidateHeight = (d(before, 0x27) + (w(n, 0x31) >> 3)) | 0;
   const fixed = (axis: number) =>
@@ -1144,6 +1183,11 @@ function physics(
       n[0x43 + axis] = (value >> 8) & 255;
     }
     put32(n, 0x27, Math.max(candidateHeight, 0));
+    if (w(n, 63) > 0 && creatureIsFlying(n)) {
+      put(n, 65, contact(state, n, terrainNormal(c.terrain, ...point(n)), signed(oldGround), c, random));
+      put(n, 61, w(n, 65));
+      setVelocity(n, c.tables);
+    }
     angles(n, c);
     //6E620..6E757 caps free airborne speed after deriving its angles. The
     //nonpositive desired speed joins the common free-motion cap.
@@ -1244,7 +1288,7 @@ export function applyOwnedMuleSelfWaterDamage(
   if (
     n[6] !== 1 ||
     n[24]! >= 4 ||
-    ![1,4,11,22].includes(n[0x7a]!) ||
+    !sharedCreatureCallbackSpecies(n[0x7a]!) ||
     w(n, 15) < 0 ||
     w(n, 15) >= 300
   )
@@ -1272,7 +1316,7 @@ export function applyNeutralMuleSelfWaterDamage(mule: EcologyMule, c?: MuleConte
   if (
     n[6] !== 1 ||
     n[24] !== 4 ||
-    ![1,4,11,22].includes(n[0x7a]!) ||
+    !sharedCreatureCallbackSpecies(n[0x7a]!) ||
     ![0, 8].includes(n[0x5e]!) ||
     ![8, 0x88].includes(n[0x60]!) ||
     n[0x61] !== 0 ||
@@ -1501,6 +1545,7 @@ function acquireFood(
   put(n, 0x3f, muleRequestedSpeed(mule, c.rules));
   put(n, 0x6c, 32767);
   n[0x60] = n[0x60]! | 0xc0;
+  primaryBirdFlight(n, c);
   n[0x5e] = 1;
   events.push({
     kind: "mule-target",
@@ -1657,6 +1702,7 @@ function selectAnimation(n: Native, c: MuleContext) {
       n[0x1d] = 2;
     }
   } else {
+    if (selectCreatureFlightAnimation(n)) return;
     n[0x19] = ((((w(n, 0x39) >> 7) + 1) >> 1) + 1) & 7;
     const speed = w(n, 0x41);
     if (!speed && n[0x5e] !== 0) {
@@ -1796,7 +1842,7 @@ function verifyNeighborhood(
       !near(point(other.native))
     )
       continue;
-    if (![1,4,11,22].includes(other.native[0x7a]!))
+    if (!sharedCreatureCallbackSpecies(other.native[0x7a]!))
       throw new Error(
         "Mule query needs the other creature's actual species scorer",
       );
@@ -1864,7 +1910,7 @@ function foodTarget(
       const corpses = state.mules.filter(
         (m) =>
           m.native[6] === 1 &&
-          [1,4,11,22].includes(m.native[0x7a]!) &&
+          sharedCreatureCallbackSpecies(m.native[0x7a]!) &&
           [24, 25].includes(m.native[0x5e]!) &&
           worldCell(...point(m.native)) === cell,
       );
@@ -1968,7 +2014,7 @@ export function requestStagedOwnedMuleMove(
     if (
       !mule ||
       mule.native[6] !== 1 ||
-      ![1,4,11,22].includes(mule.native[0x7a]!) ||
+      !sharedCreatureCallbackSpecies(mule.native[0x7a]!) ||
       mule.native[24]! >= 4 ||
       w(mule.native, 15) !== index
     )
@@ -2069,6 +2115,7 @@ function installTarget(
   put(n, 0x3f, speed);
   put(n, 0x6c, 32767);
   n[0x60] = n[0x60]! | 0x80;
+  primaryBirdFlight(n, c);
 }
 /**64CD7 common choice, including all16 candidate attempts and the74A50
  * backward repair of the retained anchor. Query-order draws occur outside. */
@@ -2219,7 +2266,7 @@ function mateTarget(
         const p = peer.native;
         if (
           p[24] !== n[24] ||
-          ![1,4,11,22].includes(p[0x7a]!) ||
+          !sharedCreatureCallbackSpecies(p[0x7a]!) ||
           p[0x5e]! >= 24 ||
           [3, 10, 15].includes(p[0x5e]!) ||
           p[0x77] !== 255 ||
@@ -2261,6 +2308,7 @@ function beginPair(
     put(n, 0x3f, speed);
     put(n, 0x6c, 32767);
     n[0x60] = n[0x60]! | 0x80;
+    primaryBirdFlight(n, c);
   }
 }
 function physicalDistance(a: Native, b: Native): number {
@@ -3092,7 +3140,7 @@ function carriedAnimation(n: Native, c: MuleContext) {
   n[30] = a.counter & 255;
 }
 
-/** Shared admitted ground Mule/Crab wander/plant-feeding callback.
+/** Shared admitted Crab/Bird/Mule movement, flight and feeding callback.
  * Spatial relinking is reported; unsupported branches roll back data and RNG. */
 function stepMule(
   state: EcologyState,
@@ -3121,7 +3169,7 @@ function stepMule(
     if (
       n[6] !== 1 ||
       (owned ? n[24]! >= 4 : n[24] !== 4) ||
-      ![1,4,11,22].includes(n[0x7a]!) ||
+      !sharedCreatureCallbackSpecies(n[0x7a]!) ||
       n[0x76] === null ||
       ![
         0, 1, 3, 4, 5, 6, 7, 8, 10, 11, 15, 16, 18, 20, 21, 24, 25, 26, 27,
@@ -3145,27 +3193,13 @@ function stepMule(
       Object.assign(context.terrain, terrain);
       return { committed: true, reason: null, events };
     }
-    if (n[0x16]! & 0x48 || w(n, 0x49) & 0x400)
+    if (n[0x16]! & 0x48)
       throw new Error("Mule attached movement prefix is required");
-    const route = routePrefix(staged, mule, random, c, phase),
+    const route = routePrefix(staged, mule, random, c, phase, events),
       goal = route.working;
-    const yaw = w(n, 0x39),
-      wanted = w(n, 0x4b);
-    if (yaw !== wanted && d(n, 0x27) <= d(n, 0x11)) {
-      let delta = wanted - yaw;
-      const alternative = delta < 0 ? 2048 + delta : -2048 + delta;
-      if (Math.abs(delta) > Math.abs(alternative)) delta = alternative;
-      n[0x4a] = Math.abs(delta) >= 256 ? n[0x4a]! | 0x20 : n[0x4a]! & 0xdf;
-      const step = 2 * (w(n, 0x2b) & 65535);
-      put(
-        n,
-        0x39,
-        Math.abs(delta) <= step
-          ? wanted
-          : (yaw + Math.sign(delta) * step) & 2047,
-      );
+    const hasBird = n[122] !== 4 && creatureComponents(c.speciesComponents, n[122]).includes(3);
+    if (turnCreatureFlightAngles(n, hasBird))
       setVelocity(n, c.tables);
-    } else if (yaw === wanted) n[0x4a] = n[0x4a]! & 0xdf;
     physics(staged, mule, c, events, random);
     reveal(staged, mule, phase, c, events);
     if (dead) {
@@ -3179,7 +3213,9 @@ function stepMule(
       return { committed: true, reason: null, events };
     }
     if (route.savedSpeed !== null) put(n, 0x3f, route.savedSpeed);
-    else if (n[0x49]! & 3) {
+    else if (creatureIsFlying(n)) {
+      //6FB60 returns after flight physics; ground arrival is a separate arm.
+    } else if (n[0x49]! & 3) {
       if (n[0x54]! > 20) {
         if (
           w(n, 0x3d) <= 256 &&

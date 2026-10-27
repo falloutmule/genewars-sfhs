@@ -1,4 +1,4 @@
-import {creatureComponents, creatureBuildingAttackDamage} from "./creature-species";
+import {creatureComponents, creatureBuildingAttackDamage, sharedCreatureCallbackSpecies} from "./creature-species";
 /** Selector4 creature combat. Numeric ports of6B700/5B580/6EDA0/5C840,
  * completed-animation60332 and5B9F0; no executable or process pointers. */
 import { nextRandom, type GeneRng } from "./random";
@@ -120,7 +120,7 @@ function assertMule(m: EcologyMule) {
     m.index < 0 ||
     m.index >= 300 ||
     byte(n, 6) !== 1 ||
-    ![1,4,11,22].includes(byte(n,122)) ||
+    !sharedCreatureCallbackSpecies(byte(n,122)) ||
     word(n, 15) !== m.index ||
     byte(n, 24) > 4
   )
@@ -476,6 +476,8 @@ export function acquireMuleHostile(
   rng?: GeneRng,
 ) {
   assertMule(self);
+  if ([3, 14, 19].includes(byte(self.native, 122)))
+    throw Error("Primary Bird hostile acquisition requires its source pickup service");
   const t = targetView(target);
   p.release(self);
   const n = self.native,

@@ -195,7 +195,7 @@ describe("negative-desired Mule corpse common physics", () => {
     for (const [at, value] of [
       [21, 0],
       [22, 3],
-      [21, 0xa0],
+      [22, 10],
     ] as const) {
       const f = fixture();
       f.n[at] = value;
@@ -205,6 +205,15 @@ describe("negative-desired Mule corpse common physics", () => {
       );
       expect(JSON.stringify(f.state)).toBe(before);
     }
+  });
+  it("keeps gravity suppression independent of passive corpse motion", () => {
+    const f=fixture();
+    f.n[21]=0xa0;
+    put32(f.n as number[],39,4096);
+    expect(stepNeutralMule(f.state,0,f.rng,f.context).reason).toBeNull();
+    expect(u32(f.state.mules[0].native as number[],39)).toBe(4096);
+    expect(i16(f.state.mules[0].native as number[],49)).toBe(0);
+    expect(i16(f.state.mules[0].native as number[],73)&0x400).toBe(0);
   });
   it("rolls back after late collision or missing BONES/profile failures", () => {
     const f = fixture();
