@@ -5,6 +5,31 @@ import { campaignPunishmentServices } from "../src/sim/campaign/punishment-adapt
 import { insertSpatial } from "../src/sim/campaign/spatial";
 import { createNativeBuilding } from "../src/sim/mechanics/building-native";
 import { put16 } from "../src/sim/campaign/bytes";
+import { refreshPunishmentTarget } from "../src/sim/mechanics/ethereal-punishment";
+import type { EtherealContext } from "../src/sim/mechanics/ethereal";
+
+it("follows retained pool coordinates after specialist removal without exposing a live target", () => {
+  const w = createCampaign(campaignFixture(), "punishment-host"),
+    parent = w.ethereals.records[0],
+    unit = w.specialists.records[0],
+    services = campaignPunishmentServices(w, {
+      cancelWork: () => {}, removeSpecialist: () => {}, damageBuilding: () => {},
+    });
+  put16(unit as number[], 7, 12345);
+  put16(unit as number[], 9, 23456);
+  unit[6] = 0;
+  parent.native[0x52] = 3;
+  put16(parent.native as number[], 0x50, 0);
+  parent.native[0x4f] = 0;
+  parent.native[0x49] = 0x14;
+  parent.native[0x4a] = 0;
+  expect(services.resolve(3, 0)).toBeNull();
+  expect(services.followingPosition!(3, 0)).toEqual([12345, 23456]);
+  refreshPunishmentTarget(parent, { frame: 0, punishment: services } as EtherealContext);
+  expect(parent.native.slice(11, 15)).toEqual([57, 48, 160, 91]);
+  expect(unit[6]).toBe(0);
+  expect(() => services.followingPosition!(3, -1)).toThrow(/fixed pool/);
+});
 
 it("queries actual signed specialist/building health and retains a lethal animation's positive health", () => {
   const w = createCampaign(campaignFixture(), "punishment-host"),

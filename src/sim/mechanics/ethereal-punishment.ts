@@ -7,6 +7,9 @@ export interface PunishmentTarget {id:SourceEntityId;kind:1|3|4;index:number;own
 export interface PunishmentQuery {center:[number,number];radius:2048;stepX:256|-256;stepY:256|-256;points:[number,number][]}
 export interface EtherealPunishmentServices {
   resolve(kind:1|3|4,index:number):PunishmentTarget|null;
+  /**6D390 resolves a fixed pool address, including an inactive slot. Motion
+   * reads its retained coordinates; live punishment selection uses resolve. */
+  followingPosition?(kind:1|3|4,index:number):[number,number]|null;
   /**13A40 spatial head->next, sameowner, virtual68false, kind1/3/4,
    * 2D73690 <=radius², strictnearestperkind. Seven entries indexednativekind. */
   nearby(parent:EtherealRecord,query:PunishmentQuery):readonly(PunishmentTarget|null)[];
@@ -77,6 +80,6 @@ function attackPunishment(record:EtherealRecord,c:EtherealContext,rng:GeneRng,ou
 }
 export function stepEtherealPunishment(record:EtherealRecord,c:EtherealContext,rng:GeneRng,out:EtherealUpdate){const severity=b(record.native,0x58);if(severity===2)buildingPunishment(record,c,rng,out);else if(severity===3)unitPunishment(record,c,rng,out);else attackPunishment(record,c,rng,out);}
 /**6FB60 target50 refresh points for real following-reference movement. */
-export function refreshPunishmentTarget(record:EtherealRecord,c:EtherealContext){const n=record.native;if(b(n,0x52)===0||(word(n,0x3f)<=0&&!(b(n,0x49)&0x10)))return;if(b(n,0x4f)!==0)throw new Error("Ethereal building-route reference is not admitted");const flags=word(n,0x49),phase=(c.frame+record.slot)&3;if((flags&12)!==0||(phase===3&&(flags&3)===0)){const t=target(c,b(n,0x52),word(n,0x50));if(!t)throw new Error("Ethereal following target reference is unbound");put(n,11,t.position[0]);put(n,13,t.position[1]);}}
+export function refreshPunishmentTarget(record:EtherealRecord,c:EtherealContext){const n=record.native;if(b(n,0x52)===0||(word(n,0x3f)<=0&&!(b(n,0x49)&0x10)))return;if(b(n,0x4f)!==0)throw new Error("Ethereal building-route reference is not admitted");const flags=word(n,0x49),phase=(c.frame+record.slot)&3;if((flags&12)!==0||(phase===3&&(flags&3)===0)){const kind=b(n,0x52),index=word(n,0x50);if(![1,3,4].includes(kind))throw new Error("Ethereal following target kind is not admitted");const service=services(c),position=service.followingPosition?service.followingPosition(kind as 1|3|4,index):target(c,kind,index)?.position;if(!position)throw new Error("Ethereal following target reference is unbound");put(n,11,position[0]);put(n,13,position[1]);}}
 
 

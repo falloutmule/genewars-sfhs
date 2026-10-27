@@ -13,6 +13,7 @@ import {
 import { moveSpatial } from "./spatial";
 import { i16, u32 } from "./bytes";
 import { torusDelta, worldCell } from "../mechanics/terrain";
+import { sourceEntityId } from "./source-pools";
 
 export interface CampaignPunishmentPorts {
   cancelWork(world: CampaignWorld, index: number): void;
@@ -86,6 +87,14 @@ export function campaignPunishmentServices(
   };
   return {
     resolve,
+    followingPosition(kind, index) {
+      sourceEntityId(kind - 1, index);
+      const native = kind === 1
+        ? w.ecology.mules.find(m => m.index === index)?.native
+        : kind === 3 ? w.specialists.records[index] : w.buildingNative[index];
+      if (!native) return null;
+      return [i16(native as number[], 7), i16(native as number[], 9)];
+    },
     nearby(parent, q) {
       const choices: (PunishmentTarget | null)[] = Array(7).fill(null),
         best = Array(7).fill(Infinity),
