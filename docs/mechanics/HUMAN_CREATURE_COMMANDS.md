@@ -79,3 +79,5 @@ and service selection use explicit deterministic ports shared with the released
 command-body comparison. The mapped instructions are interpreted as data; no
 original program runs. Private fixtures and original bytes remain uncommitted.
 This is mechanic conformance, not canonical campaign acceptance (0/24).
+
+The phone creature panel now exposes attack targets for kind1 creatures, kind3 specialists and kind4 buildings. Each option must pass the existing6A760 classifier with force and visibility bypass disabled and return mode1. Dispatch checks the target again, queues the existing target-mule packet and records it through the ordinary replay path. No combat, target eligibility, visibility, ownership or command-consumer rule changes are involved. Material controls retain their existing classifier modes.

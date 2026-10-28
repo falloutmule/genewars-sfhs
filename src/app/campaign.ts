@@ -88,6 +88,7 @@ export async function openCampaign(
     placing: number | null = null,
     geneticistMuleTarget: number | null = null,
     muleMaterialTarget: string | null = null,
+    creatureAttackTarget: string | null = null,
     shepherdTarget: string | null = null,
     botanistPlantType: number | null = null,
     recruitmentBuilding: number | null = null,
@@ -650,7 +651,7 @@ export async function openCampaign(
     const selectedMule = w.ecology.mules.find(m => selected.has(2000+m.index) && m.native[6] === 1 && m.native[24] === w.selectedPlayer && m.native[94]! < 24);
     node("campaign-selection").textContent = a
       ? a.reason
-      : selectedMule ? "Tap ground to move, or choose visible material to collect."
+      : selectedMule ? "Tap ground to move, or choose an attack or material target."
       : "Tap a specialist or owned creature, then a destination. Drag to pan; pinch or scroll to zoom.";
     const recruitment = node("campaign-recruitment"), recruitmentView = campaignHumanRosterView(w);
     recruitment.replaceChildren();
@@ -705,6 +706,42 @@ export async function openCampaign(
         control.disabled = w.phase !== "active" || !target.options.length || unavailable !== null;
         const help = document.createElement("p"); help.className = "help";
         help.textContent = unavailable ?? (target.options.length ? "The Mule travels to and collects the selected material." : "No visible plants or eligible remains are available.");
+        role.append(help);
+      }
+      if (selectedMule) {
+        const label = document.createElement("label"), target = document.createElement("select");
+        label.textContent = "Attack target "; target.setAttribute("aria-label", "Creature attack target");
+        const choices: {ref:CreatureCommandReference;label:string}[] = [
+          ...w.ecology.mules.filter(m => m.native[6] === 1).map(m => ({ref:{kind:1 as const,index:m.index},label:`${creatureLabel(m.native[122]!)} ${m.index+1}`})),
+          ...w.actors.filter(actor => actor.ready && w.specialists.records[actor.id][6] === 3).map(actor => ({ref:{kind:3 as const,index:actor.id},label:w.players[actor.owner].blueprints[actor.blueprintIndex].name})),
+          ...w.buildings.filter(b => w.buildingNative[b.slot][6] === 4).map(b => ({ref:{kind:4 as const,index:b.slot},label:`${NAMES[b.selector] ?? "Building"} ${b.slot+1}`})),
+        ];
+        let unavailable: string | null = null;
+        for (const choice of choices) {
+          try {
+            if (classifyCampaignHumanMuleTarget(w,selectedMule.index,choice.ref,{force:false,bypassVisibility:false},pack) !== 1) continue;
+            const option = document.createElement("option"); option.value = `${choice.ref.kind}:${choice.ref.index}`;
+            option.textContent = choice.label; target.append(option);
+          } catch (e) {unavailable = e instanceof Error ? e.message : String(e); break;}
+        }
+        if (creatureAttackTarget !== null && [...target.options].some(o => o.value === creatureAttackTarget)) target.value = creatureAttackTarget;
+        else creatureAttackTarget = target.value || null;
+        target.addEventListener("change",()=>{creatureAttackTarget = target.value;});
+        label.append(target); role.append(label);
+        const control = button(role,"Attack target",()=>{
+          const ref = choices.find(c => `${c.ref.kind}:${c.ref.index}` === target.value)?.ref;
+          if (!ref) {say("Select a visible target first");return;}
+          try {
+            const mode = classifyCampaignHumanMuleTarget(w,selectedMule.index,ref,{force:false,bypassVisibility:false},pack);
+            if (mode !== 1) {say("This target is no longer available to this creature");return;}
+            const command: CampaignCommand = {type:"target-mule",muleIndex:selectedMule.index,target:ref,mode}, result = queueCampaign(w,command);
+            if (result.ok) {recording?.commands.push({tick:w.tick,type:"command",command});say("Creature attack order queued");}
+            else say(result.reason ?? "Creature attack order rejected");
+          } catch (e) {say(e instanceof Error ? e.message : String(e));}
+        });
+        control.disabled = w.phase !== "active" || !target.options.length || unavailable !== null;
+        const help = document.createElement("p"); help.className = "help";
+        help.textContent = unavailable ?? (target.options.length ? "The creature travels to and attacks the selected target." : "No visible attack targets are available.");
         role.append(help);
       }
       if (a && p.blueprints[a.blueprintIndex].category === 3) {
