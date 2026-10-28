@@ -68,11 +68,23 @@ not invent retirement. The43130 service path requires an actual0..3 player
 aggregate; no fifth neutral player record is synthesized. No callbacks for
 other species are implied here.
 
-The accepted5D870 branches that copy an uninitialized source local95 require
+The remaining accepted5D870 branches that copy an uninitialized source local95 require
 `world.creatureCommandScratch[index]={value,provenance}` from a real serialized
 caller prior. The adapter never substitutes zero or infers that byte from an
 old native95. A campaign caller must retain that extension in its save format
 before using such a branch; absent provenance is an atomic refusal.
+
+A completed, fully healthy Crab-component repair target is now rejected as
+an explicit conversion bug fix. The original5D870 arm leaves success set,
+does no work, then copies an uninitialized local to pending95 and clears
+97bit1. Rejection preserves the creature's existing task and flags without
+inventing a scratch value. Damaged and incomplete repair targets retain their
+original admission and setup. This intentional no-action rejection does not
+claim parity with the original undefined afterimage or relax other scratch
+provenance boundaries. Private static comparisons cover36 cases across four
+Crab-component species and three prior stack bytes; damaged cases match, while
+full/overfull cases verify only the documented divergence and exact retained
+state/RNG. The Zed AI's healthy Photon repair exposed this branch.
 
 ## Evidence and verification
 

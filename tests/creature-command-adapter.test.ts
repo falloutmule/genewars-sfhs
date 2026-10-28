@@ -435,6 +435,20 @@ describe("campaign creature commands", () => {
     expect([i16(n as number[], 88), n[90]]).toEqual([1, 4]);
     expect(n[97]! & 8).toBe(8);
   });
+  it("rejects a healthy Crab repair without creating a scratch extension or changing the host", () => {
+    const {w,n,pack,building}=fixture(), b=building();
+    pack.zoneRules!.speciesComponents[1]=[1,1];
+    n[122]=1;n[95]=222;n[97]=2;b[49]=1;
+    const maximum=pack.rules!.tables.buildingHealth[b[45]!*3+b[46]!];
+    put16(b as number[],43,maximum);
+    synchronizeCampaignLinks(w);
+    const before=n.slice(),held=n,rng={...w.rng};
+    expect(executeStagedCampaignCreatureCommand(w,0,{type:"target",target:{kind:4,index:0}},pack).accepted).toBe(false);
+    expect(n).toEqual(before);
+    expect(w.rng).toEqual(rng);
+    expect(w.creatureNative[0]).toBe(held);
+    expect(w.creatureCommandScratch).toBeUndefined();
+  });
   it("retained inactive targets are visible and unknown caller scratch is refused atomically", () => {
     const { w, n, pack, building } = fixture(),
       b = building();

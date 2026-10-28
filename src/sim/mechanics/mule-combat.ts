@@ -820,7 +820,7 @@ export function resolveMuleHostileQuery(
   acquireMuleHostile(self, target, p, events, c, rng);
   return true;
 }
-/**8B7D0 is the current cell's code11 effect query, not virtual8C's
+/**8B7D0 is the current cell's code0x11 (decimal17) effect query, not virtual8C's
  * last-living-creature occupancy predicate. The latter still owns ordinary
  * movement/arrival and failed acquisition escapes. */
 function neighborhoodHasEffect11(
@@ -835,7 +835,7 @@ function neighborhoodHasEffect11(
   return ids.some(id => {
     if (!c.effectCode)
       throw Error("Mule neighborhood escape requires actual shared effect selectors");
-    return c.effectCode(id) === 11;
+    return c.effectCode(id) === 0x11;
   });
 }
 /** The neighborhood's occupied-cell branch uses73E00(point,384): a circle

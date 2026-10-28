@@ -63,7 +63,7 @@ above its trait bypasses the confidence draw and pursues; it does not cancel
 the encounter. Low confidence executes the real friend/no-friend escape draw
 sequences and707A0's additional direction draw. That search tests16 headings
 using74CC0's terrain-mask/plant-weight predicate. The neighborhood's8B7D0
-code11 effect branch instead uses73E00's one-draw circle of radius384. Ordinary idle escape
+code0x11 (decimal17) effect branch instead uses73E00's one-draw circle of radius384. Ordinary idle escape
 continues to use73C20's two draws. These paths are not interchangeable.
 
 ## Contact, animation and damage
@@ -236,7 +236,7 @@ Pure Frog2 ordinary acquisition/contact, hit reaction and completed melee use
 the shared numeric paths and actual Frog traits/animations. Advanced spit
 eligibility remains explicit rather than silently becoming ordinary melee.
 
-The neighborhood branch calls8B7D0 for a code11 effect in the current cell.
+The neighborhood branch calls8B7D0 for a code0x11 (decimal17) effect in the current cell.
 It does not call virtual8C to test whether another living creature occupies
 that cell. Movement, arrival and failed acquisition retain virtual8C. This
 distinction prevents a close target from incorrectly forcing a combat escape.

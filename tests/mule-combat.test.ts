@@ -363,16 +363,17 @@ describe("source Mule hostile query/contact", () => {
     expect(f.rng.draws - draws).toBe(1);
     expect(word(f.self.native, 73) & 0x140).toBe(0x140);
   });
-  it("uses the one-draw384 circle for a neighborhood code11 effect escape", () => {
+  it("uses the one-draw384 circle for a neighborhood code0x11 effect escape", () => {
     const f = fixture();
     f.self.native[94] = 20;
     f.ports.occupied = () => true;
+    f.rng.seed = 0;
+    const query=queryMuleCombat(f.state,f.self,f.rng,f.c);
     const order = f.c.cellOrder!;
     f.c.cellOrder = cell => [...order(cell), ...(cell===worldCell(16384,16384)?["source:4:0"]:[])];
-    f.c.effectCode = () => 11;
-    f.rng.seed = 0;
+    f.c.effectCode = () => 0x11;
     expect(
-      chooseMuleHostile(f.state, f.self, f.rng, f.c, f.ports, f.events),
+      chooseMuleHostile(f.state, f.self, f.rng, f.c, f.ports, f.events, query),
     ).toBe(true);
     expect(f.rng.draws).toBe(3);
     expect([word(f.self.native, 11), word(f.self.native, 13)]).toEqual([
@@ -388,6 +389,14 @@ describe("source Mule hostile query/contact", () => {
     expect(chooseMuleHostile(f.state,f.self,f.rng,f.c,f.ports,f.events)).toBe(true);
     expect(f.self.native[94]).toBe(1);
     expect(word(f.self.native,85)).toBe(f.target.index);
+  });
+  it("distinguishes decimal11 from the original0x11 neighborhood selector", () => {
+    const f=fixture();f.self.native[94]=20;f.rng.seed=0;
+    const order=f.c.cellOrder!;
+    f.c.cellOrder=cell=>[...order(cell),...(cell===worldCell(16384,16384)?["source:4:0"]:[])];
+    f.c.effectCode=()=>11;
+    expect(chooseMuleHostile(f.state,f.self,f.rng,f.c,f.ports,f.events)).toBe(true);
+    expect(f.self.native[94]).toBe(1);
   });
   it.each([64,384])("preserves a neutral attacker's anchor after a nonlethal or missed attack at distance%i", distance => {
     const f=fixture(); f.self.native[24]=4; f.target.native[24]=0; f.target.native[122]=1;

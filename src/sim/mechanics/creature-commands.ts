@@ -596,7 +596,14 @@ function targetStagedCreatureBody<W extends CreatureCommandWorld>(
         const maximum = c.buildingMaximumHealth(w, r.index);
         if (!Number.isInteger(maximum) || maximum < -32768 || maximum > 32767)
           throw Error("Admitted building maximum health required");
-        if (word(t, 43) >= maximum) usable = false;
+        if (word(t, 43) >= maximum) {
+          //Conversion bug fix:5D870 leaves its success flag set here, but
+          //does no work and later copies uninitialized stack local8 to95.
+          //Reject a no-action repair without inventing a caller-stack byte
+          //or clearing the creature's existing pending task/attachment flags.
+          usable = false;
+          out.accepted = false;
+        }
       }
       if (usable) {
         if (word(n, 96) & 2 || (b(t, 45) === 2 && dword(t, 54) >>> 0 > 0)) {
@@ -642,7 +649,7 @@ function targetStagedCreatureBody<W extends CreatureCommandWorld>(
         !scratch.provenance.trim()
       )
         throw Error(
-          "Actual serialized5D870 uninitialized pending95 caller byte/provenance required",
+          `Actual serialized5D870 uninitialized pending95 caller byte/provenance required (creature ${index}, species ${b(n, 122)}, target ${r.kind}:${r.index}, targetFlags ${b(t, 21)}, targetHealth ${kind === 4 ? word(t, 43) : "n/a"})`,
         );
       pending = scratch.value;
       out.sourceScratch95 = { ...scratch };

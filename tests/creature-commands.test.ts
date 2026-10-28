@@ -351,7 +351,7 @@ describe("concrete in-place creature commands", () => {
     expect(f.n[93]).toBe(2);
     expect(f.plant[46]).toBe(8);
   });
-  it("requires serialized source scratch for accepted uninitialized-gene and full-building branches", () => {
+  it("requires serialized source scratch for other accepted uninitialized-gene branches", () => {
     const f = fixture(),
       before = structuredClone(f.w);
     expect(() =>
@@ -373,8 +373,18 @@ describe("concrete in-place creature commands", () => {
     f.n[122] = 1;
     f.building[49] = 1;
     put(f.building, 43, 1000);
-    targetStagedCreature(f.w, 0, { kind: 4, index: 0 }, f.c);
+    expect(targetStagedCreature(f.w, 0, { kind: 4, index: 0 }, f.c).accepted).toBe(false);
     expect(f.n[95]).toBe(77);
+  });
+  it.each([1000,1001])("rejects no-action Crab repairs at health%i without copying undefined scratch", health => {
+    const f=fixture();f.n[122]=1;f.n[95]=222;f.n[97]=2;
+    f.building[49]=1;put(f.building,43,health);
+    const before=structuredClone(f.w), n=f.n;
+    const result=targetStagedCreature(f.w,0,{kind:4,index:0},f.c);
+    expect(result.accepted).toBe(false);
+    expect(result.sourceScratch95).toBeUndefined();
+    expect(f.w).toEqual(before);
+    expect(f.w.creatureNative[0]).toBe(n);
   });
   it("implements gene1 direct and43130 service-building selection as actualpending2 commands", () => {
     const f = fixture();
