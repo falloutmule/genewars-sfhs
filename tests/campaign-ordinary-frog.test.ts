@@ -103,6 +103,15 @@ describe("ordinary pure Frog campaign transaction", () => {
     },
     30000,
   );
+  it("does not confuse mating readiness with an entered spit action", () => {
+    const { w, pack } = fixture(4);
+    w.creatureNative[0][94] = 3;
+    w.creatureNative[0][97] = 32;
+    stepCampaign(w, pack);
+    expect(w.phase, JSON.stringify(w.notices.slice(-3))).toBe("active");
+    expect(w.creatureNative[0][94]).toBe(3);
+    expect(w.creatureNative[0][97]! & 32).toBe(32);
+  });
   it("retains an explicit hostile/spit boundary and rolls back native/RNG/spatial roots", () => {
     const { w, pack } = fixture(4);
     w.creatureNative[0][94] = 21;

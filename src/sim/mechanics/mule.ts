@@ -3192,7 +3192,7 @@ function stepMule(
       c.materialRuntime = (m) => c.material!(staged, terrain, random, m);
     if (n[6] === 0) return { committed: true, reason: null, events: [] };
     const dead = n[0x5e]! >= 24;
-    if (n[122] === 2 && (n[97]! & 32 || [17,20,21].includes(n[94]!)))
+    if (n[122] === 2 && ((n[94] === 1 && n[97]! & 32) || [17,20,21].includes(n[94]!)))
       throw Error("Frog hostile/spit callback requires its original ability services");
     if (
       n[6] !== 1 ||

@@ -51,3 +51,9 @@ Synthetic host tests cover neutral/owned airborne continuation, full replay and
 late hostile-boundary rollback. An isolated1,000-tick Zed diagnostic is not a
 campaign continuation or acceptance claim. Evidence remains under
 `.private/frog-callback-20261028/`.
+
+The Frog spit guard interprets bit97/20 only in approach state1. The same bit
+is ordinary mating readiness in state3; it does not require an ability service
+there. A focused host regression and108 additional mapped animation cases
+retain that contextual distinction. The stopped Zed404 world is excluded from
+continuation; its earlier pending-order checkpoint remains the parent.
