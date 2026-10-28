@@ -409,11 +409,11 @@ describe("source Mule hostile query/contact", () => {
 });
 
 function externalTarget(
-  kind: 3 | 4,
+  kind: 3 | 4 | 6 | 7,
   index: number,
   x = 16448,
 ): MuleCombatTarget {
-  const n: N = Array(kind === 3 ? 200 : 67).fill(0);
+  const n: N = Array(kind === 3 ? 200 : kind === 4 ? 67 : kind === 6 ? 49 : 97).fill(0);
   n.fill(null, 31, 39);
   n[6] = kind;
   n[24] = 4;
@@ -429,8 +429,8 @@ function externalTarget(
     owner: 4,
     native: n,
     physicalHeight: 2048,
-    dead: false,
-    ...(kind === 3 ? { specialistStyle: 0 } : { buildingHalfWidth: 90 }),
+    dead: kind === 6,
+    ...(kind === 3 ? { specialistStyle: 0 } : kind === 4 ? { buildingHalfWidth: 90 } : {}),
   };
 }
 function targets(f: ReturnType<typeof fixture>, list: MuleCombatTarget[]) {
@@ -1564,4 +1564,21 @@ describe("reentrant building attack completion", () => {
       expect(word(f.self.native,108)).toBe(0);
       expect(f.rng.draws).toBe(1);
     });
+});
+
+
+describe("source collector neighborhood and pursuit", () => {
+ it("counts friendly collectors and treats live hostile collectors as both threat classes",()=>{
+  const f=fixture(),collector=externalTarget(7,0);f.state.mules=[f.self];targets(f,[collector]);
+  let q=queryMuleCombat(f.state,f.self,f.rng,f.c);expect([q.enemyCount,q.secondaryCount,q.targetKind]).toEqual([1,1,7]);
+  collector.dead=true;collector.native[86]=3;q=queryMuleCombat(f.state,f.self,f.rng,f.c);expect([q.enemyCount,q.secondaryCount]).toEqual([0,0]);
+  collector.native[24]=collector.owner=0;q=queryMuleCombat(f.state,f.self,f.rng,f.c);expect(q.friendlyCount).toBe(1);
+  const collapse=externalTarget(6,0);targets(f,[collapse]);q=queryMuleCombat(f.state,f.self,f.rng,f.c);expect(q.enemyCount).toBe(0);
+ });
+ it("retains and follows a collector through the complete associated movement prefix",()=>{
+  const f=fixture(),collector=externalTarget(7,0,16960);f.state.mules=[f.self];targets(f,[collector]);
+  acquireMuleHostile(f.self,collector,f.ports,f.events,f.c,f.rng);
+  const r=stepOwnedMule(f.state,0,f.rng,callbackContext(f));expect(r.reason).toBeNull();expect(r.committed).toBe(true);
+  expect(f.state.mules[0].native[82]).toBe(7);expect(f.state.mules[0].native[87]).toBe(7);
+ });
 });

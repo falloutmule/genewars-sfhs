@@ -36,11 +36,13 @@ export function campaignMuleCombatEntity(
   if (!/^source:[0-7]:\d+$/.test(id))
     throw new Error("Invalid combat entity identity");
   const e = campaignEntity(w, id as SourceEntityId);
-  if (!e || ![1, 2, 3, 4].includes(e.kind)) return null;
+  if (!e || ![1, 2, 3, 4, 6, 7].includes(e.kind)) return null;
   let dead: boolean,
     specialistStyle: number | undefined,
     buildingHalfWidth: number | undefined;
-  if (e.kind === 1) dead = e.native[94]! >= 24;
+  if (e.kind === 6) dead = true; //1122FC virtual68 ->1EB40
+  else if (e.kind === 7) dead = e.native[86] === 3; //11236C ->1EB30
+  else if (e.kind === 1) dead = e.native[94]! >= 24;
   else if (e.kind === 2) dead = i16(e.native as number[], 44) <= 0;
   else if (e.kind === 3) {
     const binding = w.specialists.bindings[e.index];
@@ -60,7 +62,7 @@ export function campaignMuleCombatEntity(
   return {
     id: e.id,
     index: e.index,
-    kind: e.kind as 1 | 2 | 3 | 4,
+    kind: e.kind as 1 | 2 | 3 | 4 | 6 | 7,
     owner: e.owner,
     native: e.native,
     physicalHeight: e.physicalHeight,

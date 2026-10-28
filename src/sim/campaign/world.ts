@@ -2374,6 +2374,10 @@ export function stepCampaign(w: CampaignWorld, pack: Pack): void {
                 .native[94]! >= 24
             );
           }
+          if (target.kind === 7)
+            return damageStagedCampaignProcessorCollector(
+              staged, target.index, pack, specialistServices(pack),
+            ).accepted;
           throw new Error("Unsupported Mule combat damage target");
         },
         combatBuildingAt: (state, terrain, rng, self) => {

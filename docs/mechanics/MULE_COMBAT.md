@@ -247,3 +247,9 @@ Twenty-four complete static-listing callbacks match both participating native
 records and RNG (117,634 interpreted instructions). Public regressions cover
 the effect/occupancy distinction, retained nonlethal/miss anchors, Frog contact,
 reaction/attack save/replay, and neutral/inherited/research spit boundaries.
+
+Shared-cell queries also bind actual collapse6 and processor collector7
+virtuals. Friendly collectors contribute normally; live hostile collectors
+can be retained, followed and hit through the existing14320 cancellation
+service. See [Creature processor neighborhoods](CREATURE_PROCESSOR_NEIGHBORHOOD.md)
+for the480-case scorer comparison and full-host persistence/rollback coverage.

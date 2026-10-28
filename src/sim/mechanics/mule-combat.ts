@@ -38,7 +38,7 @@ export interface MuleCombatEffectRequest {
 export interface MuleCombatTarget {
   id: SourceEntityId;
   index: number;
-  kind: 1 | 2 | 3 | 4;
+  kind: 1 | 2 | 3 | 4 | 6 | 7;
   owner: number;
   native: (number | null)[];
   physicalHeight: number;
@@ -154,7 +154,7 @@ export interface MuleCombatQuery {
   enemySector: number;
   friendlySector: number;
   target: number | null;
-  targetKind: 1 | 3 | 4 | null;
+  targetKind: 1 | 3 | 4 | 7 | null;
   secondaryCount: number;
   /** Complete preview, including source conditional specialist traversal draws. */
   rngAfter: GeneRng;
@@ -180,7 +180,7 @@ export function resolveMuleCombatTarget(
     const m = state.mules.find((m) => m.index === index && m.native[6] === 1);
     return m ? localTarget(m) : null;
   }
-  if (kind !== 3 && kind !== 4) return null;
+  if (![3, 4, 6, 7].includes(kind)) return null;
   if (!c.entity)
     throw Error(
       "Mule combat requires the actual current specialist/building entity port",
@@ -389,6 +389,7 @@ export function queryMuleCombat(
             primary = byte(o, 94) !== 15;
             secondary = true;
           } else if (kind === 4) secondary = true;
+          else if (kind === 7) primary = secondary = true;
           else if (kind === 3) {
             const style = other.specialistStyle;
             if (!Number.isInteger(style) || style! < 0 || style! > 3)
@@ -411,7 +412,7 @@ export function queryMuleCombat(
             if (weight > best) {
               best = weight;
               q.target = other.index;
-              q.targetKind = kind as 1 | 3 | 4;
+              q.targetKind = kind as 1 | 3 | 4 | 7;
             }
           }
         }

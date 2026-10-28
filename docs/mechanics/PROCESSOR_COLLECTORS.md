@@ -94,3 +94,7 @@ Controlled flight73bit0400 remains an explicit unadmitted motion/attachment
 arm.14040's actual constructor clears that bit; ordinary collectors produced
 by this family do not enter it. Other species' builder/Pulper work, including
 pending2/state13, is separate. Pure Mule4's builder gate remains unchanged.
+
+Creature combat now consumes these actual97-byte records through their
+source height/dead virtuals and14320 damage service; it does not treat them
+as specialists. See [Creature processor neighborhoods](CREATURE_PROCESSOR_NEIGHBORHOOD.md).

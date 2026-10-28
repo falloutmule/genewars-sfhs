@@ -241,7 +241,7 @@ export interface MuleEvent {
   id: string;
   position?: [number, number];
   target?: number;
-  targetKind?: 1 | 2 | 3 | 4;
+  targetKind?: 1 | 2 | 3 | 4 | 6 | 7;
   channel?: number;
   code?: number;
   height?: number;
@@ -669,11 +669,11 @@ function routePrefix(
           (m) =>
             m.index === w(n, 0x50) && m.id !== mule.id && m.native[6] === 1,
         )
-      : n[0x52] === 3
+      : (n[0x52] === 3 || n[0x52] === 7)
         ? (resolveMuleCombatTarget(
             state,
             combatServices(state, random, c, []).context,
-            3,
+            n[0x52]!,
             w(n, 0x50),
           ) ?? undefined)
         : undefined;
@@ -991,16 +991,16 @@ function contact(
     normal,
     previous,
     desired,
-    n[0x52] === 3
+    (n[0x52] === 3 || n[0x52] === 7)
       ? (() => {
           const target = resolveMuleCombatTarget(
             state,
             combatServices(state, random, c, []).context,
-            3,
+            n[0x52]!,
             w(n, 80),
           );
           if (!target)
-            throw Error("Mule physical specialist target is missing");
+            throw Error("Mule physical linked actor target is missing");
           return muleCombatTargetDistance(n, target) | 0;
         })()
       : n[0x52] === 1 &&
@@ -1864,7 +1864,7 @@ function verifyNeighborhood(
     if (!near(other.position) || other.kind === 8 || other.kind === 5) continue;
     if (
       !friendly(other.owner) &&
-      (!c.combat || !c.combatEntity || ![3, 4].includes(other.kind))
+      (!c.combat || !c.combatEntity || ![3, 4, 6, 7].includes(other.kind))
     )
       throw new Error("Mule query selected a hostile actor or building");
   }
@@ -2928,7 +2928,7 @@ function action(
     return;
   }
   if (n[0x5e] === 1) {
-    if (n[87] === 3 || n[87] === 4) {
+    if (n[87] === 3 || n[87] === 4 || n[87] === 7) {
       const { context, ports } = combatServices(state, random, c, events),
         target = resolveMuleCombatTarget(state, context, n[87]!, w(n, 85));
       if (!target) {
