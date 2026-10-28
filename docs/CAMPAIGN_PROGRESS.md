@@ -1,6 +1,10 @@
 # Software campaign progress
 
-Current as of 27 October 2026: **6/24 accepted**. Exceland, Krell, Madami, Roach, Brown and Lunacon are accepted. Oid (mission 7) is active. Its exact current phase, frame and genuine continuation save are recorded in `.private/continuous-20261026/current.json`.
+Current as of 27 October 2026: **7/24 accepted**. Exceland, Krell, Madami, Roach, Brown, Lunacon and Oid are accepted. Fushon (mission 8) is initialized. Its exact current phase, frame and genuine continuation save are recorded in `.private/continuous-20261026/current.json`.
+
+Oid completed through the portrait phone touch UI at frame 11,137, with both marked-zone quotas exhausted and score 3,163 against 0. Ordinary breeding, feeding and timed entry into the cold zone supplied the winning herds. The normal victory view advanced progress to 7 and continued into Fushon. The carried save reloaded in landscape at frame 0 with progress 7, without browser or render errors. Physical Galaxy S21 Ultra testing remains separate.
+
+Oid's accepted artifact SHA-256 is `9e254f1c4d4ebb530e4fdd8f00ed8b68e8a9003fe10e71a101746f1caa6a53e3`, from clean commit `23ccadb8e07c141f09a447004a9dc19f50411e87`. Private evidence is indexed in `.private/continuous-20261026/mission7-acceptance.json`, including the exact pack/extension identity, 48 verified save/replay links from the genuine UI restart, result/carry controls, landscape reload and exact carry replay checksum `fbfd0883`. No simulation source changed during the accepted attempt. Original-derived saves, artifacts and captures remain private.
 
 Lunacon completed through the portrait phone touch UI at frame 18,817, with both marked-zone quotas exhausted and score 2,583 against 568. The normal victory view advanced progress to 6 and continued into Oid. The carried save reloaded in landscape at frame 0 with progress 6, without browser or render errors. Two specialist losses carried naturally. Physical S21 Ultra testing remains separate.
 
