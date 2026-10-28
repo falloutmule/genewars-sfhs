@@ -244,6 +244,40 @@ describe("source-backed neutral Mule lifecycle", () => {
       }),
     ).toBe(before);
   });
+  it.each([1, 2, 3, 4, 5, 6, 7, 8, 9, 255])(
+    "does not resolve unused association kind%i while stopped",
+    (kind) => {
+      for (const speed of [0, -1]) {
+        const f = fixture(), n = f.state.mules[0].native;
+        f.context.frame = 2;
+        put(n, 63, speed);
+        put(n, 73, 0x60);
+        put(n, 77, 299);
+        n[79] = 255;
+        put(n, 80, 299);
+        n[82] = kind;
+        put32(n, 39, 8192); // No separate ground-contact target read.
+        const references = n.slice(77, 83), rng = structuredClone(f.rng);
+        const result = stepNeutralMule(f.state, 0, f.rng, f.context);
+        expect(result.reason).toBeNull();
+        expect(f.state.mules[0].native.slice(77, 83)).toEqual(references);
+        expect(f.state.mules[0].native[73]! & 0x60).toBe(0);
+        expect(f.rng).toEqual(rng);
+      }
+    },
+  );
+  it("rolls back a later failure after bypassing an unused retained association", () => {
+    const f = fixture(), n = f.state.mules[0].native;
+    f.context.frame = 2;
+    n[82] = 255;
+    put(n, 80, 299);
+    put32(n, 39, 8192);
+    f.context.profile = () => { throw Error("late animation binding missing"); };
+    const before = structuredClone({ state: f.state, rng: f.rng, terrain: f.context.terrain });
+    const result = stepNeutralMule(f.state, 0, f.rng, f.context);
+    expect(result.reason).toMatch(/late animation binding/);
+    expect({ state: f.state, rng: f.rng, terrain: f.context.terrain }).toEqual(before);
+  });
   it("applies self-water defense without retaliation or hit audio and admits low health", () => {
     const f = fixture(), mule = f.state.mules[0], events: any[] = [];
     f.context.combat = {queryRadius:512,attack:20,defense:6,disposition:100,foodWeights:[1,1,1],attackChannel:41};

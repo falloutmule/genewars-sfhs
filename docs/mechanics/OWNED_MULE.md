@@ -18,6 +18,23 @@ The implementation now includes:
 
 ## Context and host obligations
 
+Stopped movement follows6FD81..6FD99 to7077E before resolving retained
+associations or nominated buildings. When the low movement flags are not3,
+desired speed is nonpositive and movement bit16 is clear, those cached bytes
+remain unread and unchanged. This matters when5A210 reuses a retired slot:
+the original factory preserves its former reference bytes. An unused reference
+to another retired slot must not block a newly produced creature. Entered
+linked movement still requires its actual target binding; no reference sweep
+or fabricated target is introduced.
+
+A closed static-listing comparison covers480 complete even-phase5ED20
+callbacks across human/neutral owners, zero/negative desired speed, retained
+flags, nominated kinds and unused association kinds/indices. All numeric
+bytes and RNG match across317,760 mapped instructions, with6D390 proven
+unentered and no foreign ports. Synthetic regressions retain the existing
+entered-reference refusal, verify rollback after a later animation failure,
+and carry recycled creature slots through campaign save/reload and replay.
+
 `MuleContext` retains the admitted ecology/motion/animation/environment inputs and adds:
 
 | Input                                            | Meaning                                                                                                                                           |

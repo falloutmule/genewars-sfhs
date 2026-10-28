@@ -663,6 +663,12 @@ function routePrefix(
     return {working:current, savedSpeed:null};
   }
   let target: [number, number] = [w(n, 11), w(n, 13)];
+  //6FD81..6FD99 reaches7077E before reading either retained reference.
+  //5A210 deliberately preserves those bytes when it reuses a retired slot.
+  if ((n[73]! & 3) !== 3 && w(n, 63) <= 0 && !(n[73]! & 16)) {
+    n[73] = n[73]! & 0x9f;
+    return { working: target, savedSpeed: null };
+  }
   const associated =
     n[0x52] === 1
       ? state.mules.find(
