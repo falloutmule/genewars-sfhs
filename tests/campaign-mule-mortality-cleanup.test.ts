@@ -22,6 +22,8 @@ import {
   replayCampaign,
 } from "../src/sim/campaign/persistence";
 import { checksum } from "../src/sim/checksum";
+import { campaignStrategicAuxiliary } from "../src/sim/campaign/strategic-state";
+import { damageCampaignMule } from "../src/sim/campaign/mule-damage-adapter";
 
 /**Synthetic carrier67 attachment and an aging owned Mule in the ordinary
  * campaign host. No mission acceptance is claimed and nothing original is
@@ -76,6 +78,7 @@ function fixture(
   while (pack.assets.EFF.animations!.length < 71)
     pack.assets.EFF.animations!.push({ first: 0, last: 1, rawTrailingWord: 2 });
   for (const [code, count] of [
+    [32, 10],
     [36, 3],
     [67, 1],
     [68, 1],
@@ -209,7 +212,70 @@ function fixture(
   return { w, pack, carriers, carrierSlots, deaths };
 }
 
+function bindSyntheticDeathGroup(w: ReturnType<typeof fixture>["w"]) {
+  //Source mode2 suppresses the strategic scheduler, isolating the real death
+  //callback from unrelated opponent planners in this synthetic one-player map.
+  w.runtimeMode = w.result.context.mode = 2;
+  w.players[0].raw[2] = 1;
+  w.strategy = {
+    schemaVersion: 1,
+    records: Array.from({ length: 4 }, (_, owner) => {
+      const n = Array(1726).fill(0);
+      put32(n, 0, 1726); n[4] = owner;
+      return n;
+    }),
+    creatureControl: Array.from({ length: 600 }, (_, i) => i % 2 ? 255 : 0),
+    controlProvenance: "synthetic death group",
+  };
+  const at = 0x387 + 4 * 38;
+  put16(w.strategy.records[0], at + 4, 2);
+  w.strategy.records[0][at + 11] = 4;
+  w.strategy.creatureControl[0] = 253;
+  w.strategy.creatureControl[1] = 4;
+  w.auxiliary = campaignStrategicAuxiliary(w.strategy);
+  return at;
+}
+
 describe("campaign Mule mortality reference cleanup", () => {
+  it("releases an AI death group on real aging through save/reload and replay", () => {
+    const { w, pack } = fixture({ carrier: 36 }), at = bindSyntheticDeathGroup(w),
+      replay = recordCampaign(w, null),
+      resumed = loadCampaign(saveCampaign(w, { paused: true, speed: 1, accumulator: 0 }), w.contentHash).world;
+    for (let tick = 0; tick < 4 && w.creatureNative[0][94]! < 24; tick++) {
+      stepCampaign(w, pack); stepCampaign(resumed, pack);
+    }
+    expect(w.phase, JSON.stringify(w.notices.slice(-4))).toBe("active");
+    expect(w.creatureNative[0][94]).toBe(24);
+    expect(word(w.strategy!.records[0], at + 4)).toBe(1);
+    expect(w.strategy!.creatureControl.slice(0, 2)).toEqual([1, 255]);
+    expect(w.auxiliary.entries[0]).toEqual({ lowFlags: 1, second: 255 });
+    expect(w.spatial.nodes["source:0:0"]).toBeDefined();
+    expect(checksum(resumed)).toBe(checksum(w));
+    expect(checksum(replayCampaign(sealCampaignReplay(replay, w), pack, w.contentHash))).toBe(checksum(w));
+  });
+  it("applies the same AI death release on real lethal damage and skips human owners", () => {
+    for (const ai of [false, true]) {
+      const { w, pack } = fixture({ carrier: 36 }), at = bindSyntheticDeathGroup(w);
+      w.players[0].raw[2] = Number(ai);
+      pack.ecologyRules!.muleCombat = { queryRadius: 512, attack: 1, defense: 1, disposition: 0, foodWeights: [1, 1, 1], attackChannel: 41 };
+      const resumed = loadCampaign(saveCampaign(w, { paused: true, speed: 1, accumulator: 0 }), w.contentHash).world;
+      damageCampaignMule(w, pack, 0, 1000, null);
+      damageCampaignMule(resumed, pack, 0, 1000, null);
+      expect(w.creatureNative[0][94]).toBe(24);
+      expect(word(w.strategy!.records[0], at + 4)).toBe(ai ? 1 : 2);
+      expect(w.strategy!.creatureControl.slice(0, 2)).toEqual(ai ? [1, 255] : [253, 4]);
+      expect(checksum(resumed)).toBe(checksum(w));
+    }
+  });
+  it("keeps the AI count and control link when a late death animation fails", () => {
+    const { w, pack } = fixture({ carrier: 36 }), at = bindSyntheticDeathGroup(w);
+    pack.assets.MULE.animations = pack.assets.MULE.animations!.slice(0, 17);
+    for (let tick = 0; tick < 4 && w.phase === "active"; tick++) stepCampaign(w, pack);
+    expect(w.phase).toBe("blocked");
+    expect(word(w.strategy!.records[0], at + 4)).toBe(2);
+    expect(w.strategy!.creatureControl.slice(0, 2)).toEqual([253, 4]);
+    expect(w.auxiliary.entries[0]).toEqual({ lowFlags: 5, second: 4 });
+  });
   it("marks an aging material36 carrier dead before real shared retirement, save and replay", () => {
     const { w, pack, carrierSlots } = fixture({ carrier: 36 }),
       slot = carrierSlots[0],

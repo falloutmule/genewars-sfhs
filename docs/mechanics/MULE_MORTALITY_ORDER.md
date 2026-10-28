@@ -33,3 +33,21 @@ Synthetic campaign tests use real material36 shared retirement, save/load and
 sealed replay. A missing death animation after cleanup verifies rollback of
 both the installed death state and effect retirement. Existing carrier67,
 multiple-death, pool-boundary and missing-service coverage remains in place.
+
+The separate AI death tail is now bound at the successful callback boundary.
+5D08A skips neutral owners, and5D0AA calls35F00 only when the actual owner's
+player byte2 is nonzero.35F00 decrements an active matching group's signed
+count, clears control bit2 on that branch, then always clears the group link
+and masks the control flags to their low three bits. It neither retires the
+corpse nor creates a replacement. The auxiliary save/carry projection follows
+the resulting control bytes. Natural aging and lethal damage use this same
+service; a late failed callback consumes no death receipt.
+
+A separate closed-instruction comparison covers all of35F00 without foreign
+ports:384 cases across four owners, assigned/unassigned links, active/retired
+counts, matching/mismatched group IDs and control flags. Every byte of all four
+AI records and the600-byte control image matches, with no RNG draws. A host
+test verifies real aging through save/reload/replay, lethal damage verifies the
+AI/human gate, and an allocation test admits a replacement into the freed
+group. Prior saves retain their historical group state; this binding handles
+new death events and performs no sweep or retrospective correction.

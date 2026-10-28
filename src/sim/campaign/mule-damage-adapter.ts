@@ -24,6 +24,7 @@ import { readShepherdOperators } from "../mechanics/shepherd";
 import { campaignBuildingAsset } from "./building-startup-adapter";
 import { makeCampaignMuleMaterialServices } from "./mule-adapter";
 import { createStagedColdShatterBurst } from "./cold-shatter-adapter";
+import { releaseCampaignDeadCreature } from "./creature-death-adapter";
 
 /** Current virtual0/68 and combat-only building reach. These are distinct
  * from74270 collision extents and from the construction footprint in cells. */
@@ -235,6 +236,8 @@ export function consumeCampaignMuleDamageEvents(
   events: readonly MuleEvent[],
 ): void {
   for (const e of events) {
+    if (e.kind === "mule-died")
+      releaseCampaignDeadCreature(w, Number(e.id.split(":")[2]));
     if (
       e.kind === "mule-combat-kill" &&
       e.attackerOwner !== undefined &&

@@ -20,6 +20,32 @@ import type {
   StrategicServiceReceipt,
 } from "./strategic-ai";
 
+/**35F00, called by5CDB0 for an actual AI-owned death. The group count is
+ * decremented only for its live matching link. The final low-three-bit reset
+ * also runs for unassigned, retired and mismatched groups. No allocation or
+ * creature retirement happens here; source signed word underflow is retained. */
+export function releaseStrategicCreatureOnDeath(
+  s: Pick<StrategicAIState, "records" | "creatureControl">,
+  player: number,
+  creature: number,
+): void {
+  if (!aiInteger(player, 0, 3) || !aiInteger(creature, 0, 299))
+    throw Error("Actual strategic death owner/creature required");
+  const ai = s.records[player], pos = creature * 2,
+    group = aiSByte(s.creatureControl, pos + 1);
+  if (group >= 0) {
+    if (group >= 16) throw Error("Strategic death has invalid group link");
+    const at = strategicGroupOffset(group);
+    if (aiSWord(ai, at + 4) >= 0 && group === aiByte(ai, at + 11)) {
+      aiPutWord(ai, at + 4, aiWord(ai, at + 4) - 1);
+      s.creatureControl[pos + 1] = 255;
+      s.creatureControl[pos] = aiByte(s.creatureControl, pos) & 0xfb;
+    }
+  }
+  s.creatureControl[pos + 1] = 255;
+  s.creatureControl[pos] = aiByte(s.creatureControl, pos) & 7;
+}
+
 export interface StrategicCreatureMoveRequest {
   routine: 0x81c60;
   player: number;

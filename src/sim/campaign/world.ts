@@ -207,6 +207,7 @@ import { issueCampaignHumanMuleTarget, stopCampaignHumanMule } from "./human-cre
 import { stepCampaignPlantCarrier } from "./plant-carrier-adapter";
 import { stepCampaignPlants } from "./plant-reproduction-adapter";
 import { makeCampaignMuleMaterialServices } from "./mule-adapter";
+import { releaseCampaignDeadCreature } from "./creature-death-adapter";
 import { stepCampaignBuildingMaterial } from "./building-material-effect-adapter";
 import { stepStagedCampaignPulper } from "./pulper-adapter";
 import {
@@ -2455,6 +2456,8 @@ export function stepCampaign(w: CampaignWorld, pack: Pack): void {
       combatTransaction.commit();
       for (const m of w.ecology.mules) w.creatureNative[m.index] = m.native;
       for (const event of r.events) {
+        if (event.kind === "mule-died")
+          releaseCampaignDeadCreature(w, Number(event.id.split(":")[2]));
         if (
           event.kind === "mule-combat-kill" &&
           event.attackerOwner !== undefined &&

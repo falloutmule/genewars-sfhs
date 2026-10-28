@@ -18,6 +18,7 @@ import {
   directStrategicCreatures,
   makeStrategicCreatureServices,
   scatterStrategicCreature,
+  releaseStrategicCreatureOnDeath,
   strategicGroupAcceptsCreature,
   type StrategicCreatureContext,
   type StrategicCreatureMoveRequest,
@@ -368,5 +369,26 @@ describe("source35820 creature directives", () => {
     allocateStrategicCreatures(restored, 1, c);
     expect(restored).toEqual(s);
     expect(aiDword(s.records[1], 0)).toBe(1726);
+  });
+});
+
+describe("strategic death group release", () => {
+  it("admits a replacement after a dead member frees a full group", () => {
+    const { s, c } = fixture();
+    for (let group = 0; group < 16; group++) aiPutWord(s.records[1], strategicGroupOffset(group) + 4, -1);
+    createStrategicGroup(s, 1, { index: 4, point: [10000, 10000], kind: 3, parameter: 1, zone: -1, flags: 1 }, c);
+    const at = strategicGroupOffset(4);
+    s.records[1][0x65f] = 1;
+    aiPutWord(s.records[1], at + 4, 1);
+    creature(s, 0)[94] = 24; creature(s, 1);
+    s.creatureControl[0] = 253; s.creatureControl[1] = 4;
+    expect(assignStrategicCreature(s, 1, 1, -1, c)).toBe(false);
+    releaseStrategicCreatureOnDeath(s, 1, 0);
+    expect(s.creatureControl.slice(0, 2)).toEqual([1, 255]);
+    expect(assignStrategicCreature(s, 1, 1, -1, c)).toBe(true);
+    expect(s.creatureControl[3]).toBe(4);
+    expect(aiSWord(s.records[1], at + 4)).toBe(1);
+    releaseStrategicCreatureOnDeath(s, 1, 0);
+    expect(aiSWord(s.records[1], at + 4)).toBe(1);
   });
 });
