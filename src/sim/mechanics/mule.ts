@@ -3118,8 +3118,9 @@ function action(
     commonChoice(state, mule, random, c, events);
     return;
   }
-  if (n[0x60]! & 2)
-    throw new Error("Mule food acquisition requires prior action cleanup");
+  //62E8A ->5B580 always runs5CC60 before installing food references.
+  //acquireFood already calls the shared staged release, including carrier
+  //cleanup. Its missing-service guard remains authoritative when unbound.
   consumeMuleCombatQuery(random, capture.query);
   acquireFood(state, mule, target, c, events);
 }

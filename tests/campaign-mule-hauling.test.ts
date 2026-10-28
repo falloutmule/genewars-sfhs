@@ -265,6 +265,73 @@ describe("ordinary campaign Mule material hauling", () => {
   beforeAll(() => {
     initial = fixture();
   });
+  it("cleans up a real carried plant before acquiring new food, through save and replay", () => {
+    const { w, pack } = structuredClone(initial),
+      mule = w.ecology.mules.find((m) => m.index === 0)!,
+      n = mule.native,
+      material = makeCampaignMuleMaterialServices(pack, () => w, {
+        gravity: 512,
+        obstacleAt: () => false,
+        destructionObstacle: () => null,
+        cleanupReferences: cleanupCampaignReferences,
+      })(w.ecology, w.terrain, w.rng, mule);
+    expect(pickUpMuleMaterial(n, { kind: 2, index: 0 }, material)).toBe(true);
+    const carrier = n[91]! | (n[92]! << 8),
+      p = w.ecology.plants[1],
+      made = planBotanistPlantCreation(
+        p.native,
+        1,
+        4,
+        0,
+        [9600, 10240],
+        w.terrain,
+      );
+    Object.assign(p, structuredClone(w.ecology.plants[0]), {
+      id: "source:1:1",
+      index: 1,
+      native: made.native,
+      position: made.position,
+      plantFlags: 0,
+      height: made.height,
+    });
+    p.native[48] = 7;
+    p.native[46] = 0;
+    put16(p.native as number[], 44, 10);
+    p.growth = 10;
+    w.ecology.plantCount++;
+    put16(w.missionPrefix, 0x3552, w.ecology.plantCount);
+    insertSpatial(w.spatial, w.terrain, p.id, worldCell(...p.position));
+    synchronizeCampaignLinks(w);
+    put16(n as number[], 104, 0);
+    put16(n as number[], 108, 0);
+    n[94] = 8;
+    n[95] = 1;
+    n[120] = 0;
+    const replay = recordCampaign(w, null),
+      resumed = loadCampaign(
+        saveCampaign(w, { paused: true, speed: 1, accumulator: 0 }),
+        w.contentHash,
+      ).world;
+    for (
+      let tick = 0;
+      tick < 4 && (w.creatureNative[0][96]! & 2) !== 0;
+      tick++
+    ) {
+      stepCampaign(w, pack);
+      stepCampaign(resumed, pack);
+    }
+    expect(w.phase, JSON.stringify(w.notices.slice(-4))).toBe("active");
+    expect(w.creatureNative[0][96]! & 2).toBe(0);
+    expect([w.creatureNative[0][85], w.creatureNative[0][87]]).toEqual([1, 2]);
+    expect(w.powerEffects.slots[carrier].nativePrior![69]).toBe(68);
+    expect(() => validateSpatial(w.spatial)).not.toThrow();
+    expect(checksum(resumed)).toBe(checksum(w));
+    expect(
+      checksum(
+        replayCampaign(sealCampaignReplay(replay, w), pack, w.contentHash),
+      ),
+    ).toBe(checksum(w));
+  });
   it("consumes a carried plant in shared state13 work and preserves save/replay and pool aliases", () => {
     const { w, pack, buildingSlot } = structuredClone(initial),
       mule = w.ecology.mules.find((m) => m.index === 0)!,

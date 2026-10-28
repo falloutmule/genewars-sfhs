@@ -32,3 +32,12 @@ Live-creature/specialist pickup and the virtual10=true flight attachment arm rem
 
 The shared material dispatcher also admits the distinct pending2/state13 path.
 See [Crab building work](CRAB_BUILDING_WORK.md) for source scope and validation.
+
+Food acquisition also uses the shared material cleanup. Source62E8A sets the
+food flag and calls5B580, whose first operation is5CC60/5C920. The old blanket
+carrying guard is removed: the existing staged release converts carrier67 to68
+and clears its attachment, while a live material36 carrier retains its source
+attachment. Missing concrete cleanup services still reject atomically. A real
+campaign carrier-to-food regression covers save continuation and sealed replay;
+36 private static-instruction cases match creature, plant and effect numeric
+afterimages and RNG across both material types, retained tasks and prior states.
