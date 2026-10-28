@@ -41,6 +41,7 @@ import { campaignHumanRosterView, campaignHumanRosterAssociatedTarget, campaignH
 import type { HumanRosterCommand } from "../sim/mechanics/human-roster";
 import { classifyCampaignHumanMuleTarget } from "../sim/campaign/human-creature-command-adapter";
 import { hasHumanCreatureAttackBody } from "../sim/mechanics/human-creature-commands";
+import { campaignEngineerDemolitionTarget } from "../sim/campaign/human-engineer-command-adapter";
 import type { CreatureCommandReference } from "../sim/mechanics/creature-commands";
 const creatureLabel = (species: number) => ["Dinosaur","Crab","Frog","Bird","Mule"][species] ?? `Creature type ${species+1}`;
 const NAMES: Record<number, string> = {
@@ -90,6 +91,7 @@ export async function openCampaign(
     geneticistMuleTarget: number | null = null,
     muleMaterialTarget: string | null = null,
     creatureAttackTarget: string | null = null,
+    engineerDemolitionTarget: number | null = null,
     shepherdTarget: string | null = null,
     botanistPlantType: number | null = null,
     recruitmentBuilding: number | null = null,
@@ -745,6 +747,34 @@ export async function openCampaign(
         control.disabled = w.phase !== "active" || !target.options.length || unavailable !== null;
         const help = document.createElement("p"); help.className = "help";
         help.textContent = unavailable ?? (target.options.length ? "The creature travels to and attacks the selected target." : "No visible attack targets are available.");
+        role.append(help);
+      }
+      if (a && p.blueprints[a.blueprintIndex].category === 0) {
+        const label = document.createElement("label"), target = document.createElement("select"),
+          choices = w.buildings.filter(b => campaignEngineerDemolitionTarget(w,b.slot)),
+          empty = document.createElement("option");
+        label.textContent = "Demolition target "; target.setAttribute("aria-label", "Engineer demolition target");
+        empty.value = ""; empty.textContent = "Choose building"; target.append(empty);
+        for (const b of choices) {
+          const option = document.createElement("option"); option.value = String(b.slot);
+          option.textContent = `${NAMES[b.selector] ?? "Building"} ${b.slot+1} · ${b.owner === w.selectedPlayer ? "Yours" : `Player ${b.owner+1}`}`;
+          target.append(option);
+        }
+        if (engineerDemolitionTarget !== null && choices.some(b => b.slot === engineerDemolitionTarget)) target.value = String(engineerDemolitionTarget);
+        else engineerDemolitionTarget = null;
+        target.addEventListener("change",()=>{engineerDemolitionTarget = target.value === "" ? null : Number(target.value);target.blur();hud();});
+        label.append(target); role.append(label);
+        const native = w.specialists.records[a.id],
+          working = native[130] !== 0 && native[126] === 1 && native[129] === 4 && i16(native as number[],127) === engineerDemolitionTarget,
+          control = button(role,"Demolish building",()=>{
+            if (engineerDemolitionTarget === null) {say("Choose a demolition target first");return;}
+            const command: CampaignCommand = {type:"demolish-building",actorId:a.id,buildingSlot:engineerDemolitionTarget}, result = queueCampaign(w,command);
+            if (result.ok) {recording?.commands.push({tick:w.tick,type:"command",command});say("Engineer demolition order queued");}
+            else say(result.reason ?? "Engineer demolition order rejected");
+          });
+        control.disabled = w.phase !== "active" || !a.ready || !(native[112]! & 1) || engineerDemolitionTarget === null || working;
+        const help = document.createElement("p"); help.className = "help";
+        help.textContent = working ? "The Engineer is preparing demolition. Use Stop to cancel the order." : "The Engineer travels to the building, plants charges, and demolishes it.";
         role.append(help);
       }
       if (a && p.blueprints[a.blueprintIndex].category === 3) {

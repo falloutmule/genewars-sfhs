@@ -2,8 +2,9 @@
 
 This extends the existing task0 terrain/construction family through the same
 507D0 activation,534D0 role body,51E80 release and57A10 callback transaction.
-It introduces no public UI command and does not run a second motion or animation
-tick. The strategic command adapter already produces these native orders.
+The strategic command adapter produces these native orders without a second
+motion or animation tick. The human Engineer panel also admits task1 through
+the same opcode5 /81080 /51960 dispatcher.
 
 The source task meanings are:
 
@@ -132,3 +133,27 @@ Source ports explicitly cover audio/UI,43620 capacity,
 compared. No original executable was run and no original content is committed.
 The shared effect scheduler, later higher-grade building callbacks and mission
 acceptance are not established by this bounded proof.
+
+## Human demolition command
+
+The selected, landed human Engineer can choose an explored, living building and
+press **Demolish building**. The producer writes only actor word0, task byte3=1,
+global building-slot byte5 and opcode byte10=5; unused packet bytes remain
+unknown. The existing atomic dispatcher owns cancellation, movement interruption,
+reference installation and the reservation flag. Native112-bit0 still controls
+human admission. Orders survive pending-command saves and replay normally.
+
+The panel admits converted ordinary retirement selectors0/1/2/3/4/6/11/13.
+Selectors5/12 retain separate unconverted retirement dependencies; selector9 has
+no admitted ordinary resource family. Hidden, dead, retired and already timed
+buildings cannot be selected. Own structures are valid demolition targets too.
+There is no instant demolition, ownership transfer or construction-funds debit:
+the Engineer must travel, finish the original charge sequence, and trigger the
+original timer. Salvage credit uses the existing owner9 effect45 pickup.
+
+A private static-listing comparison checks32 packets across eight selectors,
+two target owners and states1/8:3,152 instructions and238,656 numeric values
+match, with no RNG draws. Public synthetic tests cover authority, unsupported
+targets, disappearing targets, Stop, pending saves/replay, and the complete
+charge-to-demolition-to-salvage host sequence including a working save/replay.
+This is mechanic coverage, not campaign acceptance.

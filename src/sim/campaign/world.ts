@@ -2,6 +2,7 @@ import { stepStagedCampaignGoopVat } from "./goop-vat-adapter";
 import {creatureAsset,creatureCombatTraits,creatureColdResponse} from "../mechanics/creature-species";
 import { resetCreaturePopulation, countCreatureBeforeCallback } from "../mechanics/creature-population";
 import { z } from "zod";
+import { campaignEngineerDemolitionTarget, requestCampaignEngineerDemolition } from "./human-engineer-command-adapter";
 import type { Pack } from "../../content/types";
 import { campaignEntity } from "./entity-view";
 import type { SourceEntityId } from "./source-pools";
@@ -343,6 +344,11 @@ export const CampaignCommandSchema = z.discriminatedUnion("type", [
     ]),
     point,
     queued: z.boolean(),
+  }),
+  z.object({
+    type: z.literal("demolish-building"),
+    actorId: z.number().int().min(0).max(19),
+    buildingSlot: z.number().int().min(0).max(255),
   }),
   z.object({
     type: z.literal("cancel"),
@@ -1159,6 +1165,11 @@ export function queueCampaign(
     }
     if (command.type === "construct" && category !== 0)
       return { ok: false, reason: "Select a landed Engineer" };
+    if (command.type === "demolish-building") {
+      if (category !== 0) return { ok: false, reason: "Select a landed Engineer" };
+      if (!campaignEngineerDemolitionTarget(w, command.buildingSlot))
+        return { ok: false, reason: "Select a visible building available for demolition" };
+    }
     if (command.type === "botanist-work") {
       if (category !== 1)
         return { ok: false, reason: "Select a landed Botanist" };
@@ -1317,6 +1328,15 @@ function issue(w: CampaignWorld, c: CampaignCommand, pack: Pack): void {
     return;
   }
   const a = w.actors.find((a) => a.id === c.actorId)!;
+  if (c.type === "demolish-building") {
+    const result = requestCampaignEngineerDemolition(w, a.id, c.buildingSlot, pack, specialistServices(pack)),
+      current = w.actors.find(p => p.id === a.id)!;
+    if (result.outcome === "installed") {
+      current.orders = []; current.goal = null; current.route = [];
+    }
+    notice(w, result.outcome === "installed" ? "Engineer demolition ordered" : "Engineer cannot take this order yet", "info", a.id);
+    return;
+  }
   const category = w.players[a.owner].blueprints[a.blueprintIndex].category;
   if (c.type === "shepherd-interact") {
     requestCampaignShepherdInteraction(w, a.id, c.task, c.target, pack, specialistServices(pack));
