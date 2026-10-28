@@ -253,3 +253,31 @@ virtuals. Friendly collectors contribute normally; live hostile collectors
 can be retained, followed and hit through the existing14320 cancellation
 service. See [Creature processor neighborhoods](CREATURE_PROCESSOR_NEIGHBORHOOD.md)
 for the480-case scorer comparison and full-host persistence/rollback coverage.
+
+## Self-water damage callback
+
+The physics call at `6E938..6E944` passes damage 5 and the creature's own
+identity to virtual34. `applyMuleSelfWaterDamage` now routes that call through
+`damageMuleEntity` / `damageMuleFromSource` for both owned and neutral creatures.
+It supplies the actual pool binding and keeps synchronous action cleanup,
+defense, mortality, and required effect services in the enclosing transaction.
+The older water-only reset and health guards no longer bypass that family.
+
+Self damage suppresses ordinary retaliation and hit audio. It still releases
+feeding/mating/plant reservations through `5CC60`, retains association fields as
+the source does, and enters `5CDB0` on a lethal hit. The water receipt observes
+already-applied damage; the host must not apply it again. Existing explicit
+boundaries for other creature abilities and unavailable factories remain.
+
+A private comparison covers 243 hash-bound mapped-instruction cases: primary
+Crab, Frog, and Mule species; human, AI, and neutral owners; nine action states;
+retained plant/peer references; and lethal and nonlethal health. Numeric native,
+peer and plant fields, RNG, and death audio match across 56,403 instructions.
+The comparison includes `5B9F0`, `5CC60`/`5C920`, and numeric `5CDB0` through
+`5D078`; later portrait/AI/killer bookkeeping is outside this comparison and
+retains its separately admitted implementation. The tested inputs need no
+blood/effect allocation port. No original executable was run.
+
+Synthetic regressions cover reference cleanup, low-health and lethal hits,
+rollback when a later death-animation service fails, and complete campaign
+save/reload and replay for owned and neutral Frogs carrying food flags.

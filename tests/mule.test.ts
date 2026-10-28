@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   stepNeutralMule,
   muleStraightRay,
-  applyNeutralMuleSelfWaterDamage,
+  applyMuleSelfWaterDamage,
   muleWaypoint,
   type MuleContext,
 } from "../src/sim/mechanics/mule";
@@ -244,19 +244,47 @@ describe("source-backed neutral Mule lifecycle", () => {
       }),
     ).toBe(before);
   });
-  it("applies qualified neutral self-water defense without draws or a retaliatory action", () => {
-    const f = fixture(),
-      mule = f.state.mules[0];
+  it("applies self-water defense without retaliation or hit audio and admits low health", () => {
+    const f = fixture(), mule = f.state.mules[0], events: any[] = [];
+    f.context.combat = {queryRadius:512,attack:20,defense:6,disposition:100,foodWeights:[1,1,1],attackChannel:41};
     mule.native[0x60] = 0x88;
     put(mule.native, 0x6c, 200);
-    expect(applyNeutralMuleSelfWaterDamage(mule)).toBe(2);
+    const beforeRng = structuredClone(f.rng);
+    expect(applyMuleSelfWaterDamage(f.state,mule,f.rng,f.context,events)).toBe(2);
     expect(word(mule.native, 0x6a)).toBe(37);
     expect(word(mule.native, 0x6c)).toBe(0);
     expect(mule.native[0x60]).toBe(8);
+    expect(events.some(e=>e.kind === "mule-audio")).toBe(false);
+    expect(f.rng).toEqual(beforeRng);
     put(mule.native, 0x6a, 5);
-    const before = structuredClone(mule);
-    expect(() => applyNeutralMuleSelfWaterDamage(mule)).toThrow(/lethal/);
-    expect(mule).toEqual(before);
+    expect(applyMuleSelfWaterDamage(f.state,mule,f.rng,f.context,events)).toBe(2);
+    expect(word(mule.native, 0x6a)).toBe(3);
+    put(mule.native, 0x6a, 1);
+    expect(applyMuleSelfWaterDamage(f.state,mule,f.rng,f.context,events)).toBe(2);
+    expect(mule.native[94]).toBe(24);
+    expect(events.some(e=>e.kind === "mule-died")).toBe(true);
+  });
+  it.each([0,4])("releases owner%i feeding references through self-water damage", owner => {
+    const f=fixture(),m=f.state.mules[0],n=m.native,events:any[]=[];
+    f.context.combat={queryRadius:512,attack:20,defense:6,disposition:100,foodWeights:[1,1,1],attackChannel:41};
+    n[24]=owner;n[94]=5;n[96]=9;n[97]=64;n[87]=1;put(n,85,1);n[82]=1;put(n,80,1);
+    const peer=structuredClone(m);peer.id="source:0:1";peer.index=1;put(peer.native,15,1);peer.native[96]=9;f.state.mules.push(peer);
+    applyMuleSelfWaterDamage(f.state,m,f.rng,f.context,events);
+    expect(peer.native[96]!&1).toBe(0);
+    expect(n[87]).toBe(0);expect(n[97]).toBe(64);expect(n[82]).toBe(1);expect(word(n,80)).toBe(1);
+    expect(word(n,106)).toBe(37);expect(n[94]).toBe(5);
+    expect(events.some(e=>e.kind==="mule-audio")).toBe(false);
+  });
+  it("rolls back lethal self-water physics when the later death animation service fails",()=>{
+    const f=fixture(),n=f.state.mules[0].native;
+    f.context.combat={queryRadius:512,attack:20,defense:6,disposition:100,foodWeights:[1,1,1],attackChannel:41};
+    f.context.frame=3;f.context.terrain.bytes.fill(0);n[83]=1;n[97]=64;n[96]=8;
+    put32(n,17,0);put32(n,39,0);put(n,61,0);put(n,63,0);put(n,106,1);put(n,108,1000);
+    const normal=f.context.profile;f.context.profile=(action,state)=>{if(state===24)throw Error("late water death animation");return normal(action,state);};
+    const before=structuredClone({state:f.state,rng:f.rng,terrain:f.context.terrain});
+    const result=stepNeutralMule(f.state,0,f.rng,f.context);
+    expect(result.committed).toBe(false);expect(result.reason).toMatch(/late water death animation/);expect(result.events).toEqual([]);
+    expect({state:f.state,rng:f.rng,terrain:f.context.terrain}).toEqual(before);
   });
   it("feeds on a live plant at its timer cadence, changes both actors, and preserves two scan draws", () => {
     const f = fixture(),

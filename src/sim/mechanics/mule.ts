@@ -1282,78 +1282,31 @@ function physics(
       events.push({
         kind: "mule-water-damage",
         id: mule.id,
-        damage:
-          n[24] === 4
-            ? applyNeutralMuleSelfWaterDamage(mule,c)
-            : applyOwnedMuleSelfWaterDamage(state, mule, c),
+        damage: applyMuleSelfWaterDamage(state, mule, random, c, events),
       });
   }
   put(n, 7, w(n, 7) & 32767);
   put(n, 9, w(n, 9) & 32767);
 }
-/** Owned counterpart of the admitted null-reference nonlethal5B9F0 reset.
- * Source5BB42..5BB50 nulls the attacker and marks self,5BC1A calls5CC60, and
- * only then5C078..5C087 debits health - with no state test at all.5CC60 owns
- * every state-dependent effect (cargo carrier detach, kind1/kind2 reservation
- * release, stun gate) and the common reset tail, so it must run for any state
- * rather than only the empty/idle case. Only the lethal outcome stays closed:
- * that belongs to5CDB0, which is not ported. */
-export function applyOwnedMuleSelfWaterDamage(
+/**6E938..6E944 calls virtual34 with damage5 and attacker==self for every
+ * creature owner. Use the shared5B9F0 service so5CC60 releases actual action
+ * references and lethal hits enter5CDB0. Self suppresses ordinary retaliation
+ * and hit audio; mortality and any admitted blood factory remain synchronous.
+ * The caller owns an enclosing transaction, as for every damage virtual. */
+export function applyMuleSelfWaterDamage(
   state: EcologyState,
   mule: EcologyMule,
-  c?: MuleContext,
+  rng: GeneRng,
+  c: MuleContext,
+  events: MuleEvent[],
 ): number {
-  const n = mule.native;
-  if (
-    n[6] !== 1 ||
-    n[24]! >= 4 ||
-    !sharedCreatureCallbackSpecies(n[0x7a]!) ||
-    w(n, 15) < 0 ||
-    w(n, 15) >= 300
-  )
-    throw new Error(
-      "Owned self-water damage requires an actual live pool identity",
-    );
-  //5BB98..5BBD3:50+trunc(50*min(skill76,100)/100), then defense6*percent/100.
-  const health = w(n, 0x6a),
-    skill = Math.min(n[0x76]!, 100),
-    percent = 50 + Math.trunc((50 * skill) / 100),
-    damage = Math.max(1, 5 - Math.trunc(((c?.combat?.defense ?? (n[122]===4?6:NaN)) * percent) / 100));
-  if (!Number.isFinite(damage)) throw Error("Actual species defense required for water damage");
-  if (health - damage <= 0)
-    throw new Error(
-      "Owned self-water damage requires the unported lethal continuation",
-    );
-  releaseAction(state, mule, c);
-  put(n, 0x6a, health - damage);
-  return damage;
-}
-/** 5B9F0 attacker==self, neutral state8/null-reference, nonlethal domain.
- * Literal 184-instruction neutral case agrees; no RNG/audio/retaliation. */
-export function applyNeutralMuleSelfWaterDamage(mule: EcologyMule, c?: MuleContext): number {
-  const n = mule.native;
-  if (
-    n[6] !== 1 ||
-    n[24] !== 4 ||
-    !sharedCreatureCallbackSpecies(n[0x7a]!) ||
-    ![0, 8].includes(n[0x5e]!) ||
-    ![8, 0x88].includes(n[0x60]!) ||
-    n[0x61] !== 0 ||
-    n[0x78] !== 0 ||
-    n[0x76] === null ||
-    [0x4f, 0x52, 0x57, 0x5d].some((at) => n[at] !== 0) ||
-    w(n, 0x6a) <= 5
-  )
-    throw new Error(
-      "Neutral self-water damage requires the unported lethal/action/reference branch",
-    );
-  const percent = 50 + Math.trunc((50 * Math.min(n[0x76]!,100)) / 100),
-    damage = Math.max(1, 5 - Math.trunc(((c?.combat?.defense ?? (n[122]===4?6:NaN)) * percent) / 100));
-  if (!Number.isFinite(damage)) throw Error("Actual species defense required for water damage");
-  resetAction(n);
-  put(n, 0x6c, 0);
-  put(n, 0x6a, w(n, 0x6a) - damage);
-  return damage;
+  if (state.mules.find(m => m.index === mule.index && m.native[6] === 1) !== mule)
+    throw Error("Self-water damage requires its actual live pool binding");
+  const receipts = damageMuleEntity(state, mule.index, 5,
+    {kind: 1, index: mule.index, owner: mule.native[24]!, native: mule.native},
+    rng, c);
+  events.push(...receipts);
+  return receipts.find(e => e.kind === "mule-combat-damage")?.damage ?? 0;
 }
 /**5CC60/5C920 cleanup within5CDB0. The death caller installs state24 first,
  * so a material36 carrier is dead when virtual68 is consulted. The former

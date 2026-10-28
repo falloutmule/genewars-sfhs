@@ -103,6 +103,22 @@ describe("ordinary pure Frog campaign transaction", () => {
     },
     30000,
   );
+  it.each([0,4])("runs owner%i self-water damage with food flags through full save and replay",owner=>{
+    const {w,pack}=fixture(owner),n=w.creatureNative[0];
+    const waterFirst=pack.assets.EFF.frames!.length;
+    for(let i=0;i<12;i++)pack.assets.EFF.frames!.push({...structuredClone(pack.assets.TEST.frames![0]),rawFlags:[0,0,0]});
+    for(const [code,count] of [[21,2],[22,3],[48,12]])pack.assets.EFF.animations![code]={first:waterFirst,last:waterFirst+count-1,rawTrailingWord:count};
+    for(let y=36;y<=44;y++)for(let x=36;x<=44;x++){const cell=(y*128+x)*14;put16(w.terrain.bytes,cell+2,0);w.terrain.bytes[cell+5]=0;}w.terrain.revision++;
+    put32(n as number[],17,0);put32(n as number[],39,0);put16(n as number[],106,30);
+    n[83]=1;n[97]=64;n[96]=8;n[118]=70;
+    const replay=recordCampaign(w,null),before=n[106]!;
+    for(let i=0;i<4;i++)stepCampaign(w,pack);
+    expect(w.phase,JSON.stringify(w.notices.slice(-3))).toBe("active");expect(w.creatureNative[0][106]).toBeLessThan(before);
+    const resumed=loadCampaign(saveCampaign(w,{paused:true,speed:1,accumulator:0}),w.contentHash).world;
+    for(let i=0;i<8;i++){stepCampaign(w,pack);stepCampaign(resumed,pack);}
+    expect(w.phase,JSON.stringify(w.notices.slice(-3))).toBe("active");expect(checksum(resumed)).toBe(checksum(w));
+    expect(checksum(replayCampaign(sealCampaignReplay(replay,w),pack,w.contentHash))).toBe(checksum(w));
+  });
   it("does not confuse mating readiness with an entered spit action", () => {
     const { w, pack } = fixture(4);
     w.creatureNative[0][94] = 3;

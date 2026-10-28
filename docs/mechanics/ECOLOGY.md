@@ -64,7 +64,7 @@ Private conformance establishes:
 
 - All 24 missions and all 192 source pool layouts/linked-map memberships validate before startup.
 - The first 32 original Exceland Mule callbacks match the bounded original instruction model for every nonpointer numeric byte except common map links, which the host owns; RNG state also matches. The first two callbacks additionally match those common-link bytes.
-- A bounded 184-instruction neutral self-water-damage comparison agrees on damage, numeric reset fields and zero RNG draws.
+- The [shared self-water damage callback](MULE_COMBAT.md#self-water-damage-callback) supersedes the earlier 184-instruction neutral-only reset. Its 243-case comparison covers action references and lethal/nonlethal owned and neutral damage.
 - The integrated original Exceland command path constructs Extractor, Distributor and three Photons, reaches the original victory predicate at frame 3899, reports no ecology callback refusal, and preserves save/load checksums while terraforming, placing and working. This is a private content conformance run, not a general mission certification.
 
 Synthetic tests cover cursor wrap/counter ordering, signed arithmetic, spread RNG order and newborn bytes, blocker predicates, delayed retirement, atomic rejection, first-choice RNG, stable source slots, ray/waypoint behavior and coordinate wrap, separate BONES binding, feeding effects on both entities, natural death and retirement.
