@@ -187,7 +187,9 @@ const receipt = {
   // Vergon: portrait touch last-survivor win at frame12127; ordinary result
   // and Pylon carry/replay f8ddc093, complementary landscape reload.
   // Private acceptance receipt retains108 hashed save/replay links.
-  acceptedMissionCount: 9,
+  // Pylon: portrait touch last-survivor win at frame1785; allfive staff
+  // survived, Zed carry/replay29038c91 and landscape reload,27 hashedlinks.
+  acceptedMissionCount: 10,
   ruleExtension: ruleExtensionIdentity,
   physicalDeviceAcceptance: "not-run",
   upstreamBattleDrones: "39d6f587f98a82f5c0426e8bd476cef49fd19ef0",
