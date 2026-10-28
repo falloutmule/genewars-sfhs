@@ -1,3 +1,4 @@
+import { selectFrogAirborneAnimation } from "./creature-frog";
 import { creatureParameters, creatureComponents, creatureSelector, chooseCreatureOffspring, sharedCreatureCallbackSpecies, creatureCombatTraits } from "./creature-species";
 import { creatureIsFlying, beginCreatureFlight, advanceCreatureFlightGoal, turnCreatureFlightAngles, creatureFlightTargetGeometry, selectCreatureFlightAnimation } from "./creature-flight";
 import { nextRandom, type GeneRng } from "./random";
@@ -1713,6 +1714,7 @@ function selectAnimation(n: Native, c: MuleContext) {
     }
   } else {
     if (selectCreatureFlightAnimation(n)) return;
+    if (n[122] !== 4 && selectFrogAirborneAnimation(n, creatureComponents(c.speciesComponents,n[122]).includes(2), action => c.profile(action,n[94]!).holds.length)) return;
     n[0x19] = ((((w(n, 0x39) >> 7) + 1) >> 1) + 1) & 7;
     const speed = w(n, 0x41);
     if (!speed && n[0x5e] !== 0) {
@@ -3164,7 +3166,7 @@ function carriedAnimation(n: Native, c: MuleContext) {
   n[30] = a.counter & 255;
 }
 
-/** Shared admitted Crab/Bird/Mule movement, flight and feeding callback.
+/** Shared admitted movement, flight, feeding and ordinary pure Frog callback.
  * Spatial relinking is reported; unsupported branches roll back data and RNG. */
 function stepMule(
   state: EcologyState,
@@ -3190,6 +3192,8 @@ function stepMule(
       c.materialRuntime = (m) => c.material!(staged, terrain, random, m);
     if (n[6] === 0) return { committed: true, reason: null, events: [] };
     const dead = n[0x5e]! >= 24;
+    if (n[122] === 2 && (n[97]! & 32 || [17,20,21].includes(n[94]!)))
+      throw Error("Frog hostile/spit callback requires its original ability services");
     if (
       n[6] !== 1 ||
       (owned ? n[24]! >= 4 : n[24] !== 4) ||

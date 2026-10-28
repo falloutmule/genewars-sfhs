@@ -478,6 +478,8 @@ export function acquireMuleHostile(
   rng?: GeneRng,
 ) {
   assertMule(self);
+  if (self.native[122] === 2)
+    throw Error("Frog hostile acquisition requires its original ability services");
   const primaryBird = [3, 14, 19].includes(byte(self.native, 122));
   const t = targetView(target);
   p.release(self);
@@ -651,6 +653,8 @@ export function contactMuleHostile(
   events: MuleEvent[],
 ): boolean {
   assertMule(self);
+  if (self.native[122] === 2)
+    throw Error("Frog hostile contact requires its original ability services");
   const t = targetView(target);
   traits(c);
   const n = self.native,

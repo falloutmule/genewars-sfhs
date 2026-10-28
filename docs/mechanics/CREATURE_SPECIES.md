@@ -6,7 +6,7 @@ The shared data layer reads the already imported, hash-admitted 25 rows at `1045
 
 Source `5A1C0` binds the actual loaded creature animation, falls back to its primary component when a hybrid resource is absent, and uses BONES from state26. Resource table `104494` confirms all25 identities already present in the private pack. The renderer draws each ANB component separately, retaining its own packed4 checkerboard origin, flips, clipping and opacity. It does not flatten a multi-component Crab into one parity origin.
 
-The shared callback domain covers the closed Crab/Bird/Mule component family (selectors1,3,4,10,11,14,19,22,24). Primary Bird takeoff and ordinary controlled flight use the original shared motion, physics and animation paths. Primary Bird hostile acquisition, dive impact and vertical pullup follow [BIRD_HOSTILE_FLIGHT.md](BIRD_HOSTILE_FLIGHT.md). Dinosaur and Frog abilities and live creature/specialist material carrying remain explicit entered boundaries. Scalar tests alone do not admit those behaviors.
+The shared callback domain covers the Crab/Bird/Mule component family (selectors1,3,4,10,11,14,19,22,24) and ordinary pure Frog2 movement/lifecycle. Primary Bird takeoff and ordinary controlled flight use the original shared motion, physics and animation paths. Primary Bird hostile acquisition, dive impact and vertical pullup follow [BIRD_HOSTILE_FLIGHT.md](BIRD_HOSTILE_FLIGHT.md). Dinosaur callbacks, Frog hybrids, Frog hostile/spit abilities and live creature/specialist material carrying remain explicit entered boundaries. Scalar tests alone do not admit those behaviors.
 
 Controlled flight is native73bit0400; native21bit20 separately suppresses gravity. Source6FB60 retains the common target refresh, then uses its flight altitude/arrival arm. Source6F980 permits airborne yaw for either Bird component and turns controlled pitch toward the retained dword69 target. Flight point distance uses terrain heights while pitch uses physical height, with the source avoided-terrain aim offset. The arrival call passes BL=1 to6E9E0: it snaps XY and terrain height while retaining physical height for ordinary landing physics. Source5E640 retains the flight loop and climb/descent playback cadence. Flight occupancy returns before ground obstacle queries. Ground contact also retains5B400's primary-Crab terrain-penalty exception.
 
@@ -23,3 +23,31 @@ Private mapped-instruction comparisons cover600 speed/lifecycle cases,1,250 orde
 Plant food eligibility follows6B700/6BC8E..6BD29: live growth with plant flags1/8 clear, across all owners. The friendly grouping does not skip the plant scorer. Botanist-grown flora and its owned offspring therefore remain food candidates; the former neutral-owner-only filter was a port defect. Ownership does not alter food traversal order or its two previewed query draws.
 
 Frozen-creature damage now executes the original6D500 shard14 burst before immediate retirement. Its owner argument-1 inherits the creature owner; physical and relative heights come from the creature virtuals. Every attempted shard consumes the three caller draws even on shared-capacity failure, with successful factories interleaved. The14 constructor retains source counter/fractions/payload, enables gravity without adding audio or RNG, and shares6DF30 movement, obstacle, friction and water factories. Its4B630 mode1 callback retires on ground equality or collision payload76, rather than animation completion. Both ordinary creature callbacks and recursive staged damage bind the real factory, followed by reference/spatial/queue cleanup. No schema or pack change is required.
+
+## Ordinary pure Frog callback
+
+Zed supplies neutral pure Frogs before the first campaign tick. Selector2 now
+uses its actual trait row, component pair, FROG animation resource, movement,
+physics, feeding, mating and lifecycle paths through the shared callback. The
+ordinary5E640 airborne arm is distinct: with a Frog component, no controlled
+flight, and relative height at least64, playback stops and its frame is selected
+from relative height shifted by10 and the sign of vertical velocity. The
+ascending frame is capped at half the actual action count; descent keeps at
+least half+1. Existing hold, delay and counter bytes survive selection. The
+carried arm precedes that height test; ordinary ground and flight retain their
+existing branches. Animation playback still occurs exactly once.
+
+This bounded admission does not substitute melee for Frog hostile behavior.
+Frog hostile acquisition/contact and entered spit/attack states fail explicitly
+with the enclosing native/terrain/player/RNG transaction rolled back. The
+original5AAC0/34 effect ability family and Frog hybrid callbacks remain separate
+work. Human Frog attack controls are not exposed.
+
+Private static-listing comparisons match48 complete timed5ED20 callbacks
+(61,830 instructions) across states0/8, movement, relative height and both
+phases, plus2885E640 airborne selections (18,516 instructions,31,680 numeric
+values). They use actual FROG metadata and retain pointer/link exclusions.
+Synthetic host tests cover neutral/owned airborne continuation, full replay and
+late hostile-boundary rollback. An isolated1,000-tick Zed diagnostic is not a
+campaign continuation or acceptance claim. Evidence remains under
+`.private/frog-callback-20261028/`.
