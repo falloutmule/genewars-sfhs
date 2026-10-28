@@ -1,6 +1,10 @@
 # Software campaign progress
 
-Current as of 27 October 2026: **7/24 accepted**. Exceland, Krell, Madami, Roach, Brown, Lunacon and Oid are accepted. Fushon (mission 8) is initialized. Its exact current phase, frame and genuine continuation save are recorded in `.private/continuous-20261026/current.json`.
+Current as of 27 October 2026: **8/24 accepted**. Exceland, Krell, Madami, Roach, Brown, Lunacon, Oid and Fushon are accepted. Vergon (mission 9) is initialized. Its exact current phase, frame and genuine continuation save are recorded in `.private/continuous-20261026/current.json`.
+
+Fushon completed through the portrait phone touch UI at frame 5,338 with 2,200 GOOP and 2,400 storage capacity. Four Extractors, two Photon Processors and one Distributor supplied the objective, with Shepherd defense against nearby neutral Crabs. The normal victory view advanced progress to 8 and continued into Vergon. The carried save reloaded in landscape at frame 0 with progress 8, without browser or render errors. Physical Galaxy S21 Ultra testing remains separate.
+
+Fushon's accepted artifact SHA-256 is `fc365f5241e03a72d32134848c192454342b0abd1405c27b8077f502fbfaa1ee`, from clean commit `7db192cfa8a67e310b4a231ea16ba9aa6b7967ee`. Private evidence is indexed in `.private/continuous-20261026/mission8-acceptance.json`, including the exact pack/extension identity, 17 verified save/replay links from the genuine UI restart, result/carry controls, landscape reload and exact carry replay checksum `696d8493`. No simulation source changed during Fushon. Original-derived saves, artifacts and captures remain private.
 
 Oid completed through the portrait phone touch UI at frame 11,137, with both marked-zone quotas exhausted and score 3,163 against 0. Ordinary breeding, feeding and timed entry into the cold zone supplied the winning herds. The normal victory view advanced progress to 7 and continued into Fushon. The carried save reloaded in landscape at frame 0 with progress 7, without browser or render errors. Physical Galaxy S21 Ultra testing remains separate.
 

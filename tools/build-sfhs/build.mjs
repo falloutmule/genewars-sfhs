@@ -143,7 +143,7 @@ try {
 html = html.replace(
   "</body>",
   () =>
-    `<script type="application/json" id="gw-build-meta">${JSON.stringify({ commit, dirty, engineVersion: "0.2.0-campaign-development", acceptedMissions: 7 })}</script></body>`,
+    `<script type="application/json" id="gw-build-meta">${JSON.stringify({ commit, dirty, engineVersion: "0.2.0-campaign-development", acceptedMissions: 8 })}</script></body>`,
 );
 await writeFile(output, html);
 const receipt = {
@@ -181,7 +181,10 @@ const receipt = {
   // Oid: portrait touch win at frame11137, score3163/0, both zones exhausted;
   // normal result/carry into Fushon, landscape reload and exact replay verified.
   // Private acceptance receipt: continuous-20261026/mission7-acceptance.json.
-  acceptedMissionCount: 7,
+  // Fushon: portrait touch win at frame5338, GOOP2200/2400 capacity;
+  // normal result/carry into Vergon, landscape reload and exact replay verified.
+  // Private acceptance receipt: continuous-20261026/mission8-acceptance.json.
+  acceptedMissionCount: 8,
   ruleExtension: ruleExtensionIdentity,
   physicalDeviceAcceptance: "not-run",
   upstreamBattleDrones: "39d6f587f98a82f5c0426e8bd476cef49fd19ef0",
