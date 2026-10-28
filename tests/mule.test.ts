@@ -444,3 +444,64 @@ describe("neutral Crab callback family",()=>{
     expect({state:f.state,terrain:f.context.terrain,rng:f.rng}).toEqual(before);
   });
 });
+
+describe("source airborne ground-contact damage", () => {
+  function impact(velocity = 3072, health = 100) {
+    const f = fixture(), n = f.state.mules[0].native, species = speciesFixture();
+    f.context.rules.speciesTraits = species.rules.speciesTraits;
+    f.context.rules.attackChannels = species.rules.attackChannels;
+    f.context.speciesComponents = species.components;
+    f.context.combat = { ...creatureCombatTraits(f.context.rules, species.components, 4), defense: 0 };
+    f.context.frame = 1;
+    f.context.bounce = Array(8).fill(128);
+    n[21] = 128; n[22] = 0;
+    put32(n, 17, 0); put32(n, 39, 256);
+    put(n, 49, velocity); put(n, 61, 0); put(n, 63, 0); put(n, 65, 0);
+    put(n, 106, health); put(n, 108, 1000);
+    return f;
+  }
+  it("applies positive contact damage with no attacker before bouncing", () => {
+    const f = impact(), result = stepNeutralMule(f.state, 0, f.rng, f.context), n = f.state.mules[0].native;
+    expect(result.reason).toBeNull();
+    expect(result.events).toContainEqual({kind: "mule-combat-damage", id: "source:0:0", damage: 2});
+    expect(word(n, 106)).toBe(98);
+    expect(word(n, 49)).toBe(1024);
+    expect(result.events.some(e => e.kind === "mule-audio")).toBe(true);
+  });
+  it.each([1023, 1024, 2047])("does not invent damage for subunit contact velocity %i", velocity => {
+    const f = impact(velocity), result = stepNeutralMule(f.state, 0, f.rng, f.context);
+    expect(result.reason).toBeNull();
+    expect(result.events.some(e => e.kind === "mule-combat-damage")).toBe(false);
+    expect(word(f.state.mules[0].native, 106)).toBe(100);
+  });
+  it("runs lethal contact through the ordinary death lifecycle", () => {
+    const f = impact(3072, 1), result = stepNeutralMule(f.state, 0, f.rng, f.context);
+    expect(result.reason).toBeNull();
+    expect(result.events.some(e => e.kind === "mule-combat-kill")).toBe(true);
+    expect(f.state.mules[0].native[94]).toBeGreaterThanOrEqual(24);
+    expect(word(f.state.mules[0].native, 106)).toBe(-1);
+  });
+  it("rolls back contact damage and RNG when required blood effects are absent", () => {
+    const f = impact(9216), before = structuredClone({state:f.state, rng:f.rng, terrain:f.context.terrain});
+    const result = stepNeutralMule(f.state, 0, f.rng, f.context);
+    expect(result.committed).toBe(false);
+    expect(result.reason).toMatch(/blood/);
+    expect(result.events).toEqual([]);
+    expect({state:f.state, rng:f.rng, terrain:f.context.terrain}).toEqual(before);
+  });
+  it("reads velocity after the synchronous damage effect service", () => {
+    const f = impact(9216);
+    f.context.combatEffect = state => { put(state.mules[0].native, 49, 640); };
+    const result = stepNeutralMule(f.state, 0, f.rng, f.context);
+    expect(result.reason).toBeNull();
+    expect(result.events).toContainEqual({kind:"mule-combat-damage",id:"source:0:0",damage:8});
+    expect(word(f.state.mules[0].native, 49)).toBe(320);
+  });
+  it("leaves dead contact free of damage and combat service requirements", () => {
+    const f = impact(); f.state.mules[0].native[94] = 24; f.context.combat = undefined;
+    const result = stepNeutralMule(f.state, 0, f.rng, f.context);
+    expect(result.reason).toBeNull();
+    expect(result.events.some(e => e.kind === "mule-combat-damage")).toBe(false);
+    expect(word(f.state.mules[0].native, 106)).toBe(100);
+  });
+});

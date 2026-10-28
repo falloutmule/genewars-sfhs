@@ -1170,14 +1170,21 @@ function physics(
         put(n, 7 + 2 * axis, candidate[axis]);
         n[0x43 + axis] = (value >> 8) & 255;
       }
-      const normal = terrainNormal(c.terrain, ...candidate),
-        cls = ecologyTerrainClass(c.terrain, candidate),
-        vz = w(n, 0x31);
-      //6E3E1 calls virtual34 only for a positive impact.5B9F0 immediately
-      //returns for state>=24: no damage, audio, RNG or lifecycle mutation.
-      if ((!logicalDead && Math.trunc((vz >> 6) / 16) > 0) || c.bounce.length !== 8)
+      //6E3C1..6E3EE: signed velocity, truncation toward zero, null attacker.
+      //Damage runs inside this callback's staged transaction, before terrain
+      //sampling and the bounce's post-damage velocity read. Dead actors'34
+      //returns immediately without requiring live combat services.
+      const impact = Math.trunc((w(n, 0x31) >> 6) / 16);
+      if (impact > 0 && !logicalDead) {
+        events.push(...damageMuleEntity(state, mule.index, impact, null, random, c));
+        if (mule.native !== n)
+          throw new Error("Mule contact damage must retain its native record");
+      }
+      const normal = terrainNormal(c.terrain, ...point(n)),
+        cls = ecologyTerrainClass(c.terrain, point(n));
+      if (c.bounce.length !== 8)
         throw new Error("Mule contact bounce requires an admitted coefficient");
-      const bounced = signed((Math.abs(vz) * c.bounce[cls]) >> 8);
+      const bounced = signed((Math.abs(w(n, 0x31)) * c.bounce[cls]) >> 8);
       put(n, 0x31, bounced);
       for (let axis = 0; axis < 2; axis++)
         put(

@@ -207,3 +207,25 @@ Krell result, new kind3/4 source-afterimage parity, broader combat species, AI
 or campaign acceptance. Other creature species, shared neighborhood selector
 17/0x11, target kinds6/7, and attached-carrier physics retain explicit source
 family boundaries rather than inferred behavior.
+
+## Airborne ground contact
+
+The shared6DF30 contact arm now binds its positive-impact virtual34 call to
+the existing staged creature damage service. The original6E3C1..6E3EE
+instructions use `trunc((signedVelocity >> 6) / 16)` with a null attacker.
+This can apply damage while moving upward into rising terrain. Negative or
+subunit impacts do not call damage. Logical dead states retain their no-op.
+
+Damage runs before terrain-normal sampling and the bounce's velocity read;
+ordinary release, reaction, blood, death and RNG behavior therefore participates
+in the enclosing callback transaction. A failed required service rolls back
+the callback. The existing unsupported collision branches remain explicit.
+
+Synthetic regression tests cover positive and subunit contact, lethal damage,
+dead no-op, post-service velocity and missing-effect rollback. Private mapped
+instruction evidence covers48 complete callbacks, including5B9F0 damage,
+both callback phases, stun/dead states and actual Bird animation profiles;
+all nonpointer/nonlink bytes and RNG match. Only audio playback and shared
+effect allocation are declared host ports. A separate250-tick diagnostic from
+the genuine Zed save crosses the former refusal with matching save/reload and
+replay checksums; diagnostic worlds are never campaign continuation parents.
