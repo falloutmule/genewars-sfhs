@@ -32,6 +32,8 @@ import {
   replayCampaign,
 } from "../src/sim/campaign/persistence";
 import { checksum } from "../src/sim/checksum";
+import { makeCampaignMuleMaterialServices } from "../src/sim/campaign/mule-adapter";
+import { pickUpMuleMaterial } from "../src/sim/mechanics/mule-hauling";
 
 /**Prebuilt/powered synthetic Recycler isolates ordinary source material work.
  * Artwork and priors are synthetic; this does not accept a campaign mission. */
@@ -262,6 +264,56 @@ describe("ordinary campaign Mule material hauling", () => {
   let initial: ReturnType<typeof fixture>;
   beforeAll(() => {
     initial = fixture();
+  });
+  it("consumes a carried plant in shared state13 work and preserves save/replay and pool aliases", () => {
+    const { w, pack, buildingSlot } = structuredClone(initial),
+      mule = w.ecology.mules.find((m) => m.index === 0)!,
+      n = mule.native,
+      material = makeCampaignMuleMaterialServices(pack, () => w, {
+        gravity: 512,
+        obstacleAt: () => false,
+        destructionObstacle: () => null,
+        cleanupReferences: cleanupCampaignReferences,
+      })(w.ecology, w.terrain, w.rng, mule);
+    expect(pickUpMuleMaterial(n, { kind: 2, index: 0 }, material)).toBe(true);
+    expect(w.spatial.nodes["source:1:0"]).toBeUndefined();
+    put16(n as number[], 85, buildingSlot);
+    n[87] = 4;
+    n[94] = 13;
+    n[95] = 2;
+    put16(n as number[], 108, 0);
+    const bn = w.buildingNative[buildingSlot];
+    put16(bn as number[], 43, 20);
+    w.buildings.find((b) => b.slot === buildingSlot)!.health = 20;
+    const replay = recordCampaign(w, null),
+      resumed = loadCampaign(
+        saveCampaign(w, { paused: true, speed: 1, accumulator: 0 }),
+        w.contentHash,
+      ).world;
+    const before = i16(bn as number[], 43),
+      amount = w.ecology.plants[0].native[48]! * 8;
+    for (let tick = 0; tick < 4 && w.ecology.plants[0].active; tick++) {
+      stepCampaign(w, pack);
+      stepCampaign(resumed, pack);
+    }
+    expect(w.phase, JSON.stringify(w.notices.slice(-4))).toBe("active");
+    expect(i16(w.buildingNative[buildingSlot] as number[], 43)).toBe(
+      before + amount,
+    );
+    expect(w.ecology.plants[0].active).toBe(false);
+    expect(w.ecology.plantCount).toBe(0);
+    expect(w.creatureNative[0][93]).toBe(0);
+    expect(w.creatureNative[0][96]! & 2).toBe(0);
+    expect(w.creatureNative[0]).toEqual(
+      w.ecology.mules.find((m) => m.index === 0)!.native,
+    );
+    expect(() => validateSpatial(w.spatial)).not.toThrow();
+    expect(checksum(resumed)).toBe(checksum(w));
+    expect(
+      checksum(
+        replayCampaign(sealCampaignReplay(replay, w), pack, w.contentHash),
+      ),
+    ).toBe(checksum(w));
   });
   it("cuts and carries a real plant to the Recycler, deposits GOOP and continues a carrying save/replay", () => {
     const { w, pack, buildingSlot } = structuredClone(initial),

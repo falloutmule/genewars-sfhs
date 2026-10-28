@@ -1,4 +1,4 @@
-/** Source6EAF0 attachment virtual9C, with Mule's established virtual10=false.
+/** Source6EAF0 attachment virtual9C, for an actual grounded parent.
  * Caller owns the full-host transaction and actual spatial/effect services. */
 import { groundHeight, worldCell, type TerrainState } from "./terrain";
 import { effectTerrainShade } from "./power-motion";
@@ -35,11 +35,11 @@ export function attachMuleMaterialPose(
   parent: HaulingNative,
   c: MuleAttachmentContext,
 ): void {
-  if (byte(parent, 6) !== 1 || byte(parent, 122) !== 4)
-    throw Error("Attachment requires actual Mule4 parent");
+  if (byte(parent, 6) !== 1 || word(parent, 73) & 0x400)
+    throw Error("Attachment requires actual grounded creature parent");
   attachGroundBody(carried, parent, c);
 }
-/**6EAF0 ground arm for the actualkind7 collector or established Mule4 parent.
+/**6EAF0 ground arm for the actualkind7 collector or creature parent.
  * Kind7's virtual10 is1EE20; flight is a separate source arm. */
 export function attachGroundMaterialPose(
   carried: HaulingNative,
@@ -48,8 +48,7 @@ export function attachGroundMaterialPose(
 ): void {
   if (
     (byte(parent, 6) === 7 && parent.length !== 97) ||
-    (byte(parent, 6) !== 7 &&
-      (byte(parent, 6) !== 1 || byte(parent, 122) !== 4)) ||
+    (byte(parent, 6) !== 7 && byte(parent, 6) !== 1) ||
     word(parent, 73) & 0x400
   )
     throw Error("Actual admitted ground attachment parent required");

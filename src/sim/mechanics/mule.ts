@@ -39,6 +39,7 @@ import {
   stepMuleMaterialWork,
   stepMuleMaterialTravel,
   finishMuleMaterialCut,
+  finishCrabBuildingWork,
   resumeMuleMaterialTask,
   type MuleHaulingContext,
 } from "./mule-hauling";
@@ -1700,9 +1701,10 @@ function selectAnimation(n: Native, c: MuleContext) {
         100,
     );
     n[0x1d] = 1 + +(w(n, 0x68) < strength >> 1);
-  } else if (n[0x5e] === 11) {
-    if (n[25] !== 20) {
-      n[25] = 20;
+  } else if (n[0x5e] === 11 || n[94] === 13) {
+    const action = n[94] === 13 ? 21 : 20;
+    if (n[25] !== action) {
+      n[25] = action;
       n[26] = n[27] = n[29] = n[30] = 0;
       n[28] = 1;
     }
@@ -2742,6 +2744,11 @@ function action(
   events: MuleEvent[],
 ) {
   const n = mule.native;
+  if (n[94] === 13) {
+    if (!c.materialRuntime) throw Error("Crab building work requires actual material services");
+    finishCrabBuildingWork(n,c.materialRuntime(mule));
+    return;
+  }
   if (n[94] === 17) {
     n.fill(0, 51, 55);
     idleWait(state, mule, random, c);
@@ -3222,7 +3229,7 @@ function stepMule(
       !sharedCreatureCallbackSpecies(n[0x7a]!) ||
       n[0x76] === null ||
       ![
-        0, 1, 3, 4, 5, 6, 7, 8, 10, 11, 15, 16, 17, 18, 20, 21, 24, 25, 26, 27,
+        0, 1, 3, 4, 5, 6, 7, 8, 10, 11, 13, 15, 16, 17, 18, 20, 21, 24, 25, 26, 27,
       ].includes(n[0x5e]!)
     )
       throw new Error("Mule callback owner/species/state is not admitted");
@@ -3410,7 +3417,7 @@ function stepMule(
       if (
         ([0, 8].includes(n[0x5e]!) && w(n, 0x6c) === 0) ||
         [1, 3, 4, 5, 6, 7, 10].includes(n[0x5e]!) ||
-        ([11, 15, 16, 17, 18, 20, 21].includes(n[0x5e]!) && w(n, 0x6c) <= 0) ||
+        ([11, 13, 15, 16, 17, 18, 20, 21].includes(n[0x5e]!) && w(n, 0x6c) <= 0) ||
         (n[0x5e] === 1 && (w(n, 0x49) & 0x200) !== 0 && !(n[0x60]! & 0x80))
       )
         action(staged, mule, random, c, events);

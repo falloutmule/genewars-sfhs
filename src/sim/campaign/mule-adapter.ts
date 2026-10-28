@@ -7,12 +7,26 @@ import type { EcologyState } from "../mechanics/ecology";
 import { muleRequestedSpeed, ecologyTerrainClass } from "../mechanics/ecology";
 import type { TerrainState } from "../mechanics/terrain";
 import { worldCell } from "../mechanics/terrain";
+import {
+  creatureComponents,
+  creatureCombatTraits,
+} from "../mechanics/creature-species";
+import { createStagedCampaignBuildingMaterial } from "./building-material-effect-adapter";
+import {
+  progressCampaignEngineerBuilding,
+  type CampaignEngineerServices,
+} from "./engineer-adapter";
+import { dropPlantCarrier } from "../mechanics/plant-carrier";
+import { put16 } from "./bytes";
+import { cleanupCampaignReferences } from "./cleanup";
 import { attachMuleMaterialPose } from "../mechanics/mule-hauling-motion";
 import {
   idleMuleMaterial,
   haulingByte as b,
   haulingWord as word,
   haulingDword as dword,
+  haulingDistance,
+  haulingPoint,
   type MuleHaulingContext,
 } from "../mechanics/mule-hauling";
 import {
@@ -37,6 +51,7 @@ import { specialistBlockerWeight } from "../mechanics/specialist-motion";
 import { createStagedCampaignMulePlantCarrier } from "./plant-carrier-adapter";
 import {
   createStagedSmokeEffect,
+  retireStagedSharedEffect,
   type EffectSchedulerOptions,
 } from "./effect-scheduler";
 import { igniteStagedPlant } from "./plant-fire-adapter";
@@ -59,6 +74,7 @@ export function makeCampaignMuleMaterialServices(
     | EffectSchedulerOptions<CampaignWorld>
     | ((staged: CampaignWorld) => EffectSchedulerOptions<CampaignWorld>),
   commandServices: CampaignCreatureCommandServices = {},
+  engineerServices?: () => CampaignEngineerServices,
 ): NonNullable<MuleContext["material"]> {
   return (state, terrain, rng, mule) => {
     const w = host(state, terrain, rng),
@@ -100,7 +116,143 @@ export function makeCampaignMuleMaterialServices(
       terrain,
       rng,
       tables: pack.rules.tables,
-      queryRadius: pack.ecologyRules.muleCombat?.queryRadius ?? NaN,
+      components: creatureComponents(pack.zoneRules?.speciesComponents, n[122]),
+      queryRadius:
+        (n[122] === 4
+          ? pack.ecologyRules.muleCombat
+          : creatureCombatTraits(
+              pack.ecologyRules,
+              pack.zoneRules?.speciesComponents,
+              n[122],
+            )
+        )?.queryRadius ?? NaN,
+      builder: {
+        nearest: () => {
+          const aggregate = b(w.players[b(n, 24)].raw, 0x4a1),
+            raw = w.players[aggregate]?.raw;
+          if (!raw) throw Error("Actual301F0 builder aggregate required");
+          const start = w.runtimeMode & 1 ? 0 : aggregate * 64,
+            count = w.runtimeMode & 1 ? 256 : 64;
+          let chosen: (number | null)[] | null = null,
+            best = 0x7fffffff;
+          for (let i = start; i < start + count; i++) {
+            const bn = w.buildingNative[i];
+            if (
+              !b(bn, 6) ||
+              (b(bn, 24) !== b(raw, 1) && !(b(raw, 0x6e5) & (1 << b(bn, 24))))
+            )
+              continue;
+            if (
+              !(
+                (b(bn, 46) < b(bn, 47) && word(bn, 49) & 0x400) ||
+                word(bn, 43) < c.maximumBuildingHealth(bn)
+              )
+            )
+              continue;
+            const score = haulingDistance(
+              terrain,
+              haulingPoint(n),
+              haulingPoint(bn),
+            );
+            if (score < best) {
+              best = score;
+              chosen = bn;
+            }
+          }
+          return chosen;
+        },
+        createMaterial: (request) =>
+          guard(() =>
+            createStagedCampaignBuildingMaterial(
+              w,
+              pack,
+              request,
+              effectOptions(),
+            ),
+          ),
+        contribute: (bn, amount) =>
+          guard(() => {
+            const index = word(bn, 15);
+            if (w.buildingNative[index] !== bn)
+              throw Error("Crab contribution lost held building");
+            progressCampaignEngineerBuilding(
+              w,
+              pack,
+              index,
+              amount,
+              engineerServices?.(),
+            );
+          }),
+        consumeMaterial: (material) =>
+          guard(() => {
+            const slot = word(material, 15);
+            if (w.powerEffects.slots[slot].nativePrior !== material)
+              throw Error("Crab material lost held effect");
+            retireStagedSharedEffect(w, slot, effectOptions());
+            material.splice(
+              0,
+              material.length,
+              ...w.powerEffects.slots[slot].nativePrior!,
+            );
+            w.powerEffects.slots[slot].nativePrior = material;
+          }),
+        consumePlant: (material, contribute) =>
+          guard(() => {
+            const dropped = dropPlantCarrier(
+              material,
+              {
+                plant: (index) => w.ecology.plants[index].native,
+                footprintBuilding: (p) => {
+                  const index = campaignCreatureFootprintBuilding(w, pack, p);
+                  if (index === null) return null;
+                  const bn = w.buildingNative[index];
+                  return { selector: b(bn, 45), position: haulingPoint(bn) };
+                },
+                depositOffset:
+                  commandServices.corpseDepositOffset?.value ??
+                  pack.creatureCommandRules?.corpseDepositOffset,
+              },
+              false,
+            );
+            if (dropped.plant === null)
+              throw Error("Crab carried plant reference required");
+            const plant = w.ecology.plants[dropped.plant],
+              amount = b(plant.native, 48);
+            if (dropped.retirementRequired)
+              c.builder!.consumeMaterial(material);
+            contribute(amount);
+            //61AD3 performs724C0 before clearing the already unlinked plant.
+            if (!plant.active || w.spatial.nodes[`source:1:${dropped.plant}`])
+              throw Error(
+                "Crab plant consumption requires unlinked active plant",
+              );
+            cleanupCampaignReferences(
+              w,
+              `source:1:${dropped.plant}` as SourceEntityId,
+            );
+            plant.native[6] = 0;
+            plant.active = false;
+            w.ecology.plantCount = (w.ecology.plantCount - 1) & 65535;
+            put16(w.missionPrefix, 0x3552, w.ecology.plantCount);
+            const id = `source:1:${dropped.plant}`;
+            const overlay = w.source.entities.find((e) => e.id === id);
+            if (overlay)
+              overlay.nativeBytes.splice(
+                0,
+                overlay.nativeBytes.length,
+                ...plant.native,
+              );
+            w.ecology.otherEntities = w.ecology.otherEntities.filter(
+              (e) => e.id !== id,
+            );
+            if (w.ecology.plantOrder)
+              for (const key of Object.keys(w.ecology.plantOrder))
+                w.ecology.plantOrder[key] = w.ecology.plantOrder[key].filter(
+                  (i) => i !== dropped.plant,
+                );
+            mirror();
+          }),
+      },
       resolve: (r) => campaignCreatureCommandReference(w, r),
       cell: (cell) =>
         campaignQueryEntities(w, [[(cell & 127) << 8, (cell >> 7) << 8]]).map(

@@ -126,7 +126,7 @@ export interface PlantCarrierUpdate extends DestructionStep {
 }
 function resolvePlant(
   n: Native,
-  c: PlantCarrierContext,
+  c: Pick<PlantCarrierContext, "plant">,
 ): [number, Native] | null {
   if (byte(n, 73) !== 2) return null;
   const index = word(n, 71);
@@ -141,7 +141,7 @@ function resolvePlant(
  * insertion.67 retires;68 marks phase1 and retires on its NEXT callback. */
 export function dropPlantCarrier(
   n: EffectNativePrior,
-  c: PlantCarrierContext,
+  c: Pick<PlantCarrierContext, "plant"> & Partial<PlantCarrierContext>,
   relink: boolean,
 ): { plant: number | null; retirementRequired: boolean } {
   const resolved = resolvePlant(n, c);

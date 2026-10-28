@@ -2401,7 +2401,7 @@ export function stepCampaign(w: CampaignWorld, pack: Pack): void {
             rewardFactoryOptions(staged, pack));
         },
         material: makeCampaignMuleMaterialServices(pack, combatTransaction.host,
-          staged => rewardFactoryOptions(staged, pack)),
+          staged => rewardFactoryOptions(staged, pack), {}, () => specialistServices(pack)),
         plantDamage: (state, terrain, rng, index, amount) =>
           damageCampaignPlant(
             combatTransaction.host(state, terrain, rng),

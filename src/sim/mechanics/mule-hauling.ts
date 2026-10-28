@@ -10,6 +10,7 @@ import {
   type TerrainState,
 } from "./terrain";
 import type { MulePlantCarrierRequest } from "./plant-carrier";
+import type { BuildingMaterialRequest } from "./building-material-effect";
 export type HaulingNative = (number | null)[];
 export type HaulingPoint = [number, number];
 export interface HaulingReference {
@@ -17,6 +18,20 @@ export interface HaulingReference {
   index: number;
 }
 export interface MuleHaulingContext {
+  /** Actual component table; legacy synthetic Mule contexts may omit it. */
+  components?: readonly number[];
+  builder?: {
+    nearest(): HaulingNative | null;
+    createMaterial(
+      request: BuildingMaterialRequest,
+    ): { slot: number; native: HaulingNative } | null;
+    contribute(building: HaulingNative, amount: number): void;
+    consumeMaterial(material: HaulingNative): void;
+    consumePlant(
+      material: HaulingNative,
+      contribute: (amount: number) => void,
+    ): void;
+  };
   terrain: TerrainState;
   rng: GeneRng;
   tables: MotionTables;
@@ -416,6 +431,150 @@ export function queryMuleMaterial(
 function failed(n: HaulingNative, c: MuleHaulingContext, base = 10, mod = 20) {
   c.idle(base + (nextRandom(c.rng) % mod));
 }
+/**63BC9/64A2B, including the autonomous Crab-component continuation. */
+export function stepCrabBuildingWork(
+  n: HaulingNative,
+  c: MuleHaulingContext,
+): boolean {
+  const builder = c.builder;
+  if (!builder)
+    throw Error("Crab builder work requires actual staged services");
+  let worked = true;
+  if (haulingByte(n, 97) & 8) {
+    if (!(haulingWord(n, 73) & 0x200)) {
+      n[95] = 2;
+      return true;
+    }
+    n[97] = haulingByte(n, 97) & 247;
+    const r = ref(n, 91),
+      material = get(c, r);
+    if (!material) worked = false;
+    else if (haulingByte(material, 6) === 4) {
+      if (
+        haulingByte(material, 45) !== 2 ||
+        haulingDword(material, 54) >>> 0 === 0
+      )
+        worked = false;
+      else {
+        const made = builder.createMaterial({
+          position: haulingPoint(n),
+          height: haulingDword(n, 39),
+          angles: [haulingWord(n, 57), haulingWord(n, 59), haulingWord(n, 61)],
+          owner: haulingByte(n, 24),
+          parameter: 0,
+          delay: 0,
+          parentBuilding: haulingWord(material, 15),
+        });
+        //5D180 has no failure return; allocation exhaustion retains DL=true.
+        if (made) {
+          n[96] = haulingByte(n, 96) | 2;
+          bind(n, 91, { kind: 5, index: made.slot });
+        }
+      }
+    } else if (haulingByte(material, 6) === 2) {
+      if (r && same(c, n, r)) pickUpMuleMaterial(n, r, c);
+      else worked = false;
+    } else {
+      c.detach();
+      worked = false;
+    }
+  } else {
+    const r = ref(n, 85),
+      building = r?.kind === 4 ? get(c, r) : null,
+      stocked =
+        building &&
+        haulingByte(building, 45) === 2 &&
+        haulingDword(building, 54) >>> 0 > 0;
+    if (haulingWord(n, 73) & 0x200 && (haulingByte(n, 96) & 2 || stocked)) {
+      if (
+        !building ||
+        (haulingWord(building, 49) & 1 &&
+          haulingWord(building, 43) >= c.maximumBuildingHealth(building) &&
+          !(haulingWord(building, 49) & 0x400))
+      ) {
+        c.detach();
+        n[97] = haulingByte(n, 97) | 2;
+        worked = false;
+      } else {
+        n[94] = 13;
+        const jitter = nextRandom(c.rng) % 20;
+        haulingPut(
+          n,
+          108,
+          Math.trunc(((110 - haulingByte(n, 118)) * 40) / 100) + jitter,
+        );
+        const a = haulingPoint(n),
+          b = haulingPoint(building);
+        haulingPut(
+          n,
+          75,
+          originalAngle(
+            wrap(torusDelta(b[0], a[0]) * 2),
+            wrap(torusDelta(b[1], a[1]) * 2),
+            c.tables.atan,
+          ),
+        );
+      }
+    } else {
+      const retained = ref(n, 88),
+        nominated =
+          haulingByte(n, 120) && retained?.kind === 4 ? get(c, retained) : null;
+      //An existing but no-longer-eligible retained task does not fall back.
+      const target = nominated
+        ? haulingWord(nominated, 49) & 0x400 ||
+          haulingWord(nominated, 43) < c.maximumBuildingHealth(nominated)
+          ? nominated
+          : null
+        : builder.nearest();
+      worked = target
+        ? c.target({ kind: 4, index: haulingWord(target, 15) })
+        : false;
+    }
+  }
+  if (worked) n[95] = 2;
+  else if (haulingByte(n, 120) === 0) n[95] = 0;
+  return worked;
+}
+/**61A5A state13 expiry. Material is consumed before the ordinary idle draw. */
+export function finishCrabBuildingWork(
+  n: HaulingNative,
+  c: MuleHaulingContext,
+): void {
+  if (!c.builder)
+    throw Error("Crab building completion requires actual staged services");
+  const r = ref(n, 85),
+    building = r?.kind === 4 ? get(c, r) : null;
+  if (building) {
+    if (haulingByte(n, 96) & 2) {
+      const material = get(c, ref(n, 91));
+      if (!material) throw Error("Actual carried Crab material required");
+      const code = haulingByte(material, 69);
+      if (code === 67)
+        c.builder.consumePlant(material, (amount) =>
+          c.builder!.contribute(building, amount * 8),
+        );
+      else if (code === 36) {
+        c.builder.contribute(building, haulingByte(material, 76) * 5);
+        c.builder.consumeMaterial(material);
+      }
+      n[96] = haulingByte(n, 96) & 253;
+      n[93] = 0;
+    } else if (
+      haulingByte(building, 45) === 2 &&
+      haulingDword(building, 54) >>> 0 > 0
+    ) {
+      const amount = Math.min(
+          (haulingByte(building, 46) + 1) * 10,
+          haulingDword(building, 54) >>> 0,
+        ),
+        remaining = (haulingDword(building, 54) - amount) | 0;
+      haulingPut(building, 54, remaining);
+      haulingPut(building, 56, remaining >>> 16);
+      c.builder.contribute(building, ((amount * 5) << 16) >> 16);
+    }
+  }
+  failed(n, c, 5, 10);
+}
 /**Source work decision after food/hostile/mating have declined.
  * Returns the actual DL work-success flag. False joins commonChoice at64CEF,
  * after preserving this work body's wait/drop/cancellation afterimages. */
@@ -425,10 +584,11 @@ export function stepMuleMaterialWork(
 ): boolean {
   if (haulingByte(n, 24) >= 4) return false;
   const pending = haulingByte(n, 95);
-  if (pending === 2)
-    throw Error("Mule pending2 builder service is a distinct source family");
+  if (pending === 2) return stepCrabBuildingWork(n, c);
   if (pending !== 0 && pending !== 1) return false;
   if (pending === 0 && haulingByte(n, 120) !== 0) return false;
+  if (pending === 0 && c.components && !c.components.includes(4))
+    return c.components.includes(1) ? stepCrabBuildingWork(n, c) : false;
   let worked = true;
   if (haulingByte(n, 96) & 2) {
     const existing = ref(n, 85),
@@ -532,6 +692,8 @@ export function stepMuleMaterialWork(
   }
   if (worked) n[95] = 1;
   else if (haulingByte(n, 120) === 0) n[95] = 0;
+  if (!worked && pending === 0 && c.components?.includes(1))
+    return stepCrabBuildingWork(n, c);
   return worked;
 }
 /**653C8 positive-timer pending1 dispatch. */

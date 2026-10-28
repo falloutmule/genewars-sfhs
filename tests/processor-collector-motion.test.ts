@@ -99,7 +99,7 @@ describe("collector common numeric motion and attachment", () => {
     expect(moves).toHaveLength(1);
     expect(f.w.rng).toEqual(rng);
   });
-  it("keeps the existing Mule4 entry narrow and rejects the unconverted collector flight arm", () => {
+  it("keeps the creature entry distinct and rejects the unconverted collector flight arm", () => {
     const f = processorFixture(),
       n = f.w.collectors.records[0],
       e = f.w.powerEffects.slots[0].nativePrior!;
@@ -111,7 +111,7 @@ describe("collector common numeric motion and attachment", () => {
       scrape: () => {},
       relocate: () => {},
     };
-    expect(() => attachMuleMaterialPose(e, n, c)).toThrow("Mule4");
+    expect(() => attachMuleMaterialPose(e, n, c)).toThrow("grounded creature");
     put16(n as number[], 73, 0x400);
     const before = e.slice();
     expect(() => attachGroundMaterialPose(e, n, c)).toThrow("ground");

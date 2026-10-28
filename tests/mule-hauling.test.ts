@@ -7,6 +7,7 @@ import {
   stepMuleMaterialWork,
   stepMuleMaterialTravel,
   finishMuleMaterialCut,
+  finishCrabBuildingWork,
   queryMuleMaterial,
   idleMuleMaterial,
   resumeMuleMaterialTask,
@@ -129,6 +130,113 @@ function fixture() {
     cells,
   };
 }
+describe("Crab building worker", () => {
+  function worker() {
+    const f = fixture();
+    f.n[122] = 1;
+    f.n[95] = 2;
+    f.n[118] = 70;
+    f.effect[69] = 36;
+    f.effect[76] = 8;
+    f.c.components = [1, 1];
+    f.c.builder = {
+      nearest: () => f.pulper,
+      createMaterial: () => {
+        f.trace.push("factory36");
+        return { slot: 3, native: f.effect };
+      },
+      contribute: (b, amount) => {
+        f.trace.push(`contribute:${amount}`);
+        put(b, 43, word(b, 43) + amount);
+      },
+      consumeMaterial: () => {
+        f.trace.push("consume36");
+        f.effect[6] = 0;
+      },
+      consumePlant: (_n, contribute) => {
+        f.trace.push("drop67");
+        contribute(7);
+        f.trace.push("retirePlant");
+      },
+    };
+    put(f.n, 85, 2);
+    f.n[87] = 4;
+    return f;
+  }
+  it("adopts a damaged building autonomously without running Mule hauling", () => {
+    const f = worker();
+    f.n[95] = 0;
+    put(f.pulper, 43, 50);
+    expect(stepMuleMaterialWork(f.n, f.c)).toBe(true);
+    expect(f.trace).toEqual(["target:4:2"]);
+    expect(f.n[95]).toBe(2);
+  });
+  it("waits for service arrival, then attaches real material only on allocation success", () => {
+    const f = worker();
+    f.n[97] = 8;
+    put(f.n, 91, 2);
+    f.n[93] = 4;
+    put32(f.pulper, 54, 12);
+    expect(stepMuleMaterialWork(f.n, f.c)).toBe(true);
+    expect(f.trace).toEqual([]);
+    put(f.n, 73, 0x200);
+    f.c.builder!.createMaterial = () => null;
+    expect(stepMuleMaterialWork(f.n, f.c)).toBe(true);
+    expect(f.n[96]! & 2).toBe(0);
+    expect(f.n[93]).toBe(4);
+    f.n[97] = 8;
+    f.c.builder!.createMaterial = () => ({ slot: 3, native: f.effect });
+    expect(stepMuleMaterialWork(f.n, f.c)).toBe(true);
+    expect([word(f.n, 91), f.n[93], f.n[96]! & 2]).toEqual([3, 5, 2]);
+  });
+  it("starts the timed work, applies carried material once, and returns to idle", () => {
+    const f = worker();
+    put(f.pulper, 43, 50);
+    put(f.n, 73, 0x200);
+    f.n[96] = 2;
+    put(f.n, 91, 3);
+    f.n[93] = 5;
+    expect(stepMuleMaterialWork(f.n, f.c)).toBe(true);
+    expect(f.n[94]).toBe(13);
+    expect(word(f.n, 108)).toBeGreaterThanOrEqual(16);
+    expect(f.rng.draws).toBe(1);
+    finishCrabBuildingWork(f.n, f.c);
+    expect(word(f.pulper, 43)).toBe(90);
+    expect(f.trace.slice(0, 2)).toEqual(["contribute:40", "consume36"]);
+    expect([f.n[94], f.n[93], f.n[96]! & 2, f.rng.draws]).toEqual([8, 0, 0, 2]);
+  });
+  it("drops carrier67 before contribution and retires its unlinked plant afterward", () => {
+    const f = worker();
+    f.n[96] = 2;
+    put(f.n, 91, 3);
+    f.n[93] = 5;
+    f.effect[69] = 67;
+    finishCrabBuildingWork(f.n, f.c);
+    expect(f.trace.slice(0, 3)).toEqual([
+      "drop67",
+      "contribute:56",
+      "retirePlant",
+    ]);
+  });
+  it("uses a stocked Pulper directly and debits no more than its current stock", () => {
+    const f = worker();
+    put32(f.pulper, 54, 7);
+    f.pulper[46] = 2;
+    finishCrabBuildingWork(f.n, f.c);
+    expect(word(f.pulper, 54)).toBe(0);
+    expect(f.trace[0]).toBe("contribute:35");
+  });
+  it("releases a completed healthy target while retaining a human task's pending code", () => {
+    const f = worker();
+    put(f.n, 73, 0x200);
+    f.n[96] = 2;
+    f.n[120] = 5;
+    expect(stepMuleMaterialWork(f.n, f.c)).toBe(false);
+    expect(f.n[95]).toBe(2);
+    expect(f.n[97]! & 2).toBe(2);
+    expect(f.trace).toEqual(["detach"]);
+  });
+});
 describe("Mule4 material work", () => {
   it("resumes the exact retained target and task after hit, including a missing binding", () => {
     const f = fixture(),
@@ -391,32 +499,36 @@ describe("Mule4 material work", () => {
   });
 });
 describe("Mule9C attachment", () => {
-  it("copies signed velocity/acceleration, offsets physical pose and relinks exactly once", () => {
-    const f = fixture();
-    put(f.n, 45, 4096);
-    put(f.n, 47, -2048);
-    put(f.n, 49, 80);
-    put(f.n, 51, 12);
-    put(f.n, 53, -13);
-    put(f.n, 55, 14);
-    put(f.n, 65, -15);
-    put32(f.n, 39, 1000);
-    const old = point(f.effect),
-      moves: number[][] = [];
-    attachMuleMaterialPose(f.effect, f.n, {
-      terrain: f.terrain,
-      frame: 0,
-      scrape: () => {
-        throw Error("unexpected");
-      },
-      relocate: (_n, a, b) => moves.push([a, b]),
-    });
-    expect(point(f.effect)).toEqual([7936, 8320]);
-    expect(word(f.effect, 39)).toBe(990);
-    expect(f.effect.slice(45, 57)).toEqual(f.n.slice(45, 57));
-    expect(word(f.effect, 65)).toBe(-15);
-    expect(moves).toEqual([[worldCell(...old), worldCell(7936, 8320)]]);
-  });
+  it.each([1, 4])(
+    "copies grounded species%d velocity/acceleration, offsets pose and relinks exactly once",
+    (species) => {
+      const f = fixture();
+      f.n[122] = species;
+      put(f.n, 45, 4096);
+      put(f.n, 47, -2048);
+      put(f.n, 49, 80);
+      put(f.n, 51, 12);
+      put(f.n, 53, -13);
+      put(f.n, 55, 14);
+      put(f.n, 65, -15);
+      put32(f.n, 39, 1000);
+      const old = point(f.effect),
+        moves: number[][] = [];
+      attachMuleMaterialPose(f.effect, f.n, {
+        terrain: f.terrain,
+        frame: 0,
+        scrape: () => {
+          throw Error("unexpected");
+        },
+        relocate: (_n, a, b) => moves.push([a, b]),
+      });
+      expect(point(f.effect)).toEqual([7936, 8320]);
+      expect(word(f.effect, 39)).toBe(990);
+      expect(f.effect.slice(45, 57)).toEqual(f.n.slice(45, 57));
+      expect(word(f.effect, 65)).toBe(-15);
+      expect(moves).toEqual([[worldCell(...old), worldCell(7936, 8320)]]);
+    },
+  );
   it("clamps to terrain and uses actual carried-slot parity for the required smoke factory", () => {
     const f = fixture();
     f.terrain.bytes[worldCell(8192, 8192) * 14 + 5] = 3;

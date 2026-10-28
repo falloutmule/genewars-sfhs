@@ -26,4 +26,9 @@ Five closed comparisons match193 cases and197,361 interpreted instructions: nume
 
 Public synthetic tests cover source order, capacity failure, storage gates, reservations, command recovery, attachment, damage/capture release and held identity. Integrated campaign tests run real plant cutting→67→68→Recycler GOOP and corpse pickup→carried pause→drop→Recycler GOOP, with JSON continuation and complete sealed replays. Nonlethal and lethal material damage also continue through ordinary callbacks after save/load. Synthetic fixtures do not admit an original mission.
 
-Pending2/state13 builder work and live-creature/specialist pickup remain separate entered guards. Other species, the virtual10=true flight attachment arm, missing original resources and unknown services remain explicit. Existing command scratch95 provenance is unchanged. Frozen mission3 segment009 is untouched; canonical acceptance remains0/24.
+Live-creature/specialist pickup and the virtual10=true flight attachment arm remain separate entered guards. Missing original resources and unknown services remain explicit. Existing command scratch95 provenance is unchanged. Frozen mission3 segment009 is untouched; current campaign acceptance is tracked in CAMPAIGN_PROGRESS.md.
+
+# Crab-component building work
+
+The shared material dispatcher also admits the distinct pending2/state13 path.
+See [Crab building work](CRAB_BUILDING_WORK.md) for source scope and validation.
