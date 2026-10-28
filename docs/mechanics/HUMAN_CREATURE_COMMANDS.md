@@ -40,7 +40,7 @@ Mode2 copies anchors and emits feedback even when its forced5B580 returns false.
 The other implemented modes call5D870 and install wrapper flags/task only on
 its success. The source's uninitialized pending95 arms still require the
 released command family's serialized byte/provenance; no zero is invented.
-Mule4 execution is admitted. Mode3's5D0E0 body and other species' runtime action
+Mule4 execution and the ground combat extension below are admitted. Mode3's5D0E0 body and other species' runtime action
 families remain explicit errors, even though their read-only classification is
 expressed.
 
@@ -48,8 +48,7 @@ expressed.
 task120/flag96 bit4 even when stunned cleanup returned false. It does not move
 the creature to its current position, change command anchors or emit feedback.
 This common Stop path has no species check. Its retained-reference cleanup also
-applies to Crabs and hybrids; the Mule4 admission gate belongs to target action
-execution above. Any required carrier services still remain explicit. Regression
+applies to Crabs and hybrids; target action admission belongs to the concrete mode family described below. Any required carrier services still remain explicit. Regression
 coverage includes Crab1, CrabMule11 and MuleCrab22 mating, feeding, idle and stun
 afterimages, including peer/plant reservation release and the preserved stun timer.
 The optional selected-panel dirty receipt is presentation only. Pending95 can
@@ -80,4 +79,10 @@ command-body comparison. The mapped instructions are interpreted as data; no
 original program runs. Private fixtures and original bytes remain uncommitted.
 This is mechanic conformance, not canonical campaign acceptance (0/24).
 
-The phone creature panel now exposes attack targets for kind1 creatures, kind3 specialists and kind4 buildings. Each option must pass the existing6A760 classifier with force and visibility bypass disabled and return mode1. Dispatch checks the target again, queues the existing target-mule packet and records it through the ordinary replay path. No combat, target eligibility, visibility, ownership or command-consumer rule changes are involved. Material controls retain their existing classifier modes.
+The phone creature panel now exposes attack targets for kind1 creatures, kind3 specialists and kind4 buildings. Each option must pass the existing6A760 classifier with force and visibility bypass disabled and return mode1. Dispatch checks the target again, queues the existing target-mule packet and records it through the ordinary replay path. The controls preserve source target eligibility, visibility and ownership checks. Material controls retain their existing classifier modes.
+
+Ground combat packet modes1/2 now admit Crab1, CrabMule11 and MuleCrab22 for creature, specialist and building targets, alongside the existing Mule4 domain. This closes the old wrapper-only Mule4 rejection; the released5B580 ground action already retains the actual species and component row. No damage, speed, target classification, visibility or resource rule changes are introduced. Other non-Mule action modes and Bird/Dinosaur/Frog command families remain explicit boundaries, and the phone attack panel uses the same admitted combat domain.
+
+Private verification under `.private/ground-creature-command-20261027/` compares144 complete81D30 packet cases against22,674 preserved instructions:345,552 numeric values plus feedback/anchor ordering and RNG agree. Cases cover all three newly admitted species, modes1/2, target kinds1/3/4, caller mismatch, missing targets, cold/stun/attached actor gates, flying-target refusal, occupancy and same-building escape. Requested speed, collision/occupancy and audio are declared matching primitive ports; no original executable is run. Public regressions cover ordinary species/target/mode combinations, excluded families/material modes, atomic rejection, and actual campaign queued input/save/replay.
+
+A save imported after a source fix retains its complete genuine afterimage. Previously rejected command replays remain tied to their original clean artifact: expanded admission can legitimately change their historical result. An explicit zero-tick source bridge must validate that original replay against its recorded runtime, preserve the exact save hash and checksum, and verify the fresh imported baseline under the new clean artifact. It must not relabel a divergent old replay as a new-runtime pass.

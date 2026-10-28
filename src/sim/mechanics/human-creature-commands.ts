@@ -205,8 +205,12 @@ export function classifyHumanCreatureTarget<W extends CreatureCommandWorld>(
   return dead(w, t, target!, c) ? 0 : 1;
 }
 
-function mule(n: Native) {
-  if (byte(n, 122) !== 4)
+export function hasHumanCreatureAttackBody(species: number): boolean {
+  return [1, 4, 11, 22].includes(species);
+}
+function actionBody(n: Native, mode: number, kind: number) {
+  if (byte(n, 122) !== 4 &&
+      !([1, 2].includes(mode) && [1, 3, 4].includes(kind) && hasHumanCreatureAttackBody(byte(n, 122))))
     throw Error(
       "Human command execution requires admitted Mule4; other species need their concrete action bodies",
     );
@@ -296,7 +300,7 @@ export function issueStagedHumanCreatureTarget<W extends CreatureCommandWorld>(
       out.disposition = "missing-target";
       return out;
     }
-    mule(n);
+    actionBody(n, input.mode, input.target!.kind);
     if (input.mode === 3)
       throw Error("Human mode3 requires concrete5D0E0 carrier command");
     const commands = c.commands(w);

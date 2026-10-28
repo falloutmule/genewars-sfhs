@@ -1,5 +1,6 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { campaignFixture } from "./fixtures/campaign";
+import { speciesFixture } from "./fixtures/creature-species";
 import {
   createCampaign,
   enterCampaign,
@@ -13,7 +14,7 @@ import { initializeMuleNative } from "../src/sim/mechanics/genepod";
 import { planBotanistPlantCreation } from "../src/sim/mechanics/botanist";
 import { insertSpatial } from "../src/sim/campaign/spatial";
 import { synchronizeCampaignLinks } from "../src/sim/campaign/entity-view";
-import { put16, i16 } from "../src/sim/campaign/bytes";
+import { put16, put32, i16 } from "../src/sim/campaign/bytes";
 import { worldCell } from "../src/sim/mechanics/terrain";
 import {
   saveCampaign,
@@ -83,6 +84,25 @@ describe("human Mule packets through campaign input/save/replay", () => {
   let initial: ReturnType<typeof fixture>;
   beforeAll(() => {
     initial = fixture();
+  });
+  it.each([1,11,22])("publishes species%i building combat and preserves pending save/replay",species=>{
+    const {w,pack}=structuredClone(initial),profile=speciesFixture();
+    Object.assign(pack.ecologyRules!,{speciesTraits:profile.rules.speciesTraits,attackChannels:profile.rules.attackChannels});
+    pack.zoneRules!.speciesComponents=profile.components;
+    w.creatureNative[0][122]=species;w.ecology.mules[0].native=w.creatureNative[0];
+    const b:(number|null)[]=Array(67).fill(0);b.fill(null,31,39);b[6]=4;b[24]=1;b[45]=11;b[49]=1;
+    put16(b as number[],15,64);put16(b as number[],7,12000);put16(b as number[],9,10000);put32(b as number[],17,2048);put16(b as number[],43,280);
+    w.buildingNative[64]=b;w.buildings.push({id:1064,slot:64,owner:1,selector:11,x:12000,y:10000,grade:0,health:280,complete:true,energy:0});
+    insertSpatial(w.spatial,w.terrain,'source:3:64',worldCell(12000,10000));synchronizeCampaignLinks(w);
+    const command:CampaignCommand={type:'target-mule',muleIndex:0,target:{kind:4,index:64},mode:1},replay=recordCampaign(w,null);
+    expect(classifyCampaignHumanMuleTarget(w,0,command.target,{force:false,bypassVisibility:false},pack)).toBe(1);
+    expect(queueCampaign(w,command).ok).toBe(true);replay.commands.push({tick:w.tick,type:'command',command});
+    const loaded=loadCampaign(saveCampaign(w,{paused:true,speed:1,accumulator:0}),w.contentHash).world;
+    stepCampaign(w,pack);stepCampaign(loaded,pack);
+    expect(w.phase,JSON.stringify(w.notices)).toBe('active');
+    expect([w.creatureNative[0][120],w.creatureNative[0][94],i16(w.creatureNative[0] as number[],85),w.creatureNative[0][87]]).toEqual([1,1,64,4]);
+    expect(checksum(loaded)).toBe(checksum(w));
+    expect(checksum(replayCampaign(sealCampaignReplay(replay,w),pack,w.contentHash))).toBe(checksum(w));
   });
   it("retains producer mode, target reservations and real Stop through input-only iterations", () => {
     const { w, pack } = structuredClone(initial),

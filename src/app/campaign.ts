@@ -40,6 +40,7 @@ import { sharedEffectSpriteBinding } from "../render/shared-effect";
 import { campaignHumanRosterView, campaignHumanRosterAssociatedTarget, campaignHumanRosterInitialPanel } from "../sim/campaign/human-roster-adapter";
 import type { HumanRosterCommand } from "../sim/mechanics/human-roster";
 import { classifyCampaignHumanMuleTarget } from "../sim/campaign/human-creature-command-adapter";
+import { hasHumanCreatureAttackBody } from "../sim/mechanics/human-creature-commands";
 import type { CreatureCommandReference } from "../sim/mechanics/creature-commands";
 const creatureLabel = (species: number) => ["Dinosaur","Crab","Frog","Bird","Mule"][species] ?? `Creature type ${species+1}`;
 const NAMES: Record<number, string> = {
@@ -651,7 +652,9 @@ export async function openCampaign(
     const selectedMule = w.ecology.mules.find(m => selected.has(2000+m.index) && m.native[6] === 1 && m.native[24] === w.selectedPlayer && m.native[94]! < 24);
     node("campaign-selection").textContent = a
       ? a.reason
-      : selectedMule ? "Tap ground to move, or choose an attack or material target."
+      : selectedMule ? hasHumanCreatureAttackBody(selectedMule.native[122]!)
+        ? "Tap ground to move, or choose an attack or material target."
+        : "Tap ground to move, or choose visible material to collect."
       : "Tap a specialist or owned creature, then a destination. Drag to pan; pinch or scroll to zoom.";
     const recruitment = node("campaign-recruitment"), recruitmentView = campaignHumanRosterView(w);
     recruitment.replaceChildren();
@@ -708,7 +711,7 @@ export async function openCampaign(
         help.textContent = unavailable ?? (target.options.length ? "The Mule travels to and collects the selected material." : "No visible plants or eligible remains are available.");
         role.append(help);
       }
-      if (selectedMule) {
+      if (selectedMule && hasHumanCreatureAttackBody(selectedMule.native[122]!)) {
         const label = document.createElement("label"), target = document.createElement("select");
         label.textContent = "Attack target "; target.setAttribute("aria-label", "Creature attack target");
         const choices: {ref:CreatureCommandReference;label:string}[] = [

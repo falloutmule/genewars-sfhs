@@ -178,6 +178,25 @@ function fixture() {
   };
 }
 describe("human6A760 target classifier", () => {
+  it.each([1,11,22])("installs ordinary ground species%i attacks through the real5B580 body",species=>{
+    for(const kind of [1,3,4] as const)for(const mode of [1,2]){
+      const f=fixture();f.n[122]=species;f.genes[species]=species===1?[1,1]:species===11?[1,4]:[4,1];
+      f.building[24]=1;
+      const out=f.issue(mode,kind);
+      expect(out.disposition).toBe('installed');expect(f.n[120]).toBe(mode);
+      expect([word(f.n,85),f.n[87]]).toEqual([1,kind]);expect(f.n[94]).toBe(1);
+      expect(f.n[97]!&128).toBe(128);expect(out.feedback?.cue).toBe(species===22?73:70);
+    }
+  });
+  it.each([0,2,3,10,14,19,24])("keeps species%i action families outside the ground combat admission",species=>{
+    const f=fixture();f.n[122]=species;const before=structuredClone(f.w);
+    expect(()=>executeHumanCreatureCommand(f.w,0,{type:'target',target:{kind:1,index:1},mode:1,callerOwner:0,selectedPlayer:0},f.command)).toThrow(/concrete action/);
+    expect(f.w).toEqual(before);
+  });
+  it("does not admit Crab material work through its attack gate",()=>{
+    const f=fixture();f.n[122]=1;
+    expect(()=>f.issue(5,2)).toThrow(/concrete action/);
+  });
   it("honors dead/visibility/self gates before requiring component profiles and is read-only", () => {
     const f = fixture(),
       before = JSON.stringify(f.w);
