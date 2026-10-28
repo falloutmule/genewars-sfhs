@@ -41,3 +41,7 @@ attachment. Missing concrete cleanup services still reject atomically. A real
 campaign carrier-to-food regression covers save continuation and sealed replay;
 36 private static-instruction cases match creature, plant and effect numeric
 afterimages and RNG across both material types, retained tasks and prior states.
+
+Death installs state24 before that cleanup, allowing material36 retirement.
+Its retained references and validation are described in
+[creature mortality order](MULE_MORTALITY_ORDER.md).

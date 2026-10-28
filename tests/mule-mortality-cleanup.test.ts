@@ -38,7 +38,10 @@ function rules(): EcologyRules {
       nutrition: 3,
       retirementDelay: 3,
     })),
-    spreadDirections: Array.from({ length: 9 }, () => [0, 0] as [number, number]),
+    spreadDirections: Array.from(
+      { length: 9 },
+      () => [0, 0] as [number, number],
+    ),
     plantResources: [],
     corpseFriction: Array(8).fill(128),
     mule: {
@@ -272,7 +275,7 @@ function step(f: Arrangement, index = 0) {
 }
 
 describe("Mule pre-death reference cleanup", () => {
-  it("admits old-age death and clears the attachment, task target and association", () => {
+  it("admits old-age death, clears attachment/target and retains source associations", () => {
     const f = fixture({ owners: [4, 4] }),
       peer = f.state.mules[1].native,
       before = f.native.slice(),
@@ -289,7 +292,11 @@ describe("Mule pre-death reference cleanup", () => {
     expect(r.events.map((e) => e.kind)).toEqual(["mule-died"]);
     expect(n[0x5e]).toBe(24);
     expect([n[0x60]! & 2, n[0x5d], n[0x57], n[0x4f], n[0x52]]).toEqual([
-      0, 0, 0, 0, 0,
+      0,
+      0,
+      0,
+      before[0x4f],
+      1,
     ]);
     //Stale indices stay opaque exactly as5CCA0/5CDB0 leave them.
     expect([word(n, 85), word(n, 88), word(n, 91), word(n, 77)]).toEqual([
@@ -301,9 +308,13 @@ describe("Mule pre-death reference cleanup", () => {
     expect(f.effect).toBe(f.effect);
     expect(f.rng).toEqual(rngBefore);
     //The numeric death body is unchanged: sentinel, counters and flags.
-    expect([word(n, 0x6c), n[0x54], word(n, 0x3f), n[0x78], word(n, 0x66)]).toEqual(
-      [32766, 0, -1, 0, 0],
-    );
+    expect([
+      word(n, 0x6c),
+      n[0x54],
+      word(n, 0x3f),
+      n[0x78],
+      word(n, 0x66),
+    ]).toEqual([32766, 0, -1, 0, 0]);
     expect(word(n, 0x49) & 0x400).toBe(0);
     expect([n[0x19], n[0x1c]]).toEqual([17, 1]);
     expect(before[0x5e]).toBe(8);
@@ -336,7 +347,7 @@ describe("Mule pre-death reference cleanup", () => {
     expect(f.releases()).toBe(1);
     expect(f.effect[69]).toBe(67);
   });
-  it("releases the kind1 reservation of a dying feeder through5CCEF/5CD14 once", () => {
+  it("retains the former feeder's reservation because death cleanup sees state24", () => {
     const f = fixture({ owners: [4, 4] });
     const corpseBefore = f.state.mules[1].native,
       dyingBefore = f.state.mules[0].native;
@@ -356,11 +367,14 @@ describe("Mule pre-death reference cleanup", () => {
     expect(r.reason, JSON.stringify(r)).toBeNull();
     expect(dying[0x5e]).toBe(24);
     expect([dying[0x5d], dying[0x57], dying[0x4f], dying[0x52]]).toEqual([
-      0, 0, 0, 0,
+      0,
+      0,
+      dyingBefore[0x4f],
+      dyingBefore[0x52],
     ]);
     expect(f.releases()).toBe(1);
-    //The living target's reservation is the only record the dying Mule mutates.
-    expect([corpse[0x60]! & 1, corpse[0x5e]]).toEqual([0, 25]);
+    //5CDC0 has already replaced state5, so5CCEF/5CD14 is not entered.
+    expect([corpse[0x60]! & 1, corpse[0x5e]]).toEqual([1, 25]);
     expect(f.effect[69]).toBe(68);
   });
   it("lets several Mules die in one update with exactly one release each", () => {
@@ -423,7 +437,7 @@ describe("Mule pre-death reference cleanup", () => {
     expect(f.releases()).toBe(1);
     expect(f.state.mules[0].native[0x5e]).toBe(27);
   });
-  it("nulls the associated4D and association50 kinds through the exported family", () => {
+  it("retains the associated4D and association50 through the exported cleanup", () => {
     const f = fixture({ owners: [4, 4] }),
       n = f.state.mules[0].native;
     put(n, 77, 5);
@@ -431,8 +445,8 @@ describe("Mule pre-death reference cleanup", () => {
     put(n, 80, 1);
     n[82] = 1;
     releaseMuleMortalityReferences(f.state, f.state.mules[0], f.context);
-    //Kinds are null; the source indices stay opaque.
-    expect([n[79], n[82], n[87], n[93]]).toEqual([0, 0, 0, 0]);
+    //5CC60 resets its action reference but does not write either association.
+    expect([n[79], n[82], n[87], n[93]]).toEqual([4, 1, 0, 0]);
     expect([word(n, 77), word(n, 80), word(n, 85)]).toEqual([5, 1, 5]);
     expect(f.releases()).toBe(1);
     expect(n[0x5e]).toBe(8);
@@ -446,9 +460,9 @@ describe("Mule pre-death reference cleanup", () => {
     expect(f.state.mules[0].native[0x5e]).toBe(24);
     expect(r.events.some((e) => e.kind === "mule-born")).toBe(false);
     expect(priors).toHaveLength(300);
-    expect(priors.every((p, i) => p.every((v, at) => v === snapshot[i][at]))).toBe(
-      true,
-    );
+    expect(
+      priors.every((p, i) => p.every((v, at) => v === snapshot[i][at])),
+    ).toBe(true);
     expect(f.releases()).toBe(1);
   });
 });
@@ -494,40 +508,52 @@ describe("Mule mortality pool and preservation", () => {
   });
 });
 
-
 describe("source deferred health admission", () => {
   function deferred(frame: number, reserve: number) {
     const f = fixture();
-    f.context.frame=frame;
-    put(f.native,102,4096);put(f.native,104,reserve);put(f.native,106,-7);
-    put(f.native,63,-1);put(f.native,73,0x220);
-    put(f.native,49,0);put(f.native,108,10);
-    f.native[21]=0x80;f.native[22]=2;f.native[96]=0;f.native[97]=0;
-    f.native[87]=f.native[93]=0;
+    f.context.frame = frame;
+    put(f.native, 102, 4096);
+    put(f.native, 104, reserve);
+    put(f.native, 106, -7);
+    put(f.native, 63, -1);
+    put(f.native, 73, 0x220);
+    put(f.native, 49, 0);
+    put(f.native, 108, 10);
+    f.native[21] = 0x80;
+    f.native[22] = 2;
+    f.native[96] = 0;
+    f.native[97] = 0;
+    f.native[87] = f.native[93] = 0;
     return f;
   }
   it("keeps reentrant negative health until its starvation phase", () => {
-    const f=deferred(3,0),r=step(f);
+    const f = deferred(3, 0),
+      r = step(f);
     expect(r.reason).toBeNull();
     expect(f.state.mules[0].native[94]).toBe(8);
-    expect(word(f.state.mules[0].native,106)).toBe(-7);
+    expect(word(f.state.mules[0].native, 106)).toBe(-7);
   });
   it("uses the actual starvation phase to enter mortality", () => {
-    const f=deferred(33,0),r=step(f);
+    const f = deferred(33, 0),
+      r = step(f);
     expect(r.reason).toBeNull();
     expect(f.state.mules[0].native[94]).toBeGreaterThanOrEqual(24);
-    expect(word(f.state.mules[0].native,106)).toBe(-8);
+    expect(word(f.state.mules[0].native, 106)).toBe(-8);
   });
   it("permits phase-gated recovery from negative health", () => {
-    const f=deferred(21,3),r=step(f);
+    const f = deferred(21, 3),
+      r = step(f);
     expect(r.reason).toBeNull();
-    expect(word(f.state.mules[0].native,106)).toBe(-5);
-    expect(word(f.state.mules[0].native,104)).toBe(0);
+    expect(word(f.state.mules[0].native, 106)).toBe(-5);
+    expect(word(f.state.mules[0].native, 104)).toBe(0);
   });
   it("still rejects other negative-speed records atomically", () => {
-    const f=deferred(3,0);put(f.native,63,-2);
-    const before=structuredClone(f.state),rng={...f.rng};
+    const f = deferred(3, 0);
+    put(f.native, 63, -2);
+    const before = structuredClone(f.state),
+      rng = { ...f.rng };
     expect(step(f).committed).toBe(false);
-    expect(f.state).toEqual(before);expect(f.rng).toEqual(rng);
+    expect(f.state).toEqual(before);
+    expect(f.rng).toEqual(rng);
   });
 });

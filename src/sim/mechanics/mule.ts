@@ -1355,20 +1355,11 @@ export function applyNeutralMuleSelfWaterDamage(mule: EcologyMule, c?: MuleConte
   put(n, 0x6a, w(n, 0x6a) - damage);
   return damage;
 }
-/**Pre-death reference cleanup shared by every5CDB0 entry (old age5E640,
- * starvation5E193, cold15 and selector4 combat). Source5CDB0 is called as
- * reason4/BL0, i.e. only with null task/attachment references, so the same
- * family order precedes the numeric death:
- *  1.5CC60 through the callback-owned service:5C920 attachment detach through
- *    its actual carrier (clears60bit2/5D),5CCEF/5CD14 release of the kind1
- *    target's reservation (peer60bit0), the kind2 plant release and the5CCA0
- *    local reset.5CC60's own state18 stun gate and timer are preserved.
- *  2.5CCA0/5CDB0's null-reference convention for the remaining task envelope:
- *    the associated4D and association50 kinds are nulled while their indices
- *    stay opaque, exactly as installTarget and5CCA0 already do.
- * A surviving attachment bit is the one shape the family cannot admit:5CDB0's
- * D71A mask preserves60bit2, so the caller transaction must reject and roll
- * back instead of entering mortality with a live attachment. */
+/**5CC60/5C920 cleanup within5CDB0. The death caller installs state24 first,
+ * so a material36 carrier is dead when virtual68 is consulted. The former
+ * action's plant/peer reservations and association79/82 are retained by this
+ * source entry; they are not fabricated null references. A missing or failed
+ * concrete attachment cleanup still rejects the enclosing transaction. */
 export function releaseMuleMortalityReferences(
   state: EcologyState,
   mule: EcologyMule,
@@ -1376,8 +1367,6 @@ export function releaseMuleMortalityReferences(
 ) {
   const n = mule.native;
   if (n[0x5e] !== 18) releaseAction(state, mule, c);
-  n[0x4f] = 0;
-  n[0x52] = 0;
   if (n[0x60]! & 2)
     throw new Error(
       "Mule mortality attachment cleanup left the source attachment bit set",
@@ -1390,8 +1379,9 @@ function enterDeath(
   events: MuleEvent[],
 ) {
   const n = mule.native;
-  releaseMuleMortalityReferences(state, mule, c);
+  //5CDC0 precedes5CDC4: cleanup must see a dead carrier, not its old action.
   n[0x5e] = 24;
+  releaseMuleMortalityReferences(state, mule, c);
   resetAction(n);
   put(n, 0x15, w(n, 0x15) & 0xf7df & 0x3fdf);
   put(n, 0x6c, 32767);

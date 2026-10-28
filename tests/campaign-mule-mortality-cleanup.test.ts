@@ -26,8 +26,11 @@ import { checksum } from "../src/sim/checksum";
 /**Synthetic carrier67 attachment and an aging owned Mule in the ordinary
  * campaign host. No mission acceptance is claimed and nothing original is
  * imported; only the public synthetic pack is used. */
-function fixture(options: { deaths?: number; older?: boolean } = {}) {
+function fixture(
+  options: { deaths?: number; older?: boolean; carrier?: 36 | 67 } = {},
+) {
   const deaths = options.deaths ?? 1,
+    carrierCode = options.carrier ?? 67,
     sha = "0".repeat(64),
     pack = campaignFixture();
   pack.assets.BONES = structuredClone(pack.assets.MULE);
@@ -73,6 +76,7 @@ function fixture(options: { deaths?: number; older?: boolean } = {}) {
   while (pack.assets.EFF.animations!.length < 71)
     pack.assets.EFF.animations!.push({ first: 0, last: 1, rawTrailingWord: 2 });
   for (const [code, count] of [
+    [36, 3],
     [67, 1],
     [68, 1],
   ] as const) {
@@ -93,12 +97,12 @@ function fixture(options: { deaths?: number; older?: boolean } = {}) {
     schemaVersion: 1,
     descriptors: Array.from({ length: 71 }, (_, code) => ({
       code,
-      retirementMode: code === 67 || code === 68 ? 5 : 0,
-      gravity: code === 67 || code === 68,
+      retirementMode: code === 36 ? 6 : code === 67 || code === 68 ? 5 : 0,
+      gravity: code === 36 || code === 67 || code === 68,
       priority: 1,
       childCode: null,
-      movable: code === 67 || code === 68,
-      waterResponse: code === 67 || code === 68,
+      movable: code === 36 || code === 67 || code === 68,
+      waterResponse: code === 36 || code === 67 || code === 68,
     })),
     provenance: { executableSha256: sha, originalExecution: false },
   };
@@ -145,40 +149,48 @@ function fixture(options: { deaths?: number; older?: boolean } = {}) {
     const effect: (number | null)[] = Array(81).fill(0);
     effect.fill(null, 31, 39);
     effect[6] = 5;
-    effect[69] = 67;
+    effect[69] = carrierCode;
+    if (carrierCode === 36) effect[25] = 36;
     effect[22] = 1;
-    put(effect, 21, 0x1a0);
+    put(effect, 21, carrierCode === 36 ? 0 : 0x1a0);
     put(effect, 63, -1);
-    const plantSlot = w.ecology.plants.findIndex((p) => !p.active),
-      carried = w.ecology.plants[plantSlot],
-      plant = carried.native;
-    plant[6] = 2;
-    plant[24] = 4;
-    plant[25] = 2;
-    plant[43] = 0;
-    put(plant, 15, plantSlot);
-    put(plant, 7, at[0] + 256);
-    put(plant, 9, at[1]);
-    put(plant, 21, 0);
-    put(plant, 44, 10);
-    plant[46] = 0;
-    put32(plant as number[], 17, groundHeight(w.terrain, at[0] + 256, at[1]));
-    Object.assign(carried, {
-      active: true,
-      owner: 4,
-      position: [at[0] + 256, at[1]],
-      selector: 0,
-      growth: 10,
-      flags: 0,
-      plantFlags: 0,
-      retirement: 0,
-      animation: 2,
-    });
-    w.ecology.plantCount++;
-    put16(w.missionPrefix, 0x3552, w.ecology.plantCount);
     put(effect, 15, carrierSlot);
-    put(effect, 71, plantSlot);
-    effect[73] = 2;
+    if (carrierCode === 67) {
+      const plantSlot = w.ecology.plants.findIndex((p) => !p.active),
+        carried = w.ecology.plants[plantSlot],
+        plant = carried.native;
+      plant[6] = 2;
+      plant[24] = 4;
+      plant[25] = 2;
+      plant[43] = 0;
+      put(plant, 15, plantSlot);
+      put(plant, 7, at[0] + 256);
+      put(plant, 9, at[1]);
+      put(plant, 21, 0);
+      put(plant, 44, 10);
+      plant[46] = 0;
+      put32(plant as number[], 17, groundHeight(w.terrain, at[0] + 256, at[1]));
+      Object.assign(carried, {
+        active: true,
+        owner: 4,
+        position: [at[0] + 256, at[1]],
+        selector: 0,
+        growth: 10,
+        flags: 0,
+        plantFlags: 0,
+        retirement: 0,
+        animation: 2,
+      });
+      w.ecology.plantCount++;
+      put16(w.missionPrefix, 0x3552, w.ecology.plantCount);
+      put(effect, 71, plantSlot);
+      effect[73] = 2;
+    } else {
+      //A real retained material whose original Pulper reference was cleared.
+      put(effect, 71, 5);
+      effect[73] = 0;
+      effect[76] = 8;
+    }
     put(effect, 7, at[0]);
     put(effect, 9, at[1]);
     w.powerEffects.slots[carrierSlot].nativePrior = effect;
@@ -198,6 +210,48 @@ function fixture(options: { deaths?: number; older?: boolean } = {}) {
 }
 
 describe("campaign Mule mortality reference cleanup", () => {
+  it("marks an aging material36 carrier dead before real shared retirement, save and replay", () => {
+    const { w, pack, carrierSlots } = fixture({ carrier: 36 }),
+      slot = carrierSlots[0],
+      replay = recordCampaign(w, null),
+      resumed = loadCampaign(
+        saveCampaign(w, { paused: true, speed: 1, accumulator: 0 }),
+        w.contentHash,
+      ).world;
+    for (let tick = 0; tick < 4 && w.creatureNative[0][94]! < 24; tick++) {
+      stepCampaign(w, pack);
+      stepCampaign(resumed, pack);
+    }
+    expect(w.phase, JSON.stringify(w.notices.slice(-4))).toBe("active");
+    expect(w.creatureNative[0][94]).toBe(24);
+    expect(w.creatureNative[0][96]! & 2).toBe(0);
+    expect(w.creatureNative[0][93]).toBe(0);
+    expect(w.powerEffects.slots[slot].occupied).toBe(false);
+    expect(w.powerEffects.slots[slot].nativePrior![6]).toBe(0);
+    expect(w.spatial.nodes[`source:4:${slot}`]).toBeUndefined();
+    expect(() => validateSpatial(w.spatial)).not.toThrow();
+    expect(checksum(resumed)).toBe(checksum(w));
+    expect(
+      checksum(
+        replayCampaign(sealCampaignReplay(replay, w), pack, w.contentHash),
+      ),
+    ).toBe(checksum(w));
+  });
+  it("rolls back death state and material36 retirement when death animation fails late", () => {
+    const { w, pack, carrierSlots } = fixture({ carrier: 36 }),
+      slot = carrierSlots[0];
+    pack.assets.MULE.animations = pack.assets.MULE.animations!.slice(0, 17);
+    for (let tick = 0; tick < 4 && w.phase === "active"; tick++)
+      stepCampaign(w, pack);
+    expect(w.phase).toBe("blocked");
+    expect(w.creatureNative[0][94]).toBe(8);
+    expect(w.creatureNative[0][96]! & 2).toBe(2);
+    expect(w.creatureNative[0][93]).toBe(5);
+    expect(w.powerEffects.slots[slot].occupied).toBe(true);
+    expect(w.powerEffects.slots[slot].nativePrior![6]).toBe(5);
+    expect(w.spatial.nodes[`source:4:${slot}`]).toBeDefined();
+    expect(() => validateSpatial(w.spatial)).not.toThrow();
+  });
   it("lets the carrying Mule die, saves either side, reloads and replays across the cleanup", () => {
     const { w, pack, carriers, carrierSlots } = fixture(),
       replay = recordCampaign(w, null);
@@ -220,7 +274,9 @@ describe("campaign Mule mortality reference cleanup", () => {
     expect(carrier[21]! & 32).toBe(0);
     expect(carriers[0][69]).toBe(67);
     expect(w.creatureNative).toHaveLength(300);
-    expect(w.notices.filter((notice) => notice.severity === "error")).toEqual([]);
+    expect(w.notices.filter((notice) => notice.severity === "error")).toEqual(
+      [],
+    );
     //The corpse keeps its spatial membership until716F0 retirement.
     expect(w.spatial.nodes["source:0:0"]).toBeDefined();
     expect(() => validateSpatial(w.spatial)).not.toThrow();
@@ -234,9 +290,11 @@ describe("campaign Mule mortality reference cleanup", () => {
       stepCampaign(resumed, pack);
     }
     expect(checksum(resumed)).toBe(checksum(w));
-    expect(checksum(replayCampaign(sealCampaignReplay(replay, w), pack, w.contentHash))).toBe(
-      checksum(w),
-    );
+    expect(
+      checksum(
+        replayCampaign(sealCampaignReplay(replay, w), pack, w.contentHash),
+      ),
+    ).toBe(checksum(w));
   }, 60000);
   it("kills two Mules in one update and detaches both carriers", () => {
     const { w, pack, carriers, carrierSlots } = fixture({ deaths: 2 });
@@ -252,7 +310,9 @@ describe("campaign Mule mortality reference cleanup", () => {
       w.ecology.mules.map((mule) => mule.native[0x5e]),
       JSON.stringify(w.notices.slice(-4)),
     ).toEqual([24, 24]);
-    expect(w.ecology.mules.map((mule) => mule.native[0x60]! & 2)).toEqual([0, 0]);
+    expect(w.ecology.mules.map((mule) => mule.native[0x60]! & 2)).toEqual([
+      0, 0,
+    ]);
     expect(
       carrierSlots.map(
         (carrierSlot) => w.powerEffects.slots[carrierSlot].nativePrior![69],
@@ -260,9 +320,13 @@ describe("campaign Mule mortality reference cleanup", () => {
     ).toEqual([68, 68]);
     expect(carriers.map((effect) => effect[69])).toEqual([67, 67]);
     expect(w.creatureNative.map((native) => native[6])).toEqual([
-      1, 1, ...Array(298).fill(0),
+      1,
+      1,
+      ...Array(298).fill(0),
     ]);
-    expect(w.notices.filter((notice) => notice.severity === "error")).toEqual([]);
+    expect(w.notices.filter((notice) => notice.severity === "error")).toEqual(
+      [],
+    );
     expect(() => validateSpatial(w.spatial)).not.toThrow();
   }, 60000);
   it("accepts an older imported pack without the newer creature-command profile", () => {
