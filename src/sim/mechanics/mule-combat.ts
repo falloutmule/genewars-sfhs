@@ -478,8 +478,6 @@ export function acquireMuleHostile(
   rng?: GeneRng,
 ) {
   assertMule(self);
-  if (self.native[122] === 2)
-    throw Error("Frog hostile acquisition requires its original ability services");
   const primaryBird = [3, 14, 19].includes(byte(self.native, 122));
   const t = targetView(target);
   p.release(self);
@@ -653,8 +651,6 @@ export function contactMuleHostile(
   events: MuleEvent[],
 ): boolean {
   assertMule(self);
-  if (self.native[122] === 2)
-    throw Error("Frog hostile contact requires its original ability services");
   const t = targetView(target);
   traits(c);
   const n = self.native,
@@ -768,7 +764,7 @@ export function chooseMuleHostile(
   const n = self.native;
   if (n[94] === 0 || byte(n, 96) & 16) return false;
   const q = captured ?? queryMuleCombat(state, self, rng, c);
-  if (!q.enemyCount && !(p.occupied(self) && virtualHeight(n) <= 1280))
+  if (!q.enemyCount && !(neighborhoodHasEffect11(state, self, c) && virtualHeight(n) <= 1280))
     return false;
   consumeMuleCombatQuery(rng, q);
   return resolveMuleHostileQuery(state, self, rng, c, p, events, q);
@@ -786,7 +782,7 @@ export function resolveMuleHostileQuery(
 ): boolean {
   const n = self.native;
   if (n[94] === 0 || byte(n, 96) & 16) return false;
-  if (p.occupied(self) && virtualHeight(n) <= 1280) {
+  if (neighborhoodHasEffect11(state, self, c) && virtualHeight(n) <= 1280) {
     p.release(self);
     escapeMuleNeighborhood(self, rng, c, p.speed(self));
     return true;
@@ -823,6 +819,24 @@ export function resolveMuleHostileQuery(
   if (!target) throw new Error("Combat query's live target disappeared");
   acquireMuleHostile(self, target, p, events, c, rng);
   return true;
+}
+/**8B7D0 is the current cell's code11 effect query, not virtual8C's
+ * last-living-creature occupancy predicate. The latter still owns ordinary
+ * movement/arrival and failed acquisition escapes. */
+function neighborhoodHasEffect11(
+  state: EcologyState,
+  self: EcologyMule,
+  c: MuleCombatContext,
+): boolean {
+  const cell = worldCell(...point(self.native)),
+    ids = c.cellOrder
+      ? c.cellOrder(cell).filter(id => id.startsWith("source:4:"))
+      : state.otherEntities.filter(e => e.kind === 5 && worldCell(...e.position) === cell).map(e => e.id);
+  return ids.some(id => {
+    if (!c.effectCode)
+      throw Error("Mule neighborhood escape requires actual shared effect selectors");
+    return c.effectCode(id) === 11;
+  });
 }
 /** The neighborhood's occupied-cell branch uses73E00(point,384): a circle
  * with ONE draw, distinct from the ordinary73C20 random-radius idle escape. */
@@ -1131,7 +1145,8 @@ export function completeMuleAttack(
       else put(n, 108, 0);
     }
   }
-  if (n[24] === 4) {
+  //607F7 is reached by successful kill aftermath, not surviving hits or misses.
+  if (killed && n[24] === 4) {
     n.splice(114, 4, ...n.slice(7, 11));
     n[96] = byte(n, 96) | 8;
   }

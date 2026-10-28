@@ -62,8 +62,8 @@ enemy-sector pressure and friendly-sector contribution. A disposition roll
 above its trait bypasses the confidence draw and pursues; it does not cancel
 the encounter. Low confidence executes the real friend/no-friend escape draw
 sequences and707A0's additional direction draw. That search tests16 headings
-using74CC0's terrain-mask/plant-weight predicate. The occupied-cell neighborhood
-branch instead uses73E00's one-draw circle of radius384. Ordinary idle escape
+using74CC0's terrain-mask/plant-weight predicate. The neighborhood's8B7D0
+code11 effect branch instead uses73E00's one-draw circle of radius384. Ordinary idle escape
 continues to use73C20's two draws. These paths are not interchangeable.
 
 ## Contact, animation and damage
@@ -229,3 +229,21 @@ all nonpointer/nonlink bytes and RNG match. Only audio playback and shared
 effect allocation are declared host ports. A separate250-tick diagnostic from
 the genuine Zed save crosses the former refusal with matching save/reload and
 replay checksums; diagnostic worlds are never campaign continuation parents.
+
+## Ordinary Frog combat and shared query corrections
+
+Pure Frog2 ordinary acquisition/contact, hit reaction and completed melee use
+the shared numeric paths and actual Frog traits/animations. Advanced spit
+eligibility remains explicit rather than silently becoming ordinary melee.
+
+The neighborhood branch calls8B7D0 for a code11 effect in the current cell.
+It does not call virtual8C to test whether another living creature occupies
+that cell. Movement, arrival and failed acquisition retain virtual8C. This
+distinction prevents a close target from incorrectly forcing a combat escape.
+The neutral anchor write at607F7 follows successful kill aftermath; surviving
+hits and misses preserve the retained anchor.
+
+Twenty-four complete static-listing callbacks match both participating native
+records and RNG (117,634 interpreted instructions). Public regressions cover
+the effect/occupancy distinction, retained nonlethal/miss anchors, Frog contact,
+reaction/attack save/replay, and neutral/inherited/research spit boundaries.

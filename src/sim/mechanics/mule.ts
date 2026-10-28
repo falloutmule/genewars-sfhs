@@ -3199,8 +3199,23 @@ function stepMule(
       c.materialRuntime = (m) => c.material!(staged, terrain, random, m);
     if (n[6] === 0) return { committed: true, reason: null, events: [] };
     const dead = n[0x5e]! >= 24;
-    if (n[122] === 2 && ((n[94] === 1 && n[97]! & 32) || [17,20,21].includes(n[94]!)))
-      throw Error("Frog hostile/spit callback requires its original ability services");
+    if (n[122] === 2) {
+      //5D360's advanced approach is distinct from ordinary5B580/5C840 melee.
+      //A neutral Frog qualifies only above90; human owners use the actual
+      //research byte or inherited ability bit. Never silently skip its spit.
+      if (n[94] === 1) {
+        let advanced = n[24] === 4 ? n[118]! > 90 : !!(n[97]! & 4);
+        if (n[24] !== 4 && !advanced) {
+          const player = c.owned?.players?.[n[24]!];
+          if (!player || player.length !== 1805)
+            throw Error("Frog approach requires its actual player research record");
+          advanced = player[0x6c7 + n[122]!]! >= 1;
+        }
+        if (advanced || n[97]! & 32)
+          throw Error("Frog spit approach requires its original ability services");
+      } else if (n[94] === 17)
+        throw Error("Frog special attack requires its original ability services");
+    }
     if (
       n[6] !== 1 ||
       (owned ? n[24]! >= 4 : n[24] !== 4) ||

@@ -112,9 +112,23 @@ describe("ordinary pure Frog campaign transaction", () => {
     expect(w.creatureNative[0][94]).toBe(3);
     expect(w.creatureNative[0][97]! & 32).toBe(32);
   });
-  it("retains an explicit hostile/spit boundary and rolls back native/RNG/spatial roots", () => {
+  it.each([20, 21])("preserves ordinary Frog state%i through host save and replay", state => {
     const { w, pack } = fixture(4);
-    w.creatureNative[0][94] = 21;
+    w.creatureNative[0][118] = 70;
+    w.creatureNative[0][94] = state;
+    const replay = recordCampaign(w, null);
+    for (let i=0;i<16;i++) stepCampaign(w,pack);
+    expect(w.phase, JSON.stringify(w.notices.slice(-3))).toBe("active");
+    const restored = loadCampaign(saveCampaign(w,{paused:true,speed:1,accumulator:0}),w.contentHash).world;
+    for(let i=0;i<16;i++){stepCampaign(w,pack);stepCampaign(restored,pack);}
+    expect(w.phase).toBe("active");
+    expect(checksum(restored)).toBe(checksum(w));
+    expect(checksum(replayCampaign(sealCampaignReplay(replay,w),pack,w.contentHash))).toBe(checksum(w));
+  });
+  it("retains an explicit entered spit boundary and rolls back native/RNG/spatial roots", () => {
+    const { w, pack } = fixture(4);
+    w.creatureNative[0][94] = 1;
+    w.creatureNative[0][97] = 32;
     const before = checksum({
       n: w.creatureNative[0],
       rng: w.rng,
@@ -123,7 +137,7 @@ describe("ordinary pure Frog campaign transaction", () => {
     });
     stepCampaign(w, pack);
     expect(w.phase).toBe("blocked");
-    expect(w.notices.at(-1)?.text).toMatch(/Frog hostile\/spit/);
+    expect(w.notices.at(-1)?.text).toMatch(/Frog spit approach/);
     expect(
       checksum({
         n: w.creatureNative[0],
@@ -132,5 +146,19 @@ describe("ordinary pure Frog campaign transaction", () => {
         terrain: w.terrain,
       }),
     ).toBe(before);
+  });
+  it.each([90,91])("uses the original neutral spit-quality boundary at %i", quality => {
+    const { w,pack }=fixture(4);w.creatureNative[0][94]=1;w.creatureNative[0][118]=quality;
+    stepCampaign(w,pack);
+    expect(w.phase).toBe(quality===90?"active":"blocked");
+    if(quality===91)expect(w.notices.at(-1)?.text).toMatch(/Frog spit approach/);
+  });
+  it.each(["inherited","research"])("keeps the owned Frog %s spit gate explicit", admission => {
+    const { w,pack }=fixture(0);w.creatureNative[0][94]=1;
+    if(admission==="inherited")w.creatureNative[0][97]=4;
+    else w.players[0].raw[0x6c7+2]=1;
+    stepCampaign(w,pack);
+    expect(w.phase).toBe("blocked");
+    expect(w.notices.at(-1)?.text).toMatch(/Frog spit approach/);
   });
 });

@@ -235,6 +235,17 @@ describe("primary Bird hostile flight", () => {
   });
 });
 describe("source Mule hostile query/contact", () => {
+  it("uses shared Frog acquisition/contact without inventing flight or spit", () => {
+    const f=fixture(); f.self.native[122]=2; f.self.native[118]=70;
+    const components=speciesFixture().components; f.c.speciesComponents=components;
+    expect(acquireMuleHostile(f.self,f.target,f.ports,f.events,f.c,f.rng)).toBe(true);
+    expect(f.self.native[94]).toBe(1);
+    expect(word(f.self.native,73)&0x400).toBe(0);
+    expect(f.self.native[97]!&32).toBe(0);
+    put(f.self.native,57,512);
+    expect(contactMuleHostile(f.self,f.target,f.rng,f.c,f.events)).toBe(true);
+    expect(f.self.native[94]).toBe(21);
+  });
   it("previews the shared two query draws, counts allied sectors and keeps first equal-weight head", () => {
     const f = fixture(),
       peer = record(2, 4, 16512, 16400),
@@ -352,10 +363,13 @@ describe("source Mule hostile query/contact", () => {
     expect(f.rng.draws - draws).toBe(1);
     expect(word(f.self.native, 73) & 0x140).toBe(0x140);
   });
-  it("uses the one-draw384 circle for a neighborhood occupied-cell escape", () => {
+  it("uses the one-draw384 circle for a neighborhood code11 effect escape", () => {
     const f = fixture();
     f.self.native[94] = 20;
     f.ports.occupied = () => true;
+    const order = f.c.cellOrder!;
+    f.c.cellOrder = cell => [...order(cell), ...(cell===worldCell(16384,16384)?["source:4:0"]:[])];
+    f.c.effectCode = () => 11;
     f.rng.seed = 0;
     expect(
       chooseMuleHostile(f.state, f.self, f.rng, f.c, f.ports, f.events),
@@ -367,6 +381,21 @@ describe("source Mule hostile query/contact", () => {
     expect(f.self.native[94]).toBe(20);
     expect(word(f.self.native, 63)).toBe(600);
     expect(f.self.native[22]! & 0xc0).toBe(0);
+  });
+  it("does not treat a neighboring creature as the neighborhood effect predicate", () => {
+    const f=fixture(); f.self.native[94]=20; f.rng.seed=0;
+    f.ports.occupied=()=>{throw Error("virtual8C does not own this query");};
+    expect(chooseMuleHostile(f.state,f.self,f.rng,f.c,f.ports,f.events)).toBe(true);
+    expect(f.self.native[94]).toBe(1);
+    expect(word(f.self.native,85)).toBe(f.target.index);
+  });
+  it.each([64,384])("preserves a neutral attacker's anchor after a nonlethal or missed attack at distance%i", distance => {
+    const f=fixture(); f.self.native[24]=4; f.target.native[24]=0; f.target.native[122]=1;
+    f.self.native[94]=21;put(f.self.native,85,1);f.self.native[87]=1;
+    put(f.self.native,114,111);put(f.self.native,116,222);
+    put(f.target.native,7,16384+distance);f.c.effect=()=>{};
+    completeMuleAttack(f.state,f.self,f.rng,f.c,f.ports,f.events);
+    expect([word(f.self.native,114),word(f.self.native,116)]).toEqual([111,222]);
   });
 });
 

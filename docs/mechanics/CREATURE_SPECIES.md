@@ -6,7 +6,7 @@ The shared data layer reads the already imported, hash-admitted 25 rows at `1045
 
 Source `5A1C0` binds the actual loaded creature animation, falls back to its primary component when a hybrid resource is absent, and uses BONES from state26. Resource table `104494` confirms all25 identities already present in the private pack. The renderer draws each ANB component separately, retaining its own packed4 checkerboard origin, flips, clipping and opacity. It does not flatten a multi-component Crab into one parity origin.
 
-The shared callback domain covers the Crab/Bird/Mule component family (selectors1,3,4,10,11,14,19,22,24) and ordinary pure Frog2 movement/lifecycle. Primary Bird takeoff and ordinary controlled flight use the original shared motion, physics and animation paths. Primary Bird hostile acquisition, dive impact and vertical pullup follow [BIRD_HOSTILE_FLIGHT.md](BIRD_HOSTILE_FLIGHT.md). Dinosaur callbacks, Frog hybrids, Frog hostile/spit abilities and live creature/specialist material carrying remain explicit entered boundaries. Scalar tests alone do not admit those behaviors.
+The shared callback domain covers the Crab/Bird/Mule component family (selectors1,3,4,10,11,14,19,22,24) and ordinary pure Frog2 callbacks, including shared ground combat. Primary Bird takeoff and ordinary controlled flight use the original shared motion, physics and animation paths. Primary Bird hostile acquisition, dive impact and vertical pullup follow [BIRD_HOSTILE_FLIGHT.md](BIRD_HOSTILE_FLIGHT.md). Dinosaur callbacks, Frog hybrids, advanced Frog spit and live creature/specialist material carrying remain explicit entered boundaries. Scalar tests alone do not admit those behaviors.
 
 Controlled flight is native73bit0400; native21bit20 separately suppresses gravity. Source6FB60 retains the common target refresh, then uses its flight altitude/arrival arm. Source6F980 permits airborne yaw for either Bird component and turns controlled pitch toward the retained dword69 target. Flight point distance uses terrain heights while pitch uses physical height, with the source avoided-terrain aim offset. The arrival call passes BL=1 to6E9E0: it snaps XY and terrain height while retaining physical height for ordinary landing physics. Source5E640 retains the flight loop and climb/descent playback cadence. Flight occupancy returns before ground obstacle queries. Ground contact also retains5B400's primary-Crab terrain-penalty exception.
 
@@ -37,11 +37,13 @@ least half+1. Existing hold, delay and counter bytes survive selection. The
 carried arm precedes that height test; ordinary ground and flight retain their
 existing branches. Animation playback still occurs exactly once.
 
-This bounded admission does not substitute melee for Frog hostile behavior.
-Frog hostile acquisition/contact and entered spit/attack states fail explicitly
-with the enclosing native/terrain/player/RNG transaction rolled back. The
-original5AAC0/34 effect ability family and Frog hybrid callbacks remain separate
-work. Human Frog attack controls are not exposed.
+Pure Frogs now use the original shared5B580 acquisition,6EDA0/5C840 contact,
+reaction20 and completed melee21 paths.5D360 separately gates advanced spit:
+neutral quality must exceed90; human owners need the inherited ability bit or
+actual species research byte. Entered spit and advanced approach still fail
+explicitly with the enclosing transaction rolled back. Their5AAC0/34 effect
+ability family and Frog hybrid callbacks remain separate work. Human Frog
+attack controls are not exposed.
 
 Private static-listing comparisons match48 complete timed5ED20 callbacks
 (61,830 instructions) across states0/8, movement, relative height and both
@@ -57,3 +59,11 @@ is ordinary mating readiness in state3; it does not require an ability service
 there. A focused host regression and108 additional mapped animation cases
 retain that contextual distinction. The stopped Zed404 world is excluded from
 continuation; its earlier pending-order checkpoint remains the parent.
+
+The ordinary combat extension matches24 complete mapped callbacks,117,634
+instructions, both participants' nonpointer/nonlink native bytes and RNG.
+Cases cover near/far pursuit, ground/air, reaction, contact and completed
+attacks with actual FROG metadata. These comparisons also correct the shared
+neighborhood code11 predicate and kill-only neutral anchor update described
+in [MULE_COMBAT.md](MULE_COMBAT.md). Evidence is private under
+`.private/frog-combat-20261028/`; no original executable is run.
