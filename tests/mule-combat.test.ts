@@ -2,6 +2,8 @@ import {speciesFixture} from "./fixtures/creature-species";
 import { describe, expect, it } from "vitest";
 import {
   acquireMuleHostile,
+  beginMuleBirdDive,
+  stepMuleBirdDive,
   chooseMuleHostile,
   escapeMuleNeighborhood,
   completeMuleAttack,
@@ -162,6 +164,76 @@ function fixture() {
   };
   return { terrain, self, target, events, rng, state, c, ports };
 }
+describe("primary Bird hostile flight", () => {
+  it.each([3, 14, 19])("starts source flight for primary Bird species %s and retains a flying target", (species) => {
+    const f = fixture();
+    f.self.native[122] = species;
+    put(f.target.native, 73, 0x400);
+    expect(acquireMuleHostile(f.self, f.target, f.ports, f.events, f.c, f.rng)).toBe(true);
+    expect(word(f.self.native, 85)).toBe(1);
+    expect([f.self.native[87], f.self.native[82], f.self.native[94]]).toEqual([1, 1, 1]);
+    expect(word(f.self.native, 73) & 0x400).toBe(0x400);
+    expect(f.self.native[21]! & 0x20).toBe(0x20);
+    expect(word(f.self.native, 59)).toBe(300);
+    expect(f.rng.draws).toBe(0);
+  });
+  function diveFixture(species = 3) {
+    const f = fixture();
+    f.self.native[122] = species;
+    f.self.native[24] = 4;
+    f.self.native[118] = 91;
+    put(f.self.native, 73, 0x414);
+    put(f.self.native, 104, 4);
+    dword(f.self.native, 39, 5248);
+    put(f.target.native, 7, 16384);
+    const target: MuleCombatTarget = {
+      id: f.target.id as MuleCombatTarget["id"], index: 1, kind: 1,
+      owner: 0, native: f.target.native, physicalHeight: 2048, dead: false,
+    };
+    f.c.frame = 3;
+    return { ...f, target };
+  }
+  it.each([3, 14, 19])("enters a free downward approach for species %s without drawing RNG", (species) => {
+    const f = diveFixture(species), before = { ...f.rng };
+    expect(beginMuleBirdDive(f.self, f.target, f.c)).toBe(true);
+    expect([f.self.native[94], word(f.self.native, 57), word(f.self.native, 59)]).toEqual([17, 0, 1024]);
+    expect([word(f.self.native, 45), word(f.self.native, 47), word(f.self.native, 49)]).toEqual([0, 0, -4800]);
+    expect([word(f.self.native, 61), word(f.self.native, 63), word(f.self.native, 104)]).toEqual([4800, -1, 0]);
+    expect(word(f.self.native, 73)).toBe(0x414);
+    expect(f.rng).toEqual(before);
+  });
+  it.each(["phase", "growth", "height", "reserve", "flight", "dead"])("rejects the %s boundary without changing the Bird", (gate) => {
+    const f = diveFixture();
+    if (gate === "phase") f.c.frame = 2;
+    if (gate === "growth") f.self.native[118] = 90;
+    if (gate === "height") dword(f.self.native, 39, 5247);
+    if (gate === "reserve") put(f.self.native, 104, 3);
+    if (gate === "flight") put(f.self.native, 73, 0x14);
+    if (gate === "dead") f.target.dead = true;
+    const before = f.self.native.slice();
+    expect(beginMuleBirdDive(f.self, f.target, f.c)).toBe(false);
+    expect(f.self.native).toEqual(before);
+  });
+  it("uses the inclusive 768-unit physical-distance boundary", () => {
+    const f = diveFixture();
+    f.target.physicalHeight = 5248;
+    put(f.target.native, 7, 16384 + 769);
+    expect(beginMuleBirdDive(f.self, f.target, f.c)).toBe(false);
+    put(f.target.native, 7, 16384 + 768);
+    expect(beginMuleBirdDive(f.self, f.target, f.c)).toBe(true);
+  });
+  it("requires the actual owned research byte unless the native ability flag is set", () => {
+    const f = diveFixture();
+    f.self.native[24] = 0;
+    expect(beginMuleBirdDive(f.self, f.target, f.c)).toBe(false);
+    (f.c.players![0] as number[])[0x6c7 + 3] = 1;
+    expect(beginMuleBirdDive(f.self, f.target, f.c)).toBe(true);
+    const g = diveFixture(); g.self.native[24] = 0; delete g.c.players;
+    expect(() => beginMuleBirdDive(g.self, g.target, g.c)).toThrow(/research record/);
+    g.self.native[97] = 4;
+    expect(beginMuleBirdDive(g.self, g.target, g.c)).toBe(true);
+  });
+});
 describe("source Mule hostile query/contact", () => {
   it("previews the shared two query draws, counts allied sectors and keeps first equal-weight head", () => {
     const f = fixture(),
@@ -918,7 +990,7 @@ describe("source Mule specialist/building targets", () => {
     expect(
       acquireMuleHostile(f.self, actor, f.ports, f.events, f.c, f.rng),
     ).toBe(false);
-    expect(word(f.self.native, 108)).toBe(0);
+    expect(word(f.self.native, 108)).toBe(3);
     expect(f.self.native[87]).toBe(0);
     expect(f.events).toEqual([]);
     expect(f.rng.draws).toBe(0);
@@ -1391,6 +1463,37 @@ describe("source Mule damage and complete animation", () => {
     expect(r.events).toEqual([]);
     expect(JSON.stringify([f.state, f.rng, f.terrain])).toBe(before);
     expect(JSON.parse(JSON.stringify(f.state))).toEqual(f.state);
+  });
+});
+
+describe("Bird dive impact and pullup", () => {
+  it.each([1,3,4] as const)("delivers source damage to kind%i before installing vertical flight", kind => {
+    const f=fixture(), n=f.self.native;
+    n[122]=3; n[94]=17; n[118]=100; n[22]=0;
+    put(n,73,0x400); put(n,85,1); n[87]=kind;
+    const target = kind===1 ? {...f.target,kind:1 as const,owner:1,physicalHeight:2048,dead:false} : externalTarget(kind,1);
+    put(target.native,7,word(n,7));put(target.native,9,word(n,9));
+    if (kind!==1) f.c.entity=()=>target;
+    f.c.frame=1; f.c.targetTraits=()=>traits;
+    let delivered=-1;
+    f.c.damage=(_self,t,damage)=>{
+      expect(t.index).toBe(1); expect(n[22]!&0x40).toBe(0);
+      delivered=damage; return false;
+    };
+    put(n,45,-400);put(n,47,200);put(n,55,77);
+    stepMuleBirdDive(f.state,f.self,f.c,f.ports);
+    expect(delivered).toBe(kind===1?46:kind===3?10:20);
+    expect(word(n,51)).toBe(-100);expect(word(n,53)).toBe(50);expect(word(n,55)).toBe(77);
+    expect(word(n,11)).toBe(5568);expect(n[22]!&0x40).toBe(0x40);
+    expect(word(n,63)).toBe(600);expect(word(n,108)).toBe(32767);
+    expect(word(n,59)).toBe(300);expect(f.rng.draws).toBe(0);
+    stepMuleBirdDive(f.state,f.self,f.c,f.ports);
+    expect(delivered).toBe(kind===1?46:kind===3?10:20);
+  });
+  it("releases a missing target with the fixed ten-tick delay and no draw",()=>{
+    const f=fixture();f.self.native[94]=17;f.self.native[87]=1;put(f.self.native,85,299);
+    stepMuleBirdDive(f.state,f.self,f.c,f.ports);
+    expect(f.self.native[94]).toBe(8);expect(word(f.self.native,108)).toBe(10);expect(f.rng.draws).toBe(0);
   });
 });
 

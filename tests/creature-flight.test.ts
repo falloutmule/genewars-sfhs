@@ -60,9 +60,18 @@ describe("shared creature flight control", () => {
     n[97]|=1; selectCreatureFlightAnimation(n);
     expect([n[27],n[28],n[29]]).toEqual([0,0,2]);
   });
-  it("refuses a vertical target before changing its native control", () => {
-    const n = fixture(); n[22] |= 0x40; const before = n.slice();
-    expect(() => advanceCreatureFlightGoal(n, { position:[10010, 10000], height:2048, associated:false, flying:false }, 1, tables)).toThrow(/vertical/);
-    expect(n).toEqual(before);
+  it.each([[128, false], [129, true], [-128, false], [-129, true]])("uses the inclusive vertical arrival tolerance %i", (delta, moving) => {
+    const n = fixture(); n[22] |= 0x40; put(n,11,4096 + delta);
+    const xy=n.slice(7,11);
+    expect(advanceCreatureFlightGoal(n, {position:[0,0],height:0,associated:false,flying:false},1,tables)).toBe(false);
+    expect(n.slice(7,11)).toEqual(xy);
+    expect(!!(n[22]&0x40)).toBe(moving);
+    if (moving) {
+      expect(n[74]&0xc0).toBe(delta>0?0x40:0x80);
+      expect(word(n,69)).toBe(delta>0?0:1024);
+    } else {
+      expect(n.slice(45,51)).toEqual(Array(6).fill(0));
+      expect(word(n,63)).toBe(0); expect(word(n,73)&0x220).toBe(0x220);
+    }
   });
 });

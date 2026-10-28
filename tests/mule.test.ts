@@ -427,4 +427,20 @@ describe("neutral Crab callback family",()=>{
     expect(airborne).toBe(true);
     expect(f.state.mules[0].native.slice(31, 39)).toEqual(Array(8).fill(null));
   });
+  it("rolls back dive motion and staged damage when its host service rejects",()=>{
+    const f=crab(),n=f.state.mules[0].native,target=structuredClone(f.state.mules[0]);
+    n[122]=3;n[94]=17;n[21]=0xa0;put(n,73,0x414);put(n,63,-1);put(n,108,32767);
+    put(n,85,1);n[87]=1;n.fill(0,45,57);put(n,61,0);
+    target.id='source:0:1';target.index=1;put(target.native,15,1);target.native[94]=8;target.native[24]=0;
+    f.state.mules.push(target);f.context.frame=1;
+    f.context.combat=creatureCombatTraits(f.context.rules,f.context.speciesComponents,3);
+    f.context.combatDamage=(state,terrain,rng)=>{
+      put(state.mules[1].native,106,-10);terrain.bytes[0]=99;rng.seed=1;
+      throw Error('synthetic impact service rejected');
+    };
+    const before=structuredClone({state:f.state,terrain:f.context.terrain,rng:f.rng});
+    const r=stepNeutralMule(f.state,0,f.rng,f.context);
+    expect(r.reason).toBe('synthetic impact service rejected');expect(r.events).toEqual([]);
+    expect({state:f.state,terrain:f.context.terrain,rng:f.rng}).toEqual(before);
+  });
 });

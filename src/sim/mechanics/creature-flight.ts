@@ -31,7 +31,7 @@ export function beginCreatureFlight(n: Native): void {
 
 /**5E640 regular flight animation arm, before the common animation advance. */
 export function selectCreatureFlightAnimation(n: Native): boolean {
-  if (![1, 2, 3, 8].includes(n[94]!) || !creatureIsFlying(n)) return false;
+  if ((![1, 2, 3, 8].includes(n[94]!) && !(n[94] === 17 && n[22]! & 0x40)) || !creatureIsFlying(n)) return false;
   n[25] = ((((word(n, 57) >> 7) + 1) >> 1) + 1) & 7;
   if (n[97]! & 1) {
     n[28] = n[27] = 0;
@@ -75,8 +75,21 @@ export function advanceCreatureFlightGoal(
   n: Native, target: CreatureFlightTarget, phase: number, tables: MotionTables,
 ): boolean {
   if (!creatureIsFlying(n)) throw Error("Controlled flight identity required");
-  if (n[22]! & 0x40)
-    throw Error("Creature vertical flight target requires its source service");
+  if (n[22]! & 0x40) {
+    const goal = dword(n, 11), delta = (goal - dword(n, 39)) | 0,
+      magnitude = ((delta ^ (delta >> 31)) - (delta >> 31)) | 0;
+    if (magnitude < 129) {
+      n[84] = 0;
+      put(n, 73, (word(n, 73) & 0x2fef) | 0x220);
+      n[22] = n[22]! & 0x3f;
+      n.fill(0, 45, 51); put(n, 61, 0); put(n, 63, 0);
+    } else if (dword(n, 39) < goal) {
+      n[74] = (n[74]! | 0x40) & 0x7f; put32(n, 69, 0);
+    } else {
+      n[74] = (n[74]! | 0x80) & 0xbf; put32(n, 69, 1024);
+    }
+    return false;
+  }
   if (word(n, 63) < 1 && !(word(n, 73) & 0x10)) return false;
   const height = (dword(n, 39) - dword(n, 17)) | 0,
     goal = creatureFlightTargetGeometry(n, target, tables),

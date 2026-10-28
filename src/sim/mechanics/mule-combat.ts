@@ -17,6 +17,7 @@ import {
 } from "./ecology";
 import type { MuleEvent } from "./mule";
 import type { SourceEntityId } from "../campaign/source-pools";
+import { beginCreatureFlight } from "./creature-flight";
 
 export interface MuleCombatTraits {
   queryRadius: number;
@@ -53,6 +54,7 @@ export interface MuleCombatContext {
   tables: MotionTables;
   frame: number;
   traits: MuleCombatTraits;
+  targetTraits?(species: number): MuleCombatTraits;
   allianceMasks?: readonly number[];
   players?: readonly (readonly number[])[];
   cellOrder?(cell: number): readonly string[];
@@ -476,13 +478,17 @@ export function acquireMuleHostile(
   rng?: GeneRng,
 ) {
   assertMule(self);
-  if ([3, 14, 19].includes(byte(self.native, 122)))
-    throw Error("Primary Bird hostile acquisition requires its source pickup service");
+  const primaryBird = [3, 14, 19].includes(byte(self.native, 122));
   const t = targetView(target);
   p.release(self);
   const n = self.native,
     oldFlags22 = byte(self.native, 22);
-  if (t.kind !== 4 && word(t.native, 73) & 0x400) return false;
+  if (!primaryBird && (t.kind === 1 || t.kind === 3) && word(t.native, 73) & 0x400) {
+    n[94] = 8;
+    if (p.occupied(self)) p.escape(self);
+    else put(n, 108, 3);
+    return false;
+  }
   put(n, 85, t.index);
   n[87] = t.kind;
   if (byte(n, 120) !== 0) {
@@ -538,6 +544,7 @@ export function acquireMuleHostile(
   put(n, 63, p.speed(self));
   put(n, 108, 32767);
   n[96] = byte(n, 96) | 128 | (acquired ? 64 : 0);
+  if (primaryBird) beginCreatureFlight(n);
   n[94] = acquired ? 1 : 8;
   events.push({
     kind: "mule-target",
@@ -557,6 +564,77 @@ function setVelocity(n: (number | null)[], c: MuleCombatContext) {
   put(n, 45, m.vx);
   put(n, 47, m.vy);
   put(n, 49, m.vz);
+}
+/**5D360's primary-component3 arm. The approach is a free trajectory; it
+ * retains the target and route flags until6FB60 publishes arrival. */
+export function beginMuleBirdDive(
+  self: EcologyMule,
+  target: MuleCombatTarget,
+  c: MuleCombatContext,
+): boolean {
+  const n = self.native;
+  if (((self.index + c.frame) & 3) !== 3 ||
+      ![3, 14, 19].includes(byte(n, 122))) return false;
+  const owner = byte(n, 24);
+  let eligible = owner === 4 ? byte(n, 118) > 90 : !!(byte(n, 97) & 4);
+  if (owner !== 4 && !eligible) {
+    const raw = c.players?.[owner];
+    if (!raw || raw.length !== 1805)
+      throw Error("Bird approach requires its actual player research record");
+    eligible = byte(raw, 0x6c7 + byte(n, 122)) >= 1;
+  }
+  if (!eligible || target.dead || (target.kind === 2 && !(byte(n, 96) & 0x20)) ||
+      !(word(n, 73) & 0x400) || (muleCombatTargetDistance(n, target) | 0) > 0x90000 ||
+      virtualHeight(n) < 3200 || word(n, 104) < 4) return false;
+  n[94] = 17;
+  aimBirdDive(self, target, c);
+  put(n, 63, -1);
+  put(n, 104, word(n, 104) - 4);
+  return true;
+}
+function aimBirdDive(self: EcologyMule, target: MuleCombatTarget, c: MuleCombatContext) {
+  const n = self.native,
+    dx = i16(i16(word(target.native, 7) * 2) - i16(word(n, 7) * 2)),
+    dy = i16(i16(word(target.native, 9) * 2) - i16(word(n, 9) * 2)),
+    horizontal = integerSqrt((Math.imul(dx >> 1, dx >> 1) + Math.imul(dy >> 1, dy >> 1)) >>> 0);
+  put(n, 57, originalAngle(dx, dy, c.tables.atan));
+  put(n, 59, originalAngle(horizontal, ((dword(n, 39) - target.physicalHeight) | 0) >> 3, c.tables.atan));
+  put(n, 61, 4800);
+  setVelocity(n, c);
+}
+/**6619D..66545: odd-phase dive tracking, impact, then vertical pullup. */
+export function stepMuleBirdDive(
+  state: EcologyState, self: EcologyMule, c: MuleCombatContext, p: MuleCombatPorts,
+): void {
+  const n = self.native;
+  if (n[94] !== 17 || byte(n, 22) & 0x40) return;
+  const target = resolveMuleCombatTarget(state, c, byte(n, 87), word(n, 85));
+  if (!target) {
+    p.release(self); n[94] = 8;
+    if (p.occupied(self)) p.escape(self); else put(n, 108, 10);
+    return;
+  }
+  if ((target.kind === 1 || target.kind === 3) && ((self.index + c.frame) & 3) === 3)
+    aimBirdDive(self, target, c);
+  if ((muleCombatTargetDistance(n, target) | 0) > 16384) return;
+  const scale = (o: Native) => 50 + Math.trunc(Math.min(byte(o, 118), 100) * 50 / 100),
+    strength = Math.trunc(c.traits.attack * scale(n) / 100);
+  let damage = target.kind === 3 ? strength >> 1 : strength;
+  if (target.kind === 1) {
+    if (!c.targetTraits) throw Error("Bird impact requires actual recipient species traits");
+    damage = strength * 2 + Math.trunc(c.targetTraits(byte(target.native, 122)).defense * scale(target.native) / 100);
+  }
+  if (target.kind !== 2) {
+    if (!c.damage) throw Error("Bird impact requires actual synchronous target damage");
+    c.damage(self, target, damage);
+  }
+  put(n, 51, word(n, 45) >> 2); put(n, 53, word(n, 47) >> 2);
+  n[22] = byte(n, 22) | 0x40;
+  const height = (dword(n, 17) + 3520) | 0;
+  put(n, 11, height); put(n, 13, height >> 16);
+  n[73] = byte(n, 73) | 0x10; n[79] = n[82] = 0;
+  put(n, 63, p.speed(self)); put(n, 108, 32767); n[96] = byte(n, 96) | 128;
+  if ([3, 14, 19].includes(byte(n, 122))) beginCreatureFlight(n);
 }
 function stop(n: (number | null)[]) {
   put(n, 63, 0);

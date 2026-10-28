@@ -1,4 +1,4 @@
-import { creatureParameters, creatureComponents, creatureSelector, chooseCreatureOffspring, sharedCreatureCallbackSpecies } from "./creature-species";
+import { creatureParameters, creatureComponents, creatureSelector, chooseCreatureOffspring, sharedCreatureCallbackSpecies, creatureCombatTraits } from "./creature-species";
 import { creatureIsFlying, beginCreatureFlight, advanceCreatureFlightGoal, turnCreatureFlightAngles, creatureFlightTargetGeometry, selectCreatureFlightAnimation } from "./creature-flight";
 import { nextRandom, type GeneRng } from "./random";
 import {
@@ -53,6 +53,8 @@ import {
   resolveMuleCombatTarget,
   consumeMuleCombatQuery,
   beginMuleAttack,
+  beginMuleBirdDive,
+  stepMuleBirdDive,
   muleCombatTargetDistance,
   type MuleCombatTraits,
   type MuleCombatEffectRequest,
@@ -653,6 +655,11 @@ function routePrefix(
   const n = mule.native,
     current = point(n),
     accept = (at: [number, number]) => accepted(state, mule, at, c);
+  if (n[22]! & 0x40 && creatureIsFlying(n)) {
+    n[73] = n[73]! & 0x9f;
+    advanceCreatureFlightGoal(n, {position:current, height:0, associated:false, flying:false}, phase, c.tables);
+    return {working:current, savedSpeed:null};
+  }
   let target: [number, number] = [w(n, 11), w(n, 13)];
   const associated =
     n[0x52] === 1
@@ -1082,12 +1089,15 @@ function physics(
     wasGrounded = d(n, 0x27) <= oldGround;
   const logicalDead = n[0x5e]! >= 24;
   //6E10B gates friction on physical flags, independently of mortality state.
+  const freeMotion = w(n, 0x3f) === -1;
+  const birdDive = freeMotion && n[94] === 17 &&
+    creatureComponents(c.speciesComponents, n[122])[0] === 3;
   const passiveMotion =
     w(n, 0x3f) === -1 &&
     !!(n[0x15]! & 0x80);
   if (
     n[0x16]! & 9 ||
-    (w(n, 0x3f) < 0 && !passiveMotion)
+    (w(n, 0x3f) < 0 && !passiveMotion && !birdDive)
   )
     throw new Error(
       "Mule airborne/dead/attached physics branch is not admitted",
@@ -1138,7 +1148,7 @@ function physics(
       const normal = terrainNormal(c.terrain, ...point(before));
       put(n, 0x31, signed(signed(ground) - signed(oldGround)) * 8);
       angles(n, c);
-      if (!passiveMotion) {
+      if (!freeMotion) {
         const speed = contact(state, n, normal, signed(oldGround), c, random);
         put(n, 0x41, speed);
         put(n, 0x3d, speed);
@@ -1661,7 +1671,7 @@ function selectAnimation(n: Native, c: MuleContext) {
     n[28] = n[29] = 0;
     return;
   }
-  const combatAction = n[0x5e] === 16 ? 23 : n[0x5e] === 20 ? 16 : null;
+  const combatAction = n[0x5e] === 16 || (n[94] === 17 && !(n[22]! & 0x40)) ? 23 : n[0x5e] === 20 ? 16 : null;
   if (combatAction !== null) {
     if (n[0x19] !== combatAction) {
       n[0x19] = combatAction;
@@ -2500,6 +2510,7 @@ function combatServices(
       tables: c.tables,
       frame: c.frame,
       traits: c.combat,
+      targetTraits: (species) => creatureCombatTraits(c.rules, c.speciesComponents, species),
       speciesComponents: c.speciesComponents,
       allianceMasks: c.owned?.allianceMasks,
       players: c.owned?.players,
@@ -2722,6 +2733,11 @@ function action(
   events: MuleEvent[],
 ) {
   const n = mule.native;
+  if (n[94] === 17) {
+    n.fill(0, 51, 55);
+    idleWait(state, mule, random, c);
+    return;
+  }
   if (n[94] === 11) {
     if (w(n, 108) <= 0) {
       if (!c.materialRuntime)
@@ -2923,12 +2939,13 @@ function action(
             n[96] = n[96]! | 8;
           }
           n[96] = n[96]! & 0xbf;
-        }
+        } else beginMuleBirdDive(mule, target, context);
         return;
       }
       if (
         w(target.native, 73) & 0x400 &&
-        target.physicalHeight - d(target.native, 17) > 1280
+        target.physicalHeight - d(target.native, 17) > 1280 &&
+        ![3, 14, 19].includes(n[122]!)
       ) {
         if (!(n[96]! & 64) && ((w(n, 15) + c.frame) & 3) === 3) {
           const fallback = queryMuleCellFallback(state, mule, context);
@@ -2972,7 +2989,9 @@ function action(
         idleWait(state, mule, random, c);
         return;
       }
-      contactMuleHostile(mule, target, random, context, events);
+      if (muleCombatTargetDistance(n, target) > 16384)
+        beginMuleBirdDive(mule, target, context);
+      else contactMuleHostile(mule, target, random, context, events);
       return;
     }
     if (n[0x57] === 1) {
@@ -2994,7 +3013,11 @@ function action(
           idleWait(state, mule, random, c);
           return;
         }
-        contactMuleHostile(mule, corpse, random, context, events);
+        const view = resolveMuleCombatTarget(state, context, 1, corpse.index);
+        if (!view) throw Error("Bird approach lost its actual creature target");
+        if (muleCombatTargetDistance(n, view) > 16384)
+          beginMuleBirdDive(mule, view, context);
+        else contactMuleHostile(mule, corpse, random, context, events);
         return;
       }
       if (!(w(n, 0x49) & 0x200) || n[0x60]! & 0x80) return;
@@ -3173,7 +3196,7 @@ function stepMule(
       !sharedCreatureCallbackSpecies(n[0x7a]!) ||
       n[0x76] === null ||
       ![
-        0, 1, 3, 4, 5, 6, 7, 8, 10, 11, 15, 16, 18, 20, 21, 24, 25, 26, 27,
+        0, 1, 3, 4, 5, 6, 7, 8, 10, 11, 15, 16, 17, 18, 20, 21, 24, 25, 26, 27,
       ].includes(n[0x5e]!)
     )
       throw new Error("Mule callback owner/species/state is not admitted");
@@ -3194,7 +3217,7 @@ function stepMule(
       Object.assign(context.terrain, terrain);
       return { committed: true, reason: null, events };
     }
-    if (n[0x16]! & 0x48)
+    if (n[0x16]! & 8 || (n[0x16]! & 0x40 && !creatureIsFlying(n)))
       throw new Error("Mule attached movement prefix is required");
     const route = routePrefix(staged, mule, random, c, phase, events),
       goal = route.working;
@@ -3361,10 +3384,14 @@ function stepMule(
       if (
         ([0, 8].includes(n[0x5e]!) && w(n, 0x6c) === 0) ||
         [1, 3, 4, 5, 6, 7, 10].includes(n[0x5e]!) ||
-        ([11, 15, 16, 18, 20, 21].includes(n[0x5e]!) && w(n, 0x6c) <= 0) ||
+        ([11, 15, 16, 17, 18, 20, 21].includes(n[0x5e]!) && w(n, 0x6c) <= 0) ||
         (n[0x5e] === 1 && (w(n, 0x49) & 0x200) !== 0 && !(n[0x60]! & 0x80))
       )
         action(staged, mule, random, c, events);
+      if (mule.native[94] === 17) {
+        const {context, ports} = combatServices(staged, random, c, events);
+        stepMuleBirdDive(staged, mule, context, ports);
+      }
       mule = staged.mules.find((candidate) => candidate.id === mule.id)!;
       n = mule.native;
       n[0x4a] = n[0x4a]! & 0xfc;
