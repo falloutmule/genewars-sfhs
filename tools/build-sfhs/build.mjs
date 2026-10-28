@@ -184,7 +184,10 @@ const receipt = {
   // Fushon: portrait touch win at frame5338, GOOP2200/2400 capacity;
   // normal result/carry into Vergon, landscape reload and exact replay verified.
   // Private acceptance receipt: continuous-20261026/mission8-acceptance.json.
-  acceptedMissionCount: 8,
+  // Vergon: portrait touch last-survivor win at frame12127; ordinary result
+  // and Pylon carry/replay f8ddc093, complementary landscape reload.
+  // Private acceptance receipt retains108 hashed save/replay links.
+  acceptedMissionCount: 9,
   ruleExtension: ruleExtensionIdentity,
   physicalDeviceAcceptance: "not-run",
   upstreamBattleDrones: "39d6f587f98a82f5c0426e8bd476cef49fd19ef0",
