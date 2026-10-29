@@ -1,5 +1,11 @@
 # Software campaign progress
 
+Current as of 29 October 2026: **11/24 accepted**. Zed completed through the portrait phone touch UI at frame 15,873 with all three marked-zone quotas exhausted and score 6,342 against 160 and 104. Normal result controls carried progress 11 into Thyroid (mission 12), active and paused at frame 0. Landscape reload and full command replay passed without browser or render errors. Physical Galaxy S21 Ultra testing remains separate.
+
+Private evidence is indexed in `.private/continuous-20261026/mission11-acceptance.json`, including 502 verified ancestry links and preserved genuine losses and restarts. The successful route kept a reserve Engineer, completed both forests early, and timed fresh Crab production for the remaining inspection quota. No simulation source changed during the successful fourth attempt.
+
+The entries below are historical checkpoints.
+
 Current as of 27 October 2026: **8/24 accepted**. Exceland, Krell, Madami, Roach, Brown, Lunacon, Oid and Fushon are accepted. Vergon (mission 9) is initialized. Its exact current phase, frame and genuine continuation save are recorded in `.private/continuous-20261026/current.json`.
 
 Fushon completed through the portrait phone touch UI at frame 5,338 with 2,200 GOOP and 2,400 storage capacity. Four Extractors, two Photon Processors and one Distributor supplied the objective, with Shepherd defense against nearby neutral Crabs. The normal victory view advanced progress to 8 and continued into Vergon. The carried save reloaded in landscape at frame 0 with progress 8, without browser or render errors. Physical Galaxy S21 Ultra testing remains separate.
