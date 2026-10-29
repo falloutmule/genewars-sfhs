@@ -165,7 +165,7 @@ function validate(w: WaterAdapterWorld) {
     }
   }
   for (const [i, s] of w.powerEffects.slots.entries())
-    if (s.occupied !== !!w.spatial.nodes[identity(i)])
+    if ((s.occupied && s.nativePrior?.[69] !== 66) !== !!w.spatial.nodes[identity(i)])
       throw new Error("Shared effect occupancy/spatial identity differs");
   validateSpatial(w.spatial);
 }
@@ -197,9 +197,9 @@ function retire(
   const id = identity(slot),
     effect = w.waterEffects.find((e) => e.slot === slot && e.active),
     prior = w.powerEffects.slots[slot] as SharedSlot;
-  if (!w.spatial.nodes[id] || !prior.occupied)
+  if ((!w.spatial.nodes[id] && prior.nativePrior?.[69] !== 66) || !prior.occupied)
     throw new Error("Water retirement shared identity is missing");
-  unlinkSpatial(w.spatial, w.terrain, id);
+  if (prior.nativePrior?.[69] !== 66) unlinkSpatial(w.spatial, w.terrain, id);
   if (options.cleanupReferences)
     out.cleanedReferenceBytes += options.cleanupReferences(w, id) ?? 0;
   else out.cleanupRequired.push(id);

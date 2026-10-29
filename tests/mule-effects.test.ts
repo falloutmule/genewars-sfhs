@@ -8,6 +8,7 @@ import { cleanupCampaignReferences } from "../src/sim/campaign/cleanup";
 import {
   copySpatialLinks,
   insertSpatial,
+  unlinkSpatial,
   validateSpatial,
 } from "../src/sim/campaign/spatial";
 import { establishedEffectPriorities } from "../src/sim/mechanics/reward-effect";
@@ -111,6 +112,22 @@ function fixture() {
   return { w, pack, event, activate, sync };
 }
 describe("source Mule corpse-consumption effect adapter", () => {
+  it.each([false,true])("preserves or replaces a nonspatial ring segment with full pool=%s",full=>{
+    const f=fixture();
+    for(let i=0;i<(full?200:1);i++)f.activate(i);
+    f.w.powerEffects.slots[0].nativePrior![69]=66;
+    unlinkSpatial(f.w.spatial,f.w.terrain,'source:4:0');
+    f.sync();
+    const out=consumeMuleEffects(f.w,[f.event],f.pack,{
+      priority:code=>code===66?100:establishedEffectPriorities[code],
+      cleanupReferences:cleanupCampaignReferences,
+    });
+    expect(out.created[0].slot).toBe(full?0:1);
+    expect(f.w.powerEffects.slots[0].occupied).toBe(true);
+    expect(f.w.powerEffects.slots[0].nativePrior![69]).toBe(full?32:66);
+    expect(!!f.w.spatial.nodes['source:4:0']).toBe(full);
+    validateSpatial(f.w.spatial);
+  });
   it("publishes neighboring live collector links while retaining a stale registry overlay", () => {
     const f = fixture(), n: Native = Array(97).fill(0);
     n.fill(null, 31, 39); n[6] = 7;

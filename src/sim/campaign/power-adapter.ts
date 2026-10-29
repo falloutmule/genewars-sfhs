@@ -119,6 +119,10 @@ export function synchronizePowerAdapter(
   for (const slot of pool.slots)
     if (slot.nativePrior) validateEffectNativePrior(slot.nativePrior);
   const occupied = new Set<number>();
+  // Shield66 is a live shared slot without an8AC60 spatial insertion.
+  for (const [index, slot] of pool.slots.entries())
+    if (slot.occupied && slot.nativePrior?.[6] === 5 && slot.nativePrior[69] === 66)
+      occupied.add(index);
   for (const node of Object.values(w.spatial.nodes))
     if (node.family === 4) occupied.add(node.index);
   const live = new Map<number, LandingParticle>();

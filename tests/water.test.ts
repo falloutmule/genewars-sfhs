@@ -98,6 +98,17 @@ function fixture() {
   return { world, pack, options, context, request };
 }
 describe("original water effect lifecycle and shared-pool adapter", () => {
+  it("allocates water beside a live ring segment without claiming its nonspatial slot",()=>{
+    const f=fixture(),s=f.world.powerEffects.slots[0];
+    s.occupied=true;s.nativePrior![6]=5;s.nativePrior![69]=66;
+    const before=s.nativePrior!.slice();
+    const result=createWaterEffect(f.world,f.request,f.pack,f.options);
+    expect(result.created).toEqual([{slot:1,code:48}]);
+    expect(f.world.powerEffects.slots[0].occupied).toBe(true);
+    expect(f.world.powerEffects.slots[0].nativePrior).toEqual(before);
+    expect(f.world.spatial.nodes['source:4:0']).toBeUndefined();
+    validateSpatial(f.world.spatial);
+  });
   it("preserves shared prior counter/fractions and wake motion, retiring on source call33", () => {
     const f = fixture(),
       rng = { ...f.world.rng },

@@ -4,6 +4,7 @@ import { stepCampaign, continueCampaign } from '../src/sim/campaign/world';
 import { loadCampaign, saveCampaign, recordCampaign, sealCampaignReplay, replayCampaign } from '../src/sim/campaign/persistence';
 import { put16 } from '../src/sim/campaign/bytes';
 import { checksum } from '../src/sim/checksum';
+import { synchronizePowerAdapter } from '../src/sim/campaign/power-adapter';
 function fixture(energy:number) {
  const {w,pack}=processorFixture(4);
  // Explicit synthetic completed12 state; construction is not exercised here.
@@ -39,6 +40,10 @@ describe('campaign shield building and ring effects',()=>{
   const segments=w.powerEffects.slots.flatMap((s,i)=>s.occupied&&s.nativePrior?.[69]===66?[i]:[]);
   expect(segments.length).toBeGreaterThan(0);
   for(const i of segments)expect(w.spatial.nodes[`source:4:${i}`]).toBeUndefined();
+  const beforeSync=checksum(w.powerEffects);
+  synchronizePowerAdapter(w);
+  expect(checksum(w.powerEffects)).toBe(beforeSync);
+  for(const i of segments)expect(w.powerEffects.slots[i].occupied).toBe(true);
   const resumed=loadCampaign(saveCampaign(w,{paused:true,speed:1,accumulator:0}),w.contentHash).world;
   for(let i=0;i<96;i++) {
    stepCampaign(w,pack);stepCampaign(resumed,pack);

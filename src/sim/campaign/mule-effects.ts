@@ -144,7 +144,7 @@ function validate(w: MuleEffectWorld): void {
     if (
       p.nativePrior[6] === null ||
       p.occupied !== (p.nativePrior[6] !== 0) ||
-      p.occupied !== !!w.spatial.nodes[id(slot)] ||
+      (p.occupied && p.nativePrior[69] !== 66) !== !!w.spatial.nodes[id(slot)] ||
       (p.occupied && p.nativePrior[6] !== 5)
     )
       throw new Error(
@@ -263,7 +263,7 @@ export function consumeStagedMuleEffects<W extends MuleEffectWorld>(
           );
         options.onSpecialRetirement(s, slot, n);
       }
-      unlinkSpatial(s.spatial, s.terrain, id(slot));
+      if (code !== 66) unlinkSpatial(s.spatial, s.terrain, id(slot));
       out.cleanedReferenceBytes += options.cleanupReferences(s, id(slot)) ?? 0;
       n[6] = 0;
       shared.occupied = false;
