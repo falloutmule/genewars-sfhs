@@ -12,6 +12,35 @@ function fixture(selector=3,footprint=1){const bytes=Array(229376).fill(0);for(l
   const context:BuildingDamageContext<typeof world>={rules,gameplayRunning:true,selectedBuildingSlot:0,createEffect(w,r){factories.push(r);trace.push(`effect:${r.code}`);if(r.code>=27&&r.code<=31)nextRandom(w.rng);return 0;},createCollapse:(_w,r)=>trace.push(`collapse:${r.completed}`),unlinkBuilding:(w,slot)=>{expect(w.buildingNative[slot][6]).toBe(4);trace.push(`unlink:${slot}`);},createCrater:(w,r)=>{trace.push(`crater:${r.variant}`);for(let i=0;i<(r.variant===0?9:16);i++)nextRandom(w.rng);},onEvent:(_w,e)=>trace.push(e.type)};
   return {world,context,trace,factories};}
 describe("source building damage and destruction",()=>{
+  it("emits both Shield depletion waves before resetting the ring phase and notifying the UI",()=>{
+    const f=fixture(12,2),n=f.world.buildingNative[0],waves:unknown[]=[];
+    f.context.globalFlags=4;put(n,43,310);n[60]=2;
+    f.context.createShieldWave=(w,r)=>{
+      expect(w.buildingNative[0][60]).toBe(2);
+      expect(f.trace).not.toContain("depleted-audio");waves.push(r);return null;
+    };
+    damageNativeBuilding(f.world,0,20,null,f.context);
+    expect(waves).toEqual(Array(2).fill({code:5,owner:0,position:[8192,8192],grade:0}));
+    expect(n[60]).toBe(4);expect(f.trace).toContain("depleted-audio");
+    damageNativeBuilding(f.world,0,1,null,f.context);expect(waves).toHaveLength(2);
+  });
+  it.each([8,12])("uses common partial, depletion and retirement accounting for selector %i",(selector)=>{
+    const f=fixture(selector,2),n=f.world.buildingNative[0];f.context.globalFlags=0;
+    put(n,52,37);put(n,61,200);
+    damageNativeBuilding(f.world,0,10,null,f.context);
+    expect(word(n,43)).toBe(890);expect(word(n,49)&0x140).toBe(0);
+    damageNativeBuilding(f.world,0,600,null,f.context);
+    expect(word(n,43)).toBe(290);expect(word(n,49)&0x140).toBe(0x140);
+    expect(word(n,52)).toBe(37);expect(word(n,61)).toBe(200);
+    if(selector===12)expect(n[60]).toBe(4);
+    const out=damageNativeBuilding(f.world,0,290,null,f.context);
+    expect(out.destroyed).toBe(true);expect(n[6]).toBe(0);
+    expect(f.world.players[0].raw[0x600+selector]).toBe(0);
+    expect(f.world.players[0].raw[0x4a2]).toBe(1);
+    expect(out.crater?.variant).toBe(0);
+    expect(f.trace.some(x=>x.startsWith("collapse:"))).toBe(false);
+    expect(f.trace).not.toContain("stop-audio");
+  });
   it("debits a destroyed Vat's retained storage before unlinking without clamping GOOP",()=>{
     const f=fixture(13);put32(f.world.buildingNative[0],54,250);put32(f.world.players[0].raw,0x4a7,100);
     const unlink=f.context.unlinkBuilding;

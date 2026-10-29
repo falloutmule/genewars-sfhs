@@ -192,9 +192,18 @@ describe("Pulper2 source damage and retirement host", () => {
     expect(f.w.rng).toBe(rng);
     expect(f.plant!.native[46]).toBe(0x84);
   });
-  it("destroys2 through the ordinary projectile/effect scheduler and preserves full save continuation and replay", () => {
+  it.each([2,8,12])("destroys selector %i through the ordinary projectile/effect scheduler and preserves full save continuation and replay", (selector) => {
     const f = host(0, false),
       { w, pack } = f;
+    // Seed an existing synthetic building; this does not admit construction.
+    f.n[45] = selector;
+    w.buildings[0].selector = selector;
+    w.economy.buildings[0].selector = selector;
+    w.players[0].raw[0x602] = 0;
+    w.players[0].raw[0x600+selector] = 1;
+    w.players[0].completed[2] = 0;
+    w.players[0].completed[selector] = 1;
+    pack.rules!.tables.buildingFootprints[selector] = 2;
     put16(f.n as number[], 43, 1);
     w.buildings[0].health = 1;
     f.n[51] = 0;
@@ -240,7 +249,7 @@ describe("Pulper2 source damage and retirement host", () => {
     stepCampaign(w, pack);
     expect(w.notices.filter((n) => n.severity === "error")).toEqual([]);
     expect(w.buildingNative[0][6]).toBe(0);
-    expect(w.players[0].completed[2]).toBe(0);
+    expect(w.players[0].completed[selector]).toBe(0);
     const loaded = loadCampaign(
       saveCampaign(w, { paused: true, speed: 2, accumulator: 0 }),
       w.contentHash,

@@ -21,6 +21,7 @@ import { unlinkSpatial } from "./spatial";
 import { requestAudio, type AudioRequest } from "../mechanics/audio";
 import { i16, u16, u32, put16 } from "./bytes";
 import { clearStagedCampaignBuildingProcessingFront, restoreStagedCampaignRecruitmentFootprint } from "./building-demolition-adapter";
+import { createCampaignShieldWave } from "./shield-adapter";
 
 export interface CampaignBuildingDamageServices {
   /** Real recursive blast/damage services bound to the current staged world. */
@@ -151,6 +152,11 @@ export function damageCampaignBuilding(
         buildingNameIndices: pack.rules.tables.buildingNameIndices,
       },
       gameplayRunning: services.gameplayRunning?.(w) ?? w.phase === "active",
+      globalFlags: w.flags,
+      createShieldWave(current, request) {
+        return createCampaignShieldWave(current, pack, services, request.code,
+          request.owner, request.position, request.grade);
+      },
       selectedBuildingSlot: services.selectedBuildingSlot?.(w) ?? null,
       createEffect(current, request) {
         const effect = createStagedDestructionEffect(
