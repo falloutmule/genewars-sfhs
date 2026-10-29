@@ -197,6 +197,14 @@ describe("human6A760 target classifier", () => {
     const f=fixture();f.n[122]=1;
     expect(()=>f.issue(5,2)).toThrow(/concrete action/);
   });
+  it.each([1,2])("resumes Crab combat mode%i with its retained plant reference",mode=>{
+    const f=fixture();f.n[122]=1;f.genes[1]=[1,1];
+    const out=f.issue(mode,2);
+    expect(out.disposition).toBe('installed');
+    expect([f.n[120],word(f.n,85),f.n[87],word(f.n,88),f.n[90]]).toEqual([mode,1,2,1,2]);
+    expect(f.n[94]).toBe(1);
+    expect(f.n[96]!&32).toBe(mode===2?32:0);
+  });
   it("honors dead/visibility/self gates before requiring component profiles and is read-only", () => {
     const f = fixture(),
       before = JSON.stringify(f.w);

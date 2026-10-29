@@ -239,7 +239,7 @@ export function stepSpecialistCorpseEffect(
     c.gravity < -32768 ||
     c.gravity > 32767 ||
     !Number.isInteger(c.water) ||
-    c.water < 0 ||
+    c.water < -2147483648 ||
     c.water > 0xffffffff ||
     byte(before, 6) !== 5 ||
     byte(before, 69) !== 69 ||

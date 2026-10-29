@@ -209,8 +209,11 @@ export function hasHumanCreatureAttackBody(species: number): boolean {
   return [1, 3, 4, 11, 22].includes(species);
 }
 function actionBody(n: Native, mode: number, kind: number) {
+  //5ED20 can resume a retained plant reference through81D30 after combat.
+  //Crab1 uses the concrete5B580 plant branch; this is not material mode4/5.
+  const crabPlant = byte(n, 122) === 1 && kind === 2;
   if (byte(n, 122) !== 4 &&
-      !([1, 2].includes(mode) && [1, 3, 4].includes(kind) && hasHumanCreatureAttackBody(byte(n, 122))))
+      !([1, 2].includes(mode) && ([1, 3, 4].includes(kind) || crabPlant) && hasHumanCreatureAttackBody(byte(n, 122))))
     throw Error(
       "Human command execution requires admitted Mule4; other species need their concrete action bodies",
     );

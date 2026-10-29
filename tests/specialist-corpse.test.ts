@@ -222,9 +222,10 @@ describe("source specialist corpse69", () => {
       put(f.world.terrain.bytes, cell * 14 + 2, 100);
       f.world.terrain.bytes[cell * 14 + 5] = 0;
     }
-    for (const [height, code] of [
-      [1000, 21],
-      [1800, 48],
+    for (const [height, code, water] of [
+      [1000, 21, 1632],
+      [1800, 48, 1632],
+      [1000, 21, -2208],
     ]) {
       const n = f.make();
       put32(n, 17, 200);
@@ -235,7 +236,7 @@ describe("source specialist corpse69", () => {
       const r = stepSpecialistCorpseEffect(n, f.world.terrain, {
         ...f.context,
         frame: 3,
-        water: 1632,
+        water,
         child(request, current) {
           called = true;
           expect(request.code).toBe(code);
