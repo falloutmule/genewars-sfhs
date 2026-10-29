@@ -303,7 +303,7 @@ export function createStagedCampaignEngineerBuilding(
   if (slot === request.owner * 64 + 64) return null;
   //43E30's virtual60 binds the actual resource. Selectors2/4/5/13 require their
   //imported resource profile; no synthetic artwork or source-table fallback.
-  if ([2, 4, 5, 13].includes(request.selector)) {
+  if ([2, 4, 5, 8, 13].includes(request.selector)) {
     if (!pack.buildingRules)
       throw Error("Original constructed building resource profile required");
     if (pack.buildingRules.unsupportedSelectors.includes(request.selector))
@@ -339,9 +339,9 @@ export function createStagedCampaignEngineerBuilding(
     grade: 0,
     health: 0,
     complete: false,
-    energy: [5, 13].includes(request.selector) ? i16(n as number[], 61) : 0,
+    energy: [5, 8, 13].includes(request.selector) ? i16(n as number[], 61) : 0,
   });
-  if (request.selector === 5 || request.selector === 13) {
+  if (request.selector === 5 || request.selector === 8 || request.selector === 13) {
     if (n[63] == null)
       throw Error("Actual retained building drain required");
     w.economy.buildings.push({

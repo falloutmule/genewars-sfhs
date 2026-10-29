@@ -3,7 +3,7 @@
  * transactions. Pointer bytes remain logical nulls, unknown priors survive. */
 import { advanceAnimation, type AnimationProfile } from "./animation";
 export type BuildingNative = (number | null)[];
-export type NativeBuildingSelector = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 11 | 13;
+export type NativeBuildingSelector = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 8 | 11 | 13;
 export type BuildingNativeResult<T> =
   | { ok: true; value: T }
   | { ok: false; reason: string };
@@ -28,7 +28,7 @@ export interface NativeBuildingProgress {
 }
 const integer = (v: number, lo: number, hi: number) =>
   Number.isInteger(v) && v >= lo && v <= hi;
-const selectors: readonly number[] = [0, 1, 2, 3, 4, 5, 6, 11, 13];
+const selectors: readonly number[] = [0, 1, 2, 3, 4, 5, 6, 8, 11, 13];
 function validate(n: readonly (number | null)[]) {
   if (
     !Array.isArray(n) ||

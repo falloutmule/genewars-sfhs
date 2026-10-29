@@ -36,7 +36,7 @@ function fixture(second: 6 | 8 = 6) {
       created = createNativeBuilding(n, {
         slot,
         owner: 0,
-        selector: selector === 8 ? 6 : selector,
+        selector,
         position,
         ground: groundHeight(w.terrain, ...position),
         shade: 32,
@@ -50,8 +50,6 @@ function fixture(second: 6 | 8 = 6) {
     });
     if (!complete.ok) throw Error(complete.reason);
     n.splice(0, 67, ...complete.value.native);
-    // Synthetic already-complete Wind record; this does not admit its factory.
-    n[45] = selector;
     n[46] = n[47] = grade;
     n[25] = grade + 1;
     const energy = selector === 3 ? 196 : 199;

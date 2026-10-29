@@ -344,6 +344,7 @@ export const CampaignCommandSchema = z.discriminatedUnion("type", [
       z.literal(6),
       z.literal(11),
       z.literal(13),
+      z.literal(8),
     ]),
     point,
     queued: z.boolean(),

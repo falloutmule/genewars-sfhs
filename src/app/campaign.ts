@@ -947,6 +947,8 @@ export async function openCampaign(
       constructionSelectors.push(4);
     if (pack.buildingRules?.resources.some(row => row.selector === 5 && pack.assets[row.assetKey]))
       constructionSelectors.push(5);
+    if (pack.buildingRules?.resources.some(row => row.selector === 8 && pack.assets[row.assetKey]))
+      constructionSelectors.push(8);
     if (pack.buildingRules?.resources.some(row => row.selector === 13 && pack.assets[row.assetKey]))
       constructionSelectors.push(13);
     for (const selector of constructionSelectors) {

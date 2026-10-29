@@ -391,11 +391,11 @@ describe("native Engineer selector4 Recycling Plant construction", () => {
       ),
     ).toBe(checksum(w));
   });
-  it("queues a human Vat through the campaign schema, pays and completes with live-work save/replay", () => {
+  it.each([13,8] as const)("queues human selector%i, pays and completes with live-work save/replay", selector => {
     const pack = structuredClone(start.pack);
-    pack.rules!.tables.buildingFootprints[13] = 1;
-    pack.rules!.tables.constructionCosts[13] = 750;
-    pack.buildingRules!.resources.find(r=>r.selector===13)!.assetKey = "RECYCLE_TEST";
+    pack.rules!.tables.buildingFootprints[selector] = 1;
+    pack.rules!.tables.constructionCosts[selector] = 750;
+    pack.buildingRules!.resources.find(r=>r.selector===selector)!.assetKey = "RECYCLE_TEST";
     const w = structuredClone(start.world),
       replay = recordCampaign(w, null),
       funds = w.players[0].funds,
@@ -403,7 +403,7 @@ describe("native Engineer selector4 Recycling Plant construction", () => {
       command = {
         type: "construct" as const,
         actorId: 0,
-        selector: 13 as const,
+        selector,
         point: [9087, 8319] as [number, number],
         queued: false,
       };
@@ -432,22 +432,22 @@ describe("native Engineer selector4 Recycling Plant construction", () => {
     expect(checksum(saved)).toBe(checksum(w));
     expect(w.buildings).toHaveLength(1);
     expect(w.buildings[0]).toMatchObject({
-      selector: 13,
+      selector,
       x: 9087,
       y: 8319,
       complete: true,
       health: 80,
     });
-    expect(w.players[0].completed[13]).toBe(1);
+    expect(w.players[0].completed[selector]).toBe(1);
     expect(w.players[0].funds).toBe(funds - (750 - 2 * skill));
     expect(w.specialists.records[0][88]! & 1).toBe(0);
     expect(w.spatial.nodes["source:3:0"].cell).toBe(worldCell(9087, 8319));
     expect(w.economy.buildings[0]).toMatchObject({
-      selector: 13,
+      selector,
       complete: true,
     });
-    expect(w.economy.players[0].capacity).toBe(500);
-    expect(u32(w.players[0].raw, 0x5e6)).toBe(500);
+    expect(w.economy.players[0].capacity).toBe(selector===13?500:0);
+    expect(u32(w.players[0].raw, 0x5e6)).toBe(selector===13?500:0);
     validateCampaignWorld(w, w.contentHash);
     expect(
       checksum(
