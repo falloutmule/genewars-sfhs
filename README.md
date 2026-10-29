@@ -2,7 +2,9 @@
 
 An in-progress direct conversion of the original GeneWars using TypeScript and Three.js, with platform patterns adapted from Battle Drones. The target is the original 24-mission campaign in one offline HTML file. **This checkout is a development foundation, not a playable campaign release.**
 
-Implemented: source-only startup import for all24 maps/pools; a separate campaign host with generated specialists, landing, construction travel/terrain work, power packets, GOOP, plants, neutral Mule callbacks and source result/carry stages; original-art inspection, complete implemented-state saves/replays, mouse/touch controls and standalone packaging. Canonical mission acceptance remains **0/24**. Ethereal/timer integration, later mission systems and full mission gates are in progress. The older construction workbench remains a separate development harness.
+Implemented: deterministic campaign simulation and save/replay, imported startup data for all 24 maps, rendering and touch controls, specialist work, construction and economy, ecology, supported creature families, strategic AI, and many combat/effect callbacks. **Software campaign acceptance is 11/24; mission 12 is partial.** This is historical software acceptance, not proof that every original mechanic is complete or physical-device acceptance.
+
+Last recorded verification: 2,002 tests across 172 files, strict TypeScript and leak checks passed. See [campaign progress](docs/CAMPAIGN_PROGRESS.md) and the [implementation audit and roadmap](docs/IMPLEMENTATION_ROADMAP.md). Older documents contain historical coverage statements and should not override these records.
 
 ## Original files stay local
 
