@@ -3,6 +3,7 @@ import type { Pack } from "../../content/types";
 import {
   cloneEffectHost,
   commitEffectHost,
+  createStagedWaterEffect,
   type EffectSchedulerWorld,
   type EffectSchedulerOptions,
 } from "./effect-scheduler";
@@ -308,6 +309,16 @@ function context<W extends EtherealAdapterWorld>(
     playerInactive: (owner) => w.players[owner].raw[0x6e3] !== 0,
     playerRaw: (owner) => w.players[owner].raw,
     punishment: options.punishmentServices?.(w),
+    createWater: (native, request) => {
+      if (request.code !== 21 && request.code !== 48)
+        throw Error("Unknown Ethereal water factory");
+      const slot = etherealWord(native, 15), current = w.ethereals.records[slot];
+      current.native.splice(6, native.length - 6, ...native.slice(6));
+      moveSpatial(w.spatial, w.terrain, identity(slot), worldCell(...request.position));
+      links(w);
+      const created = createStagedWaterEffect(w, {...request, code: request.code}, pack, shell(options));
+      if (created !== null) receipt.particles.push(created);
+    },
     createParticle: (parent, request, rng) => {
       const current = w.ethereals.records[parent.slot],
         next = { ...parent, native: parent.native.slice() };

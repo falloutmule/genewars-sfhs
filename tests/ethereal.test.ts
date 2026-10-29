@@ -12,6 +12,7 @@ import {
   etherealWord,
   putEtherealWord,
   putEtherealDword,
+  etherealWaterRequest,
 } from "../src/sim/mechanics/ethereal";
 import { stepEffectScheduler } from "../src/sim/campaign/effect-scheduler";
 import { cleanupCampaignReferences } from "../src/sim/campaign/cleanup";
@@ -104,6 +105,36 @@ describe("source family8 visitor lifecycle", () => {
         .slice(0, 3)
         .map((e) => (e.type === "countdown" ? e.request.type : null)),
     ).toEqual(["expiry-effect3a", "expiry-effect3a", "expiry-narration"]);
+  });
+  it("creates a shared water particle on signed-water Ethereal contact", () => {
+    const f = fixture();
+    f.world.source.source.terrain.loadedPhysicalWaterHeight = -2208;
+    for (let cell = 0; cell < 16384; cell++) f.world.terrain.bytes[cell * 14 + 5] = 0;
+    createCampaignEthereal(f.world, {selector: 0, owner: 0,
+      position: [8192, 8192], initialHeight: 27648}, f.pack, f.options);
+    f.world.frame = 3;
+    f.world.countdown = 0;
+    const out = stepCountdownEthereals(f.world, f.pack, f.options);
+    expect(out.particles).toHaveLength(1);
+    const effect = f.world.waterEffects.find(e => e.slot === out.particles[0])!;
+    expect(effect.code).toBe(21);
+    expect(effect.owner).toBe(0);
+    expect(f.world.powerEffects.slots[effect.slot].occupied).toBe(true);
+    expect(f.world.spatial.nodes[`source:4:${effect.slot}`]).toBeDefined();
+  });
+  it("uses unsigned water/ground height selection and source speed/material gates", () => {
+    const f = fixture(), n = Array(102).fill(0);
+    putEtherealWord(n, 61, 128);
+    putEtherealDword(n, 39, 1700);
+    putEtherealDword(n, 17, -1);
+    for (let cell = 0; cell < 16384; cell++) f.world.terrain.bytes[cell * 14 + 5] = 0;
+    const c = {terrain:f.world.terrain, water:1632, frame:3};
+    expect(etherealWaterRequest(n, 2000, c)).toMatchObject({code:48,height:-1});
+    putEtherealWord(n, 61, 127);
+    expect(etherealWaterRequest(n, 2000, c)).toBeNull();
+    putEtherealWord(n, 61, 128);
+    f.world.terrain.bytes[5] = 2;
+    expect(etherealWaterRequest(n, 2000, c)).toBeNull();
   });
   it("creates and advances a higher child immediately on parent altitude arrival", () => {
     const f = fixture(),

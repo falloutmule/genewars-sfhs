@@ -689,6 +689,14 @@ export function createStagedDestructionEffect<W extends EffectSchedulerWorld>(
 ): number | null {
   return destructionFactory(w, request, pack, options, emptyReceipt());
 }
+/** Shared48790 water factory inside an existing complete host transaction. */
+export function createStagedWaterEffect<W extends EffectSchedulerWorld>(
+  w: W, request: import("../mechanics/water").WaterRequest & {code: 21 | 48},
+  pack: Pack, options: EffectSchedulerOptions<W>,
+): number | null {
+  return destructionFactory(w, {...request, parameter: 0, delay: 0, newborn: false},
+    pack, options, emptyReceipt());
+}
 /**Already-staged code6 entry for the source carried-target ground scrape.
  * Reuses the complete shared allocation/particle factory above. */
 export function createStagedSmokeEffect<W extends EffectSchedulerWorld>(

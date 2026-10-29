@@ -21,6 +21,7 @@ import {
 import { effectTerrainShade } from "./power-motion";
 import { ecologyTerrainClass } from "./ecology";
 import type { SourcePoolRegistry } from "../campaign/source-pools";
+import type { WaterRequest } from "./water";
 import {stepEtherealPunishment,refreshPunishmentTarget,type EtherealPunishmentServices} from "./ethereal-punishment";
 export type EtherealNative = (number | null)[];
 export interface EtherealRecord {
@@ -89,6 +90,7 @@ export interface EtherealContext {
   bounce: readonly number[];
   frame: number;
   water: number;
+  createWater?(native: EtherealNative, request: WaterRequest): void;
   profile(selector: number, action: number): AnimationProfile;
   currentPointAccepted(record: EtherealRecord): boolean;
   buildings(owner: number): readonly EtherealBuilding[];
@@ -305,6 +307,20 @@ function speed(n: EtherealNative) {
       ? brake()
       : wrap(current + width);
 }
+/**6E808..6E919 with Ethereal11242C virtual90=1F010 (true).
+ * Family8 skips the following creature/specialist drowning branch. */
+export function etherealWaterRequest(n: EtherealNative, oldHeight: number,
+  c: Pick<EtherealContext, "frame" | "water" | "terrain">): WaterRequest | null {
+  const height = d(n, 0x27), at: [number, number] = [w(n, 7), w(n, 9)];
+  if (((c.frame + w(n, 15)) & 3) !== 3 ||
+      (height >>> 0) > ((c.water + 320) >>> 0) ||
+      ecologyTerrainClass(c.terrain, at) > 1 || w(n, 0x3d) < 128) return null;
+  const submerged = (oldHeight >>> 0) <= (c.water >>> 0) &&
+    (height >>> 0) < ((c.water - 512) >>> 0), ground = d(n, 17);
+  return {code: submerged ? 21 : 48, owner: 0, position: at,
+    height: submerged ? height : (ground >>> 0) > (c.water >>> 0) ? ground : c.water,
+    angles: submerged ? [0, 0, 128] : [0, 0, 0]};
+}
 function physics(n: EtherealNative, c: EtherealContext, oldGround: number) {
   const before = n.slice(),
     oldHeight = d(n, 0x27),
@@ -378,11 +394,11 @@ function physics(n: EtherealNative, c: EtherealContext, oldGround: number) {
     }
     angles(n, c);
   }
-  if (
-    ((c.frame + w(n, 15)) & 3) === 3 &&
-    ((c.water >>> 0) + 320) >>> 0 >= d(n, 0x27) >>> 0
-  )
-    throw new Error("Ethereal water callback is required");
+  const water = etherealWaterRequest(n, oldHeight, c);
+  if (water) {
+    if (!c.createWater) throw new Error("Ethereal water callback is required");
+    c.createWater(n, water);
+  }
   pw(n, 7, w(n, 7) & 32767);
   pw(n, 9, w(n, 9) & 32767);
 }
