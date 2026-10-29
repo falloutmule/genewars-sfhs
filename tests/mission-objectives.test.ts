@@ -487,3 +487,25 @@ describe("source-driven goal ledger and generic campaign result stages", () => {
     });
   });
 });
+
+describe("deferred objective landing service", () => {
+  it("uses returned player references before eligibility, while capacity failure continues unchanged", () => {
+    const p = players(); p[0][3] = 0;
+    const c = context({missionCounter: 23});
+    const service = vi.fn((selected: number, rows: readonly (readonly number[])[]) => {
+      const out = rows.map(p => [...p]); out[selected][0x498] = 5;
+      return {ok: true as const, value: out};
+    });
+    expect(value(scanMissionObjectives(p, c, capable, service)).players[0][0x6e3]).toBe(0);
+    expect(service.mock.calls[0][0]).toBe(0); expect(p[0][0x498]).toBe(0);
+    expect(value(scanMissionObjectives(p, c, capable, (_id, rows) => ({ok: true, value: rows.map(p => [...p])}))).players[0][0x6e3]).toBe(1);
+  });
+  it("gates the call and propagates service failure without mutating inputs", () => {
+    const p = players(), before = structuredClone(p), service = vi.fn(() => ({ok: false as const, reason: "factory-boundary"}));
+    for (const c of [context(), context({missionCounter: 22}), context({missionCounter:23, flags:0x40})])
+      scanMissionObjectives(p, c, capable, service);
+    expect(service).not.toHaveBeenCalled();
+    expect(scanMissionObjectives(p, context({missionCounter:23}), capable, service)).toEqual({ok:false,reason:"factory-boundary"});
+    expect(p).toEqual(before);
+  });
+});

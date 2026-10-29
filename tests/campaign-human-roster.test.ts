@@ -142,8 +142,8 @@ describe("human roster ordinary campaign command dispatch", () => {
   });
   it("activates source special-entry specialists before72AD0's64 marker without allocating a49 carrier", () => {
     const {pack} = fixture(), startup = pack.missions[0].startup!, prefix = decodeBytes(startup.missionPrefixBase64);
-    put32(prefix, 0x1ec2, 15000); put16(prefix, 0x1c9a, 12000); put16(prefix, 0x1c9c, 13000);
-    startup.missionPrefixBase64 = encodeBytes(prefix); startup.context.specialActivation = 15000;
+    put32(prefix, 0x1ec2, 3); put16(prefix, 0x1c9a, 12000); put16(prefix, 0x1c9c, 13000);
+    startup.missionPrefixBase64 = encodeBytes(prefix); startup.context.specialActivation = 3;
     const w = createCampaign(pack, "synthetic-source-special-entry"), replay = recordCampaign(w, null);
     replay.commands.push({tick: w.tick, type: "enter"}); enterCampaign(w, pack);
     expect(w.actors.length).toBeGreaterThan(0); expect(w.actors.every(a => a.ready)).toBe(true);
@@ -152,7 +152,28 @@ describe("human roster ordinary campaign command dispatch", () => {
     expect(w.initialRecruitmentPanel).toBeUndefined(); expect(w.frame).toBe(0);
     const resumed = loadCampaign(saveCampaign(w, {paused: true, speed: 1, accumulator: 0}), w.contentHash).world;
     for (let i = 0; i < 8; i++) {stepCampaign(w, pack); stepCampaign(resumed, pack);}
+    expect(w.landings.length).toBe(1);
     expect(w.phase, JSON.stringify(w.notices)).toBe("active"); expect(checksum(resumed)).toBe(checksum(w));
     expect(checksum(replayCampaign(sealCampaignReplay(replay, w), pack, w.contentHash))).toBe(checksum(w));
   });
+});
+
+it("rolls back a timed landing when the later objective scan refuses alternate presentation", () => {
+  const {pack} = fixture(), startup = pack.missions[0].startup!, prefix = decodeBytes(startup.missionPrefixBase64);
+  put32(prefix, 0x1ec2, 3); put16(prefix, 0x1c9a, 12000); put16(prefix, 0x1c9c, 13000);
+  startup.missionPrefixBase64 = encodeBytes(prefix); startup.context.specialActivation = 3;
+  const w = createCampaign(pack, "synthetic-deferred-rollback"); enterCampaign(w, pack);
+  for (let i=0;i<3;i++) stepCampaign(w, pack);
+  expect(w.phase).toBe("active"); expect(w.frame).toBe(3);
+  w.runtimeMode = 1; w.players[0].raw[0x606] = 3;
+
+  const control = structuredClone(w); put32(control.missionPrefix, 0x1ec2, 4);
+  stepCampaign(w, pack); stepCampaign(control, pack);
+  expect(w.phase, JSON.stringify({frame:w.frame,context:w.result.context,raw:[w.players[0].raw[2],w.players[0].raw[3],u32(w.players[0].raw,0x49d),u32(w.players[0].raw,0x4a7)],notices:w.notices})).toBe("blocked"); expect(control.phase).toBe("blocked");
+  expect(w.notices.at(-1)).toEqual(control.notices.at(-1));
+  expect(w.landings).toEqual(control.landings);
+  expect(w.powerEffects).toEqual(control.powerEffects);
+  expect(w.rng).toEqual(control.rng);
+  expect(w.players).toEqual(control.players);
+  expect(w.terrain).toEqual(control.terrain);
 });

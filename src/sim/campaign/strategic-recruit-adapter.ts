@@ -439,6 +439,30 @@ export function createStagedCampaignRosterLanding(
     });
     return true;
   }
+  return createStagedCampaignLandingTail(w, request, pack, services, events);
+}
+/** Direct7F3B0 entry used by72ED0. Does not execute80830's actor prefix. */
+export function createStagedCampaignDeferredLanding(
+  w: CampaignWorld,
+  player: number,
+  pack: Pack,
+  services: CampaignSpecialistServices,
+): boolean {
+  return createStagedCampaignLandingTail(w,
+    {routine: 0x80830, player, deployment: 1, associatedBuilding: null},
+    pack, services, []);
+}
+function createStagedCampaignLandingTail(
+  w: CampaignWorld,
+  request: HumanLandingRequest,
+  pack: Pack,
+  services: CampaignSpecialistServices,
+  events: CampaignRecruitEvent[],
+): boolean {
+  const raw = w.players[request.player].raw,
+    building = request.associatedBuilding === null ? null : w.buildingNative[request.associatedBuilding],
+    special = aiDword(w.missionPrefix, 0x1ec2);
+  const buildingPoint = () => campaignAssociatedRecruitmentPoint(w, request.associatedBuilding!, pack);
   if (
     aiWord(w.missionPrefix, 0x3554) !==
     w.powerEffects.slots.filter((p) => p.occupied).length

@@ -7,7 +7,7 @@ import {
   issueCampaignHumanRoster,
   issueStagedCampaignHumanRoster,
 } from "../src/sim/campaign/human-roster-adapter";
-import { activateStagedCampaignSpecialists } from "../src/sim/campaign/strategic-recruit-adapter";
+import { createStagedCampaignDeferredLanding, activateStagedCampaignSpecialists } from "../src/sim/campaign/strategic-recruit-adapter";
 import {
   createStagedCampaignRecruitmentMarker,
   stepCampaignRecruitmentEffect,
@@ -385,4 +385,16 @@ describe("human explicit recruitment campaign adapter", () => {
     expect(f.w.actors.find((a) => a.id === 0)?.ready).toBe(true);
     expect(u16(f.w.specialists.records[0] as number[], 112) & 1).toBe(1);
   });
+});
+
+it("direct timed landing retains existing specialist native state and uses the returned marker", () => {
+  const f = fixture(); put32(f.w.missionPrefix, 0x1ec2, 1);
+  put16(f.w.missionPrefix, 0x1c9a, 15000); put16(f.w.missionPrefix, 0x1c9c, 16000);
+  f.issue({type:"roster-select", blueprintIndex:0});
+  const marker = createStagedCampaignRecruitmentMarker(f.w, f.pack, f.options(f.w))!;
+  const actors = structuredClone(f.w.actors), specialists = structuredClone(f.w.specialists);
+  expect(createStagedCampaignDeferredLanding(f.w, 0, f.pack, {effectOptions:f.options})).toBe(true);
+  expect(f.w.actors).toEqual(actors); expect(f.w.specialists).toEqual(specialists);
+  expect(i16(f.w.players[0].raw, 0x496)).toBe(marker);
+  expect(f.w.landings.at(-1)?.point).toEqual([15000,16000]);
 });

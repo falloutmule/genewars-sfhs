@@ -1,5 +1,6 @@
 /** Independently expressed source72ED0 predicates. Objective scans do not
- * advance campaign progress, run deferred landings or execute result views. */
+ * advance campaign progress or execute result views. Timed landings require
+ * an explicit transactional host service. */
 export const OBJECTIVE_PLAYER_BYTES = 1805;
 export const OBJECTIVE_PREFIX_BYTES = 0x355e;
 export type ObjectiveResult<T> =
@@ -46,6 +47,13 @@ export type CapabilityQuery = (
   player: number,
   record: readonly number[],
 ) => ObjectiveResult<boolean>;
+
+/** Host owns a transaction across this call and the remaining objective scan.
+ * Capacity failure is a successful service with unchanged player references. */
+export type DeferredLandingService = (
+  selected: number,
+  players: readonly (readonly number[])[],
+) => ObjectiveResult<number[][]>;
 
 const integer = (n: number, min: number, max: number) =>
   Number.isInteger(n) && n >= min && n <= max;
@@ -124,6 +132,7 @@ export function scanMissionObjectives(
   before: readonly (readonly number[])[],
   context: MissionObjectiveContext,
   exhausted: CapabilityQuery,
+  deferredLanding?: DeferredLandingService,
 ): ObjectiveResult<ObjectiveScan> {
   if (!playersValid(before)) return fail("invalid-objective-player-records");
   if (!missionObjectiveContextValid(context))
@@ -138,8 +147,13 @@ export function scanMissionObjectives(
     alreadyTerminal: !!(c.flags & 0x40),
   };
   if (scan.alreadyTerminal) return { ok: true, value: scan };
-  if (c.missionCounter !== 0 && c.frame === c.missionCounter)
-    return fail("deferred-landing-required");
+  if (c.missionCounter !== 0 && c.frame === c.missionCounter) {
+    if (!deferredLanding) return fail("deferred-landing-required");
+    const landing = deferredLanding(c.selected, scan.players);
+    if (!landing.ok) return landing;
+    if (!playersValid(landing.value)) return fail("invalid-deferred-landing-players");
+    scan.players = landing.value.map(p => [...p]);
+  }
   for (let id = 0; id < c.active && scan.winner === null; id++) {
     const p = scan.players[id];
     if (i32(p, 0x49d) !== 0) {
@@ -212,13 +226,14 @@ export function scanMissionObjectives(
 }
 
 /** Ordinary mode0 terminal flags and result request. Source mode1 presentation
- * callbacks and deferred landing remain explicit atomic boundaries. */
+ * callbacks remain explicit boundaries; the host stages deferred landing. */
 export function evaluateMissionObjectives(
   before: readonly (readonly number[])[],
   context: MissionObjectiveContext,
   exhausted: CapabilityQuery,
+  deferredLanding?: DeferredLandingService,
 ): ObjectiveResult<MissionObjectivePlan> {
-  const result = scanMissionObjectives(before, context, exhausted);
+  const result = scanMissionObjectives(before, context, exhausted, deferredLanding);
   if (!result.ok) return result;
   const scan = result.value;
   if (scan.alreadyTerminal) return fail("terminal-result-identity-required");

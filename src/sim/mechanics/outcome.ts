@@ -1,3 +1,4 @@
+import type { DeferredLandingService } from "./mission-objectives";
 /** Source-backed Exceland result stages and campaign carry. Native unknowns
  * remain explicit; this module never creates a ready successor mission. */
 import {
@@ -154,14 +155,16 @@ export function stepExcelandResult(
 export function stepCampaignResult(
   before: CampaignResultState,
   action: ResultAction,
+  deferredLanding?: DeferredLandingService,
 ): OutcomeResult<ResultReceipt> {
-  return stepResult(before, action, false);
+  return stepResult(before, action, false, deferredLanding);
 }
 
 function stepResult(
   before: CampaignResultState,
   action: ResultAction,
   excelandOnly: boolean,
+  deferredLanding?: DeferredLandingService,
 ): OutcomeResult<ResultReceipt> {
   if (!playersValid(before.players) || before.schemaVersion !== 1)
     return fail("invalid-result-state");
@@ -205,6 +208,7 @@ function stepResult(
       objectiveContext,
       (_owner, player) =>
         constructionCapabilityExhausted(player, action.actors),
+      deferredLanding,
     );
     if (!evaluated.ok) return evaluated;
     const plan = evaluated.value,

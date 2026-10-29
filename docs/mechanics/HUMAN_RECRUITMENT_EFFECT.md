@@ -133,3 +133,25 @@ flags0 motion path separately requires native desired=-1, zero XY acceleration,
 forward animation/delay0 and its admitted descriptor/profile. Unknown numeric
 priors or missing services fail explicitly. This family is synthetic/source
 conformance evidence, not mission acceptance.
+
+## Timed objective landing
+
+At the nonzero mission counter's exact unsigned frame,72ED0 calls7F3B0
+for the selected player before scanning objective eligibility. The direct entry
+shares the landing factory tail but does not run80830's specialist deployment
+prefix. Existing specialist positions, tasks and resource bindings survive.
+The counter remains nonzero for subsequent eligibility predicates. Capacity
+failure leaves player references unchanged and does not abort the scan.
+
+The objective service remains an explicit refusal when absent. The campaign
+host stages the direct factory and publishes its effects, RNG, reveal and player
+references only after the remaining objective evaluation succeeds. A later
+unsupported result presentation discards the staged factory effects.
+
+Private numeric evidence covers96 direct7F3B0 cases (5,584 instructions and
+173,280 player bytes) with declared terrain/factory/reveal ports. Another128
+literal72ED0 prefix cases (4,440 instructions) match the TypeScript service gate.
+Synthetic tests cover specialist preservation, returned marker identity,
+capacity-result eligibility, absent/error service, timed save/reload/full replay,
+and rollback after a later objective refusal. These establish the timed call,
+not a completed mission or an inferred reinforcement mechanic.

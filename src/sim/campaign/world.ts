@@ -1,3 +1,4 @@
+import { createStagedCampaignDeferredLanding } from "./strategic-recruit-adapter";
 import { stepStagedCampaignShield } from "./shield-adapter";
 import { stepShieldWave, type ShieldWaveWorld } from "../mechanics/shield-wave";
 import { stepStagedCampaignGoopVat } from "./goop-vat-adapter";
@@ -2762,6 +2763,9 @@ export function stepCampaign(w: CampaignWorld, pack: Pack): void {
       Object.assign(w.result.context, {
         ...campaignObjectiveContext(w),
       });
+      // Only the timed factory needs a clone. Publish it after the complete
+      // objective evaluation, so a later refusal cannot leak factory effects.
+      let landingHost: CampaignWorld | undefined;
       const outcome = stepCampaignResult(w.result, {
         type: "evaluate",
         actors: w.actors
@@ -2771,8 +2775,14 @@ export function stepCampaign(w: CampaignWorld, pack: Pack): void {
             owner: a.owner,
             category: w.players[a.owner].blueprints[a.blueprintIndex].category,
           })),
+      }, (selected, players) => {
+        landingHost = structuredClone(w);
+        for (let i = 0; i < 4; i++) landingHost.players[i].raw = [...players[i]];
+        createStagedCampaignDeferredLanding(landingHost, selected, pack, specialistServices(pack));
+        return {ok: true, value: landingHost.players.map(p => p.raw.slice())};
       });
       if (!outcome.ok) throw new Error(outcome.reason);
+      if (landingHost) Object.assign(w, landingHost);
       w.result = outcome.value.state;
       w.flags = w.result.context.flags;
       for (let i = 0; i < 4; i++)
