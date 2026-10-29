@@ -189,7 +189,7 @@ const receipt = {
   // Private acceptance receipt retains108 hashed save/replay links.
   // Pylon: portrait touch last-survivor win at frame1785; allfive staff
   // survived, Zed carry/replay29038c91 and landscape reload,27 hashedlinks.
-  acceptedMissionCount: 10,
+  acceptedMissionCount: 11,
   ruleExtension: ruleExtensionIdentity,
   physicalDeviceAcceptance: "not-run",
   upstreamBattleDrones: "39d6f587f98a82f5c0426e8bd476cef49fd19ef0",
