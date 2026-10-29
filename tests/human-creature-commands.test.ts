@@ -193,12 +193,12 @@ describe("human6A760 target classifier", () => {
     expect(()=>executeHumanCreatureCommand(f.w,0,{type:'target',target:{kind:1,index:1},mode:1,callerOwner:0,selectedPlayer:0},f.command)).toThrow(/concrete action/);
     expect(f.w).toEqual(before);
   });
-  it("does not admit Crab material work through its attack gate",()=>{
-    const f=fixture();f.n[122]=1;
+  it.each([1,3])("does not admit species%i material work through its attack gate",species=>{
+    const f=fixture();f.n[122]=species;
     expect(()=>f.issue(5,2)).toThrow(/concrete action/);
   });
-  it.each([1,2])("resumes Crab combat mode%i with its retained plant reference",mode=>{
-    const f=fixture();f.n[122]=1;f.genes[1]=[1,1];
+  it.each([[1,1],[1,2],[3,1],[3,2]])("resumes species%i combat mode%i with its retained plant reference",(species,mode)=>{
+    const f=fixture();f.n[122]=species;f.genes[species]=[species,species];
     const out=f.issue(mode,2);
     expect(out.disposition).toBe('installed');
     expect([f.n[120],word(f.n,85),f.n[87],word(f.n,88),f.n[90]]).toEqual([mode,1,2,1,2]);
