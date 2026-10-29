@@ -67,3 +67,5 @@ attacks with actual FROG metadata. These comparisons also correct the shared
 neighborhood code11 predicate and kill-only neutral anchor update described
 in [MULE_COMBAT.md](MULE_COMBAT.md). Evidence is private under
 `.private/frog-combat-20261028/`; no original executable is run.
+
+Crab–Frog species9 now uses the shared callback with its actual ordered Crab/Frog components, trait row and animation resource. Its primary Crab does not enter the primary-Frog spit branch in5D360. The existing secondary-Frog airborne animation applies. Forty-eight private mapped whole5ED20 comparisons cover ground/air, moving/stationary states0/8 and both update parities (61,782 instructions); owned/neutral host save/replay tests retain species9. Other unadmitted Frog hybrids are unchanged.

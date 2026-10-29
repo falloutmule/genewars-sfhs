@@ -19,7 +19,7 @@ import {
   replayCampaign,
 } from "../src/sim/campaign/persistence";
 import { checksum } from "../src/sim/checksum";
-function fixture(owner: number, recycled = false) {
+function fixture(owner: number, recycled = false, species = 2) {
   const pack = campaignFixture(),
     s = speciesFixture();
   Object.assign(pack.ecologyRules!, {
@@ -35,6 +35,7 @@ function fixture(owner: number, recycled = false) {
   );
   for (let a = 0; a < 8; a++)
     pack.assets.FROG.animations![a] = { first: 0, last: 7, rawTrailingWord: 8 };
+  pack.assets.CRABFROG = structuredClone(pack.assets.FROG);
   const w = createCampaign(pack, "synthetic-ordinary-frog");
   enterCampaign(w, pack);
   for (let i = 0; i < 200; i++) stepCampaign(w, pack);
@@ -52,7 +53,7 @@ function fixture(owner: number, recycled = false) {
   const made = initializeMuleNative(
       prior,
       w.rng,
-      { slot: 0, owner, position: at, quality: 100, species: 2 },
+      { slot: 0, owner, position: at, quality: 100, species },
       {
         terrain: w.terrain,
         tables: pack.rules!.tables,
@@ -98,15 +99,15 @@ describe("ordinary pure Frog campaign transaction", () => {
     expect(checksum(replayCampaign(sealCampaignReplay(replay, w), pack, w.contentHash))).toBe(checksum(w));
     expect(() => validateSpatial(w.spatial)).not.toThrow();
   });
-  it.each([0, 4])(
-    "preserves owner%i airborne callbacks through save/reload and replay",
-    (owner) => {
-      const { w, pack } = fixture(owner),
+  it.each([[0,2],[4,2],[0,9],[4,9]])(
+    "preserves owner%i species%i airborne callbacks through save/reload and replay",
+    (owner, species) => {
+      const { w, pack } = fixture(owner, false, species),
         replay = recordCampaign(w, null);
       for (let i = 0; i < 8; i++) stepCampaign(w, pack);
       expect(w.phase, JSON.stringify(w.notices.slice(-3))).toBe("active");
       expect(w.creatureNative[0][28]).toBe(0);
-      expect(w.creatureNative[0][122]).toBe(2);
+      expect(w.creatureNative[0][122]).toBe(species);
       const resumed = loadCampaign(
         saveCampaign(w, { paused: true, speed: 1, accumulator: 0 }),
         w.contentHash,

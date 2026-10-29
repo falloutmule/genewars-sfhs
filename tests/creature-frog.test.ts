@@ -77,7 +77,8 @@ describe("ordinary Frog airborne animation", () => {
   });
   it("admits pure Frog ordinary callbacks without inventing other ability domains", () => {
     expect(sharedCreatureCallbackSpecies(2)).toBe(true);
-    for (const s of [0, 6, 9, 12, 13, 16, 17, 20, 23])
+    expect(sharedCreatureCallbackSpecies(9)).toBe(true);
+    for (const s of [0, 6, 12, 13, 16, 17, 20, 23])
       expect(sharedCreatureCallbackSpecies(s)).toBe(false);
   });
 });
