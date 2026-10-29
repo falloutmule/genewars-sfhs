@@ -1,4 +1,4 @@
-/** Complete451F0 Distributor3/Photon6 numeric callback and7AC00 tail.
+/** Complete451F0 Distributor3/Photon6/Wind8 numeric callback and7AC00 tail.
  * Shared33 factories execute immediately through the caller's staged ports.
  * Native pointer gaps and unrelated afterimages are retained. */
 import { advanceAnimation, type AnimationProfile } from "./animation";
@@ -26,6 +26,8 @@ export interface NativePowerProducerContext<
   /** Actual imported104D10, independent of building grade. */
   upkeep: readonly number[];
   solarGeneration: number;
+  /** Original7B140 height at the producer point; required for Wind8. */
+  groundHeight?(world: W, x: number, y: number): number;
   profile(world: W, slot: number, action: 0 | 1 | 2 | 3 | 4): AnimationProfile;
   createTransfer(world: W, request: PowerProducerTransfer): number;
   audio(world: W, slot: number, request: PowerProducerAudio): void;
@@ -35,7 +37,7 @@ export interface NativePowerProducerContext<
 }
 export interface PowerProducerReceipt {
   slot: number;
-  selector: 3 | 6;
+  selector: 3 | 6 | 8;
   grade: 0 | 1 | 2;
   operational: boolean;
   generated: number;
@@ -104,13 +106,13 @@ export function stepStagedNativePowerProducer<
     raw = player?.raw;
   if (
     byte(a, 6) !== 4 ||
-    (selector !== 3 && selector !== 6) ||
+    (selector !== 3 && selector !== 6 && selector !== 8) ||
     grade > 2 ||
     owner > 3 ||
     Math.floor(slot / 64) !== owner ||
     word(a, 15) !== slot
   )
-    throw Error("Actual Distributor3/Photon6 identity and grade required");
+    throw Error("Actual Distributor3/Photon6/Wind8 identity and grade required");
   if (!raw || raw.length !== 1805 || raw[1] !== owner || raw[0x4a1] !== owner)
     throw Error("Actual producer owner1805-byte player required");
   if (word(a, 49) & 0x800)
@@ -159,10 +161,23 @@ export function stepStagedNativePowerProducer<
     if (selector === 3) a[28] = byte(a, 27) !== 0 ? 1 : 0;
     if (!(flags & 0x100)) {
       receipt.operational = true;
+      let windGeneration = 0;
+      if (selector === 8) {
+        if (!c.groundHeight) throw Error("Actual Wind8 terrain height required");
+        const height = c.groundHeight(w, ...point(a));
+        held();
+        if (!integer(height, -2147483648, 2147483647))
+          throw Error("Actual signed Wind8 terrain height required");
+        windGeneration = (Math.max(height >> 12, 4) + grade + 1) & 255;
+        a[28] = 1;
+        a[29] = 8 - Math.min(windGeneration, 8);
+      }
       receipt.generated =
         selector === 3
           ? Math.max(grade * 4, 2)
-          : ((c.solarGeneration + grade) << 16) >> 16;
+          : selector === 8
+            ? windGeneration
+            : ((c.solarGeneration + grade) << 16) >> 16;
       if (selector === 6) {
         a[28] = byte(a, 27) !== 0 ? 1 : 0;
         if (!byte(a, 27)) audio({ type: "stop", channel: 35 });
@@ -176,8 +191,8 @@ export function stepStagedNativePowerProducer<
           ? (w.frame & 63) === 16 * grade || word(a, 61) === 2000
           : word(a, 61) >= 200;
       if (receipt.pulse) {
-        receipt.draw = nextRandom(w.rng);
-        if (selector === 3 && receipt.draw % 7 === 0) {
+        if (selector !== 8) receipt.draw = nextRandom(w.rng);
+        if (selector === 3 && receipt.draw! % 7 === 0) {
           a[27] = 1;
           audio({
             type: "play",
@@ -187,7 +202,7 @@ export function stepStagedNativePowerProducer<
             volume: 127,
             range: 100,
           });
-        } else if (selector === 6 && receipt.draw % 50 === 0 && !byte(a, 27)) {
+        } else if (selector === 6 && receipt.draw! % 50 === 0 && !byte(a, 27)) {
           a[27] = 1;
           audio({
             type: "play",
@@ -229,7 +244,7 @@ export function stepStagedNativePowerProducer<
             const b = w.buildingNative[i];
             if (!(byte(b, 49) & 0x10)) continue;
             b[49] = byte(b, 49) & 0xef;
-            if (selector === 6 || share) {
+            if (selector !== 3 || share) {
               if (!c.createTransfer)
                 throw Error("Actual ordered33 factory service required");
               const made = c.createTransfer(w, {

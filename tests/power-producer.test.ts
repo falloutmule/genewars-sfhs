@@ -12,7 +12,7 @@ import {
 } from "../src/sim/mechanics/engineer-construction";
 
 /** Synthetic retained byte priors and deliberately non-original ANB lengths. */
-function fixture(selector: 3 | 6 = 3, grade: 0 | 1 | 2 = 0) {
+function fixture(selector: 3 | 6 | 8 = 3, grade: 0 | 1 | 2 = 0) {
   const records: (number | null)[][] = Array.from({ length: 256 }, () =>
     Array.from({ length: 67 }, (_, i) => (i >= 31 && i < 39 ? null : 0)),
   );
@@ -291,5 +291,41 @@ describe("complete Distributor/Photon native callbacks", () => {
       stepStagedNativePowerProducer(demolition.w, 0, demolition.c),
     ).toThrow("demolition");
     expect(demolition.w).toEqual(before);
+  });
+});
+
+
+describe("Wind native callback", () => {
+  it.each([-4096, 0, 16384, 20480, 32768, 1048576])("uses height %s with byte generation and capped animation speed", (height) => {
+    for (const grade of [0, 1, 2] as const) {
+      const f = fixture(8, grade);
+      f.c.groundHeight = (_w, x, y) => {
+        expect([x, y]).toEqual([4096, 4096]);
+        return height;
+      };
+      const r = stepStagedNativePowerProducer(f.w, 0, f.c);
+      const generated = (Math.max(height >> 12, 4) + grade + 1) & 255;
+      expect(r.generated).toBe(generated);
+      expect(f.n[29]).toBe(8 - Math.min(generated, 8));
+      expect(r.audio).toEqual([]);
+      expect(f.w.rng.draws).toBe(0);
+    }
+  });
+  it("dispatches a fixed 200 without drawing RNG and uses recipient grade radius", () => {
+    const f = fixture(8);
+    f.c.groundHeight = () => 0;
+    f.add(1, 3, [6400, 4096], 0x101, 1);
+    f.add(2, 3, [6401, 4096], 1, 1);
+    put16(f.n as number[], 61, 199);
+    const before = structuredClone(f.w.rng);
+    const r = stepStagedNativePowerProducer(f.w, 0, f.c);
+    expect(r).toMatchObject({pulse: true, draw: null, recipientCount: 1});
+    expect(f.transfers.map(q => [q.targetSlot, q.payload])).toEqual([[1, 200]]);
+    expect(i16(f.n as number[], 61)).toBe(0);
+    expect(f.w.rng).toEqual(before);
+  });
+  it("refuses an unavailable terrain callback", () => {
+    const f = fixture(8);
+    expect(() => stepStagedNativePowerProducer(f.w, 0, f.c)).toThrow("terrain height required");
   });
 });

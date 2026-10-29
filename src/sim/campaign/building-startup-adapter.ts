@@ -96,7 +96,7 @@ export function initializeCampaignBuildings(
             },
           }
         : {}),
-      ...([3, 6].includes(b.selector)
+      ...([3, 6, 8].includes(b.selector)
         ? {
             producer: {
               animation: { ...b.animation },

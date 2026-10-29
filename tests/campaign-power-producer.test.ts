@@ -20,7 +20,7 @@ import { checksum } from "../src/sim/checksum";
 
 /** Explicit synthetic initial grades/energy/resources. Every later update is
  * ordinary campaign dispatch; this is not earned upgrading or mission acceptance. */
-function fixture() {
+function fixture(second: 6 | 8 = 6) {
   const f = processorFixture(4),
     { w, pack } = f;
   pack.assets.EFF.animations![33] = { first: 0, last: 3, rawTrailingWord: 4 };
@@ -29,14 +29,14 @@ function fixture() {
   w.buildings[0].energy = w.economy.buildings[0].energy = 0;
   for (const [slot, selector, grade] of [
     [1, 3, 2],
-    [2, 6, 1],
+    [2, second, 1],
   ] as const) {
     const position: [number, number] = [8448 + slot * 256, 8192],
       n = w.buildingNative[slot],
       created = createNativeBuilding(n, {
         slot,
         owner: 0,
-        selector,
+        selector: selector === 8 ? 6 : selector,
         position,
         ground: groundHeight(w.terrain, ...position),
         shade: 32,
@@ -50,6 +50,8 @@ function fixture() {
     });
     if (!complete.ok) throw Error(complete.reason);
     n.splice(0, 67, ...complete.value.native);
+    // Synthetic already-complete Wind record; this does not admit its factory.
+    n[45] = selector;
     n[46] = n[47] = grade;
     n[25] = grade + 1;
     const energy = selector === 3 ? 196 : 199;
@@ -94,8 +96,8 @@ function fixture() {
 }
 
 describe("ordinary campaign power producer dispatch", () => {
-  it("runs upgraded3/6 in the building pass, then real33 motion, retaining a running save and full replay", () => {
-    const { w, pack } = fixture(),
+  it.each([6, 8] as const)("runs Distributor and producer%s through packets, save and replay", (second) => {
+    const { w, pack } = fixture(second),
       recording = recordCampaign(w, null),
       funds = w.players[0].funds,
       positions = new Set<string>();

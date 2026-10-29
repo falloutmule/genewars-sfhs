@@ -1740,7 +1740,7 @@ function actorStep(w: CampaignWorld, a: CampaignActor, pack: Pack): void {
     const extent = completed
       ? completed.selector === 1
         ? 85
-        : [3, 6, 11].includes(completed.selector)
+        : [3, 6, 8, 11].includes(completed.selector)
           ? 128
           : 256
       : 0;
@@ -2253,7 +2253,7 @@ export function stepCampaign(w: CampaignWorld, pack: Pack): void {
             stepCampaignGenepod(staged, building, pack);
             return true;
           }
-          if (![3, 6, 11].includes(building.selector))
+          if (![3, 6, 8, 11].includes(building.selector))
             throw new Error(
               `Original completed building callback ${building.selector} is not implemented`,
             );

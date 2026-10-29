@@ -60,7 +60,7 @@ function current(w: CampaignWorld, slot: number) {
     !n ||
     n.length !== 67 ||
     n[6] !== 4 ||
-    ![3, 6].includes(n[45]!) ||
+    ![3, 6, 8].includes(n[45]!) ||
     n[24] !== Math.floor(slot / 64) ||
     i16(n as number[], 15) !== slot ||
     !b ||
@@ -265,6 +265,7 @@ export function stepStagedCampaignPowerProducer(
   const receipt = stepStagedNativePowerProducer(w, slot, {
     upkeep: pack.buildingRules.upkeep,
     solarGeneration: w.source.source.terrain.solarGeneration,
+    groundHeight: (s, x, y) => groundHeight(s.terrain, x, y),
     profile: (s, i, action) =>
       animationProfile(
         pack.assets[campaignBuildingAsset(pack, s.buildingNative[i][45]!)],

@@ -4,6 +4,8 @@ Current as of 29 October 2026: **11/24 accepted**. Zed completed through the por
 
 Private evidence is indexed in `.private/continuous-20261026/mission11-acceptance.json`, including 502 verified ancestry links and preserved genuine losses and restarts. The successful route kept a reserve Engineer, completed both forests early, and timed fresh Crab production for the remaining inspection quota. No simulation source changed during the successful fourth attempt.
 
+Thyroid exposed two missing enemy building callbacks before its first simulation tick. Completed Wind Generators (selector 8) now use the original terrain-height output, animation speed and fixed power-packet distribution without consuming a random draw. Verification passed 90 private static-instruction cases, campaign packet/save/replay coverage, and 170 test files / 1,963 tests. The Shield Generator (selector 12) remains an explicit blocker while its collision and effect families are being converted; campaign acceptance remains 11/24 and the verified continuation parent remains active at frame 0. Wind construction is not newly admitted by this change.
+
 The entries below are historical checkpoints.
 
 Current as of 27 October 2026: **8/24 accepted**. Exceland, Krell, Madami, Roach, Brown, Lunacon, Oid and Fushon are accepted. Vergon (mission 9) is initialized. Its exact current phase, frame and genuine continuation save are recorded in `.private/continuous-20261026/current.json`.

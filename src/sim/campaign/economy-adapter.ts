@@ -236,7 +236,7 @@ export function stepCampaignEconomyBuildings(
         beforeBuilding(state, b, player) {
           staged.economy = state;
           syncPlayers(staged, state);
-          if ([3, 6].includes(b.selector))
+          if ([3, 6, 8].includes(b.selector))
             refreshStagedCampaignPowerProducer(staged, b.owner * 64 + b.slot);
           if (nativeExtractor && b.selector === 11)
             refreshStagedCampaignExtractor(staged, b.owner * 64 + b.slot);
@@ -293,7 +293,7 @@ export function stepCampaignEconomyBuildings(
             nativeExtractorPresentations.push(...receipt.presentationRequests);
             return true;
           }
-          if ([3, 6].includes(b.selector)) {
+          if ([3, 6, 8].includes(b.selector)) {
             const receipt = stepStagedCampaignPowerProducer(
               staged,
               b.owner * 64 + b.slot,
@@ -338,11 +338,11 @@ export function stepCampaignEconomyBuildings(
             syncPlayers(staged, state);
             return;
           }
-          if ([3, 6].includes(b.selector))
+          if ([3, 6, 8].includes(b.selector))
             refreshStagedCampaignPowerProducer(staged, slot);
           if (nativeExtractor && b.selector === 11)
             refreshStagedCampaignExtractor(staged, slot);
-          if (!b.complete && b.producer && ![3, 6].includes(b.selector)) {
+          if (!b.complete && b.producer && ![3, 6, 8].includes(b.selector)) {
             const n = staged.buildingNative[b.owner * 64 + b.slot];
             if (n.slice(25, 31).some((v) => v === null))
               throw Error("Incomplete producer animation prior is unknown");
