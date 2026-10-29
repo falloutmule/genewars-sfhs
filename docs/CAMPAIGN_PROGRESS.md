@@ -1,6 +1,6 @@
 # Software campaign progress
 
-Current as of 29 October 2026: **11/24 accepted**. Zed completed through the portrait phone touch UI at frame 15,873 with all three marked-zone quotas exhausted and score 6,342 against 160 and 104. Normal result controls carried progress 11 into Thyroid (mission 12); the latest verified continuation is active and paused at frame 1,500. Landscape reload and full command replay passed without browser or render errors. Physical Galaxy S21 Ultra testing remains separate.
+Current as of 29 October 2026: **11/24 accepted**. Zed completed through the portrait phone touch UI at frame 15,873 with all three marked-zone quotas exhausted and score 6,342 against 160 and 104. Normal result controls carried progress 11 into Thyroid (mission 12); the latest verified continuation is active and paused at frame 1,800. Landscape reload and full command replay passed without browser or render errors. Physical Galaxy S21 Ultra testing remains separate.
 
 Private evidence is indexed in `.private/continuous-20261026/mission11-acceptance.json`, including 502 verified ancestry links and preserved genuine losses and restarts. The successful route kept a reserve Engineer, completed both forests early, and timed fresh Crab production for the remaining inspection quota. No simulation source changed during the successful fourth attempt.
 
@@ -11,6 +11,8 @@ The genuine phone continuation now reaches Thyroid frame 800 with full replay ch
 The Ethereal water branch is now bound to the original material, speed, unsigned-height and frame gates and the shared water-effect factory. Verification passes 216 original-instruction cases (19,708 instructions), 172 test files / 1,988 tests, strict typecheck and leak checks. A separate ordinary-command diagnostic from frame 800 now reaches frame 1,300 without errors and replays exactly (`e41831e1`). The genuine UI checkpoint remains frame 800 until the new build is bridged and played.
 
 The new phone build subsequently reached frame 1,500 with exact replay. The Bird and one Crab died during the genuine attack attempt; both losses remain in the ancestry. A health guard stopped Eric at 3 health, and an ordinary retreat was queued. That continuation exposed a retained Crab plant-target resume at frame 1,663 and signed-water corpse validation at frame 1,699. These are now bound after 16 human-command comparisons and 32 corpse factories / 24 callbacks, plus 82 focused tests, strict typecheck and leak checks. A diagnostic from the preserved retreat parent reaches frame 1,750 with no errors and exact replay `3a32386e`; the genuine parent remains frame 1,500 until a new build is bridged.
+
+The bridged genuine phone continuation reached frame 1,800 with full replay checksum `3b94979b` and no simulation errors. Jon and Corey died during this attempt; their losses remain alongside the Bird and Crab losses in the complete ancestry. Eric survived the retreat at 6 health. Recovery assessment found the mission uses its special entry and a timed landing counter of 15,000, so the closed initial recruitment panel is not evidence that arbitrary mid-mission recruitment should be exposed. The timed objective landing still has an explicit source boundary. No restart or additional acceptance is claimed.
 
 The entries below are historical checkpoints.
 
