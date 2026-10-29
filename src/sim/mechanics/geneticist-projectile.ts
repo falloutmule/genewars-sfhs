@@ -613,7 +613,7 @@ export function stepImpactProjectileRecord(
     c.frame < 0 ||
     c.frame > 0xffffffff ||
     !Number.isInteger(c.water) ||
-    c.water < 0 ||
+    c.water < -2147483648 ||
     c.water > 0xffffffff ||
     c.terrain.bytes.length !== 229376 ||
     c.tables.atan.length !== 257 ||

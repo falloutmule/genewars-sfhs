@@ -96,6 +96,15 @@ const actor = () => {
   return n;
 };
 describe("Shepherd37..40 source projectile family", () => {
+  it.each([37,38,39,40] as const)("retains projectile%d motion with negative native water",code=>{
+    const f=numeric(code),n=f.made.native;
+    n[30]=0;
+    const result=stepShepherdProjectileRecord(n,f.rng,{...f.step,frame:3,water:-2208});
+    expect(result.retirementRequired).toBe(false);
+    expect(word(result.native,7)).not.toBe(word(n,7));
+    expect(f.children).toEqual([]);
+    expect(()=>stepShepherdProjectileRecord(n,f.rng,{...f.step,water:-2147483649})).toThrow(/context required/);
+  });
   it.each([37, 38, 39, 40] as const)(
     "constructs exacttier%d retained image, sourceaudio andcorrespondingimpactchild",
     (code) => {
