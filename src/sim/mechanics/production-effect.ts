@@ -160,7 +160,7 @@ function stepCommonEffectRecord(
     c.gravity < -32768 ||
     c.gravity > 32767 ||
     !Number.isInteger(c.water) ||
-    c.water < 0 ||
+    c.water < -2147483648 ||
     c.water > 0xffffffff
   )
     throw new Error("Original production effect frame/gravity/water required");

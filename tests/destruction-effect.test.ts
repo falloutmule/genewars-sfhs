@@ -79,6 +79,18 @@ function fixture(code: DestructionCode = 5) {
   );
   return { terrain, rng, prior, n: result.native, result };
 }
+it("runs common and destruction callbacks with negative physical water", () => {
+  const f=fixture(14);
+  f.n[76]=f.n[67]=f.n[68]=f.n[30]=0;
+  put32(f.n,39,5000);
+  const context={frame:3,gravity:0,water:-2208,terrain:f.terrain,tables,
+    bounce:Array(8).fill(64),friction:Array(8).fill(128),profile,
+    obstacle:()=>null,particle:()=>{throw Error('Unexpected dry-terrain water child');}};
+  const result=stepDestructionEffect(f.n,f.rng,context);
+  expect(result.retirementRequired).toBe(false);
+  expect(result.native[6]).toBe(5);
+  expect(()=>stepDestructionEffect(f.n,f.rng,{...context,water:-2147483649})).toThrow(/water required/);
+});
 it("keeps airborne cold shards after animation completion and retires on source mode1 contact", () => {
   const f = fixture(14);
   expect(f.result.events).toEqual([]);

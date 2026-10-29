@@ -60,6 +60,15 @@ function fixture() {
   return { n, c, terrain, g };
 }
 describe("source production failure32/0x20 callback", () => {
+  it("accepts negative physical water while retaining the unsigned native contact comparison", () => {
+    const {n,c,terrain}=fixture();
+    c.frame=3;c.water=-2208;
+    const result=stepProductionEffectRecord(n,terrain,c);
+    expect(result.queries.some(q=>q.type==='water-material')).toBe(true);
+    expect(stepProductionEffectRecord(n,terrain,{...c,water:0}).queries.some(q=>q.type==='water-material')).toBe(false);
+    for(const water of [-2147483649,4294967296,NaN])
+      expect(()=>stepProductionEffectRecord(n,terrain,{...c,water})).toThrow(/water required/);
+  });
   it("applies gravity without changing the factory acceleration, flags, or retained bytes", () => {
     const { n, c, terrain, g } = fixture(),
       before = structuredClone(n);

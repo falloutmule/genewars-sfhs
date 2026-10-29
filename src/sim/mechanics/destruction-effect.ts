@@ -465,7 +465,7 @@ export function stepSharedFreeEffectMotion(
     c.gravity < -32768 ||
     c.gravity > 32767 ||
     !Number.isInteger(c.water) ||
-    c.water < 0 ||
+    c.water < -2147483648 ||
     c.water > 0xffffffff
   )
     throw Error("Original destruction frame/gravity/water required");
@@ -652,7 +652,7 @@ export function stepDestructionEffect(
     c.gravity < -32768 ||
     c.gravity > 32767 ||
     !Number.isInteger(c.water) ||
-    c.water < 0 ||
+    c.water < -2147483648 ||
     c.water > 0xffffffff
   )
     throw Error("Original destruction frame/gravity/water required");
