@@ -1,3 +1,4 @@
+import { stepShieldEffect } from "../mechanics/shield-effect";
 /** Source4E950 shared200-slot primary/newborn effect callback scheduler. */
 import type { Pack } from "../../content/types";
 import {
@@ -105,6 +106,7 @@ export type EffectSchedulerWorld = PowerAdapterWorld &
     audio?: unknown;
     missionPrefix?: number[];
     countdown?: number;
+    shieldWaves?: EffectNative[];
   };
 export interface EffectSchedulerOptions<
   W extends EffectSchedulerWorld = EffectSchedulerWorld,
@@ -220,6 +222,7 @@ export function cloneEffectHost<W extends EffectSchedulerWorld>(
   const s = {
     ...w,
     ...host,
+    ...(w.shieldWaves ? { shieldWaves: w.shieldWaves.map(n => n.slice()) } : {}),
     terrain: { bytes: w.terrain.bytes.slice(), revision: w.terrain.revision },
     spatial: cloneSpatial(w.spatial),
     powerEffects: clonePowerEffectPool(w.powerEffects),
@@ -273,6 +276,7 @@ export function commitEffectHost<W extends EffectSchedulerWorld>(
     "countdown",
   ] as const)
     if (key in s) (w as Record<string, unknown>)[key] = s[key];
+  if (s.shieldWaves) w.shieldWaves = s.shieldWaves;
   options.commitHost?.(w, s);
 }
 function validate(w: EffectSchedulerWorld) {
@@ -285,7 +289,7 @@ function validate(w: EffectSchedulerWorld) {
     if (p.nativePrior[6] === null)
       throw new Error("Source effect scheduler kind is unknown");
     if (
-      p.occupied !== !!w.spatial.nodes[id(slot)] ||
+      (p.occupied && p.nativePrior[69] !== 66) !== !!w.spatial.nodes[id(slot)] ||
       p.occupied !== (p.nativePrior[6] !== 0)
     )
       throw new Error("Shared source effect occupancy is inconsistent");
@@ -357,7 +361,9 @@ function landingContext<W extends EffectSchedulerWorld>(
 }
 function publish(w: EffectSchedulerWorld, slot: number, native: EffectNative) {
   validateEffectNativePrior(native);
-  w.powerEffects.slots[slot].nativePrior = native.slice();
+  const held = w.powerEffects.slots[slot].nativePrior;
+  if (held) held.splice(0, held.length, ...native);
+  else w.powerEffects.slots[slot].nativePrior = native.slice();
   w.powerEffects.slots[slot].fractionX = native[67];
   w.powerEffects.slots[slot].fractionY = native[68];
 }
@@ -369,7 +375,7 @@ function retire<W extends EffectSchedulerWorld>(
   options: EffectSchedulerOptions<W>,
 ) {
   if (w.spatial.nodes[id(slot)]) unlinkSpatial(w.spatial, w.terrain, id(slot));
-  else throw new Error("Retiring source effect is not spatially bound");
+  else if (native[69] !== 66) throw new Error("Retiring source effect is not spatially bound");
   // Numeric callback supplies final bytes. Restore kind only across724C0 so
   // matching self-references participate before the final native kind clear.
   native[6] = 5;
@@ -449,7 +455,7 @@ function requireSharedSlot(w: EffectSchedulerWorld, slot: number) {
     throw Error("Source shared effect numeric prior is required");
   validateEffectNativePrior(shared.nativePrior);
   if (
-    shared.occupied !== !!w.spatial.nodes[id(slot)] ||
+    (shared.occupied && shared.nativePrior[69] !== 66) !== !!w.spatial.nodes[id(slot)] ||
     shared.occupied !== (shared.nativePrior[6] === 5) ||
     (!shared.occupied && shared.nativePrior[6] !== 0)
   )
@@ -500,7 +506,9 @@ export function publishStagedSharedEffect(
   const cell = worldCell(word(7), word(9));
   publish(w, slot, native.slice());
   shared.occupied = true;
-  moveSpatial(w.spatial, w.terrain, id(slot), cell);
+  if (native[69] === 66) {
+    if (w.spatial.nodes[id(slot)]) throw Error("Shield66 must not have a spatial node");
+  } else moveSpatial(w.spatial, w.terrain, id(slot), cell);
   links(w);
 }
 /**49D30 over the current published carrier. Callback callers must publish
@@ -1236,6 +1244,22 @@ export function stepEffectScheduler<W extends EffectSchedulerWorld>(
       publish(s, slot, result.native);
       if (result.retirementRequired)
         retire(s, slot, result.native, out, options);
+    } else if (code === 9 || code === 65 || code === 66) {
+      const result = stepShieldEffect(n, s.rng, {
+        frame: s.frame, gravity: options.gravity,
+        water: s.source.source.terrain.loadedPhysicalWaterHeight,
+        terrain: s.terrain, tables: pack.rules!.tables,
+        bounce: pack.rules!.tables.bounce,
+        friction: pack.ecologyRules?.corpseFriction ?? [],
+        profile: animationProfile(pack.assets.EFF, code),
+        waves: s.shieldWaves ?? [],
+        particle: () => { throw Error("Unexpected shield effect water child"); },
+        obstacle: options.destructionObstacle
+          ? (point, height) => options.destructionObstacle!(s, point, height)
+          : undefined,
+      });
+      publishStagedSharedEffect(s, slot, result.native);
+      if (result.retirementRequired) retireStagedSharedEffect(s, slot, options, out);
     } else if (code === 59) {
       const players = s.players as { raw: number[] }[];
       const result = stepRewardEffectRecord(n, s.rng, {

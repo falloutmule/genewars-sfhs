@@ -1,3 +1,5 @@
+import { stepStagedCampaignShield } from "./shield-adapter";
+import { stepShieldWave, type ShieldWaveWorld } from "../mechanics/shield-wave";
 import { stepStagedCampaignGoopVat } from "./goop-vat-adapter";
 import {creatureAsset,creatureCombatTraits,creatureColdResponse} from "../mechanics/creature-species";
 import { resetCreaturePopulation, countCreatureBeforeCallback } from "../mechanics/creature-population";
@@ -378,6 +380,8 @@ export interface CampaignWorld extends CampaignBootstrap {
   entryCarry: CampaignCarry | null;
   specialists: SpecialistPool;
   collapse: CollapsePool;
+  /** Cold114D50 ring slots are materialized only when first used. */
+  shieldWaves?: (number | null)[][];
   collectors: ProcessorCollectorPool;
   /** Explicit112D10 host scratch. Fresh admitted data is zero; carry retains
    * it. No factory silently resets it or resamples its final target. */
@@ -1878,6 +1882,7 @@ function syncEconomy(w: CampaignWorld): void {
   );
 }
 function stageNativeHost(original: CampaignWorld, staged: CampaignWorld): void {
+  if (original.shieldWaves) staged.shieldWaves = original.shieldWaves.map(n => n.slice());
   if (original.strategy) staged.strategy = cloneCampaignStrategicStorage(original.strategy);
   staged.buildingNative = original.buildingNative.map((n) => n.slice());
   staged.creatureNative = original.creatureNative.map((n) => n.slice());
@@ -1898,6 +1903,7 @@ function stageNativeHost(original: CampaignWorld, staged: CampaignWorld): void {
   staged.auxiliary = structuredClone(original.auxiliary);
 }
 function commitNativeHost(target: CampaignWorld, staged: CampaignWorld): void {
+  if (staged.shieldWaves) target.shieldWaves = staged.shieldWaves;
   if (staged.strategy) target.strategy = staged.strategy;
   target.buildingNative = staged.buildingNative;
   target.creatureNative = staged.creatureNative;
@@ -2226,6 +2232,10 @@ export function stepCampaign(w: CampaignWorld, pack: Pack): void {
           }
           if (building.selector === 5) {
             stepStagedCampaignRecruitmentCenter(staged, slot, pack, specialistServices(pack));
+            return true;
+          }
+          if (building.selector === 12) {
+            stepStagedCampaignShield(staged, slot, pack, specialistServices(pack));
             return true;
           }
           if (building.selector === 13) {
@@ -2663,6 +2673,7 @@ export function stepCampaign(w: CampaignWorld, pack: Pack): void {
     stepStagedCampaignProcessorCollectors(w, pack, specialistServices(pack));
     if (w.collapse.count)
       stepCollapsePool(w, {
+        shieldWave: (staged, slot) => stepShieldWave(staged as CampaignWorld & ShieldWaveWorld, slot, pack.rules!.tables),
         directions: pack.ecologyRules!.spreadDirections as [number, number][],
         stageHost: (original, staged) =>
           Object.assign(staged, structuredClone(original)),
@@ -2793,6 +2804,10 @@ export function actOnCampaignResult(
 export function continueCampaign(w: CampaignWorld, pack: Pack): CampaignWorld {
   if (w.result.phase !== "campaign-view-queued")
     throw new Error("Original result confirmation required before continuing");
+  // The ring table is separate global storage. Cold startup is established,
+  // but mission cleanup/carry has not yet been traced for this family.
+  if (w.shieldWaves)
+    throw new Error("Shield ring mission carry requires its original cleanup binding");
   const plan = planCampaignPlayerCarry(
     w.players.map((p) => p.raw),
     w.actors.map((a) => ({
@@ -2842,6 +2857,10 @@ export function continueCampaign(w: CampaignWorld, pack: Pack): CampaignWorld {
   return next;
 }
 export function validateCampaignWorld(w: CampaignWorld, hash: string): void {
+  if (w.shieldWaves && (w.shieldWaves.length !== 8 || w.shieldWaves.some(n => n.length !== 449 || n.some(v => v !== null && (!Number.isInteger(v) || v < 0 || v > 255)) || ![0, 1].includes(n[448]!))))
+    throw Error("Saved shield ring pool is invalid");
+  if (!w.shieldWaves && (w.collapse.records.some(n => n[6] && [4, 5].includes(n[39]!)) || w.powerEffects.slots.some(s => s.occupied && s.nativePrior?.[69] === 66)))
+    throw Error("Saved live shield ring state is missing");
   if (w.strategy) {
     validateCampaignStrategicStorage(w.strategy);
     if (w.auxiliary.entries.length !== 300 || w.auxiliary.entries.some((e, i) =>
@@ -2975,7 +2994,7 @@ export function validateCampaignWorld(w: CampaignWorld, hash: string): void {
     throw new Error("Invalid effect save pool");
   for (const [slot, p] of w.powerEffects.slots.entries())
     if (
-      p.occupied !== !!w.spatial.nodes[`source:4:${slot}`] ||
+      (p.occupied && p.nativePrior?.[69] !== 66) !== !!w.spatial.nodes[`source:4:${slot}`] ||
       !p.nativePrior ||
       p.nativePrior.length !== 81 ||
       (p.nativePrior[6] !== 0) !== p.occupied

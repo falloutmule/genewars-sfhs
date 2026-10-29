@@ -24,6 +24,8 @@ export interface CollapseRequest {
 }
 export interface CollapseContext<W extends CollapseWorld> {
   directions: readonly (readonly [number, number])[];
+  /** Actual4EFE0 selectors4/5 in the same family6 slot order. */
+  shieldWave?(world: W, slot: number): boolean;
   /**Real48790, including immediate ordered area damage. Receives staged world. */ effect(
     world: W,
     request: DestructionRequest,
@@ -175,6 +177,12 @@ export function stepCollapsePool<W extends CollapseWorld>(
     const n = s.collapse.records[slot];
     if (n[6] === 0) continue;
     if (byte(n, 21) & 1) continue;
+    if (n[6] === 6 && [4, 5].includes(byte(n, 39))) {
+      if (!c.shieldWave) throw Error("Actual family6 shield wave callback required");
+      out.callbacks.push(slot); remaining--;
+      if (c.shieldWave(s, slot)) out.retired.push(slot);
+      continue;
+    }
     if (
       n[6] !== 6 ||
       n[39] !== 3 ||

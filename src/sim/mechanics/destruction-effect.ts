@@ -483,7 +483,7 @@ export function stepSharedFreeEffectMotion(
   if (
     n[6] !== 5 ||
     ![0, 0x20, 0x180, 0x1a0, 0x820].includes(flags) ||
-    word(n, 63) !== -1
+    (word(n, 63) !== -1 && !(byte(n, 69) === 65 && flags === 0x820))
   )
     throw Error("Unsupported original shared free effect motion state");
   const x = word(n, 7),
