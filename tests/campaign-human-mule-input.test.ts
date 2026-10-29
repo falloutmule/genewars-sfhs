@@ -85,7 +85,7 @@ describe("human Mule packets through campaign input/save/replay", () => {
   beforeAll(() => {
     initial = fixture();
   });
-  it.each([1,11,22])("publishes species%i building combat and preserves pending save/replay",species=>{
+  it.each([1,3,11,22])("publishes species%i building combat and preserves pending save/replay",species=>{
     const {w,pack}=structuredClone(initial),profile=speciesFixture();
     Object.assign(pack.ecologyRules!,{speciesTraits:profile.rules.speciesTraits,attackChannels:profile.rules.attackChannels});
     pack.zoneRules!.speciesComponents=profile.components;

@@ -206,7 +206,7 @@ export function classifyHumanCreatureTarget<W extends CreatureCommandWorld>(
 }
 
 export function hasHumanCreatureAttackBody(species: number): boolean {
-  return [1, 4, 11, 22].includes(species);
+  return [1, 3, 4, 11, 22].includes(species);
 }
 function actionBody(n: Native, mode: number, kind: number) {
   if (byte(n, 122) !== 4 &&
